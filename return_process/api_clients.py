@@ -149,7 +149,7 @@ def fetch_naver_returns(account_info):
 
     kst = timezone(timedelta(hours=9))
     end_date = datetime.now(tz=kst)
-    start_date = end_date - timedelta(days=21)
+    start_date = end_date - timedelta(days=5)
     delta = timedelta(hours=24)
 
     target_claim_statuses = ['EXCHANGE_REQUEST', 'COLLECT_DONE', 'RETURN_REQUEST', 'RETURN_DONE', 'EXCHANGE_DONE']
@@ -373,7 +373,7 @@ def fetch_coupang_returns(account_info):
     status_list = ['UC', 'CC', 'PR']  # 필요한 모든 상태 값
     all_returns = []
 
-    total_days = 21
+    total_days = 5
     max_retries = 3
     # 하루 단위로 조회, 과거 21일
 
