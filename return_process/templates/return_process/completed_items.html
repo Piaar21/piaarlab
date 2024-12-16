@@ -1,0 +1,22 @@
+<!-- templates/return_process/completed_items.html -->
+{% extends 'base.html' %} {% block content %}
+<h2>처리완료 목록</h2>
+<table>
+    <thead>
+        <tr>
+            <th>주문번호</th>
+            <th>상품명</th>
+            <th>처리일자</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.order_id }}</td>
+            <td>{{ item.product_name }}</td>
+            <td>{{ item.updated_at }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

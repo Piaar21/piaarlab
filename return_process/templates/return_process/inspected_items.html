@@ -1,0 +1,490 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-primary">검수완료 목록</h2>
+
+    <!-- 사유(검수결과) 및 노트 일괄 적용 영역 시작 -->
+    <div class="d-flex align-items-center mb-3">
+        <div class="btn-group me-3">
+            <button class="btn btn-outline-danger reason-btn" data-reason="오배송">오배송</button>
+            <button class="btn btn-outline-success reason-btn" data-reason="이상없음">이상없음</button>
+            <button class="btn btn-outline-warning reason-btn" data-reason="파손및불량">파손및불량</button>
+            <button class="btn btn-outline-info reason-btn" data-reason="보류">보류</button>
+        </div>
+
+        <input type="text" class="form-control w-auto" id="input-note" placeholder="사유(특이사항) 입력">
+        <button class="btn btn-primary ms-2" id="apply-reason">사유 일괄 적용</button>
+    </div>
+    <!-- 사유(검수결과) 및 노트 일괄 적용 영역 끝 -->
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form id="return-form">
+                {% csrf_token %}
+                <!-- 폼 제출로 인한 페이지 이동 방지를 위해 action, method 제거 및 button type="button" 적용 필요 -->
+                <button type="button" class="btn btn-primary mb-3" id="approve-return-btn">반품승인</button>
+                <button type="button" class="btn btn-info mb-3" id="send-sms-btn">배송비문자</button>
+                <!-- 필터 영역 시작 -->
+                <div class="d-flex mb-3 gap-3 align-items-center">
+                    <!-- 검수 결과 필터 -->
+                    <div>
+                        <label for="issue-filter" class="form-label me-2">검수 결과:</label>
+                        <select id="issue-filter" class="form-select w-auto">
+                            <option value="">전체</option>
+                            <option value="미검수">미검수</option>
+                            <option value="오배송">오배송</option>
+                            <option value="이상없음">이상없음</option>
+                            <option value="파손및불량">파손및불량</option>
+                            <option value="보류">보류</option>
+                        </select>
+                    </div>
+
+                    <!-- 클레임 사유 필터 -->
+                    <div>
+                        <label for="reason-filter" class="form-label me-2">클레임 사유:</label>
+                        <select id="reason-filter" class="form-select w-auto">
+                            <option value="">전체</option>
+                            <option value="N/A">N/A</option>
+                            <option value="고객변심">고객변심</option>
+                            <option value="오배송">오배송</option>
+                            <option value="상품 불량">상품 불량</option>
+                            <option value="주문 실수">주문 실수</option>
+                            <option value="단순 변심">단순 변심</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- 필터 영역 끝 -->
+
+                <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                    <table class="table table-hover table-striped align-middle" id="items-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="select-all"></th>
+                                <th>검수 결과</th>
+                                <th>클레임 사유</th>
+                                <th>고객 사유</th>
+                                <th>수거 배송비</th>
+                                <th>배송비 지급 방식</th>
+                                <th>주문번호</th>
+                                <th>스토어명</th>
+                                <th>수취인명</th>
+                                <th>연락처</th>
+                                <th>옵션코드</th>
+                                <th>상품명</th>
+                                <th>옵션명</th>
+                                <th>수량</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td><input type="checkbox" class="row-checkbox" name="item_ids" value="{{ item.id }}"></td>
+                                <td class="issue-cell">{{ item.product_issue|default:"미검수" }}</td>
+                                <td class="reason-cell">{{ item.claim_reason|default:"N/A" }}</td>
+                                <td>{{ item.customer_reason|default:"N/A" }}</td>
+                                <td>{{ item.return_shipping_charge|default:"0" }}</td>
+                                <td>{{ item.shipping_charge_payment_method|default:"N/A" }}</td>
+                                <td>{{ item.order_number }}</td>
+                                <td>{{ item.store_name|default:"N/A" }}</td>
+                                <td>{{ item.recipient_name|default:"N/A" }}</td>
+                                <td>{{ item.recipient_contact|default:"N/A" }}</td>
+                                <td>{{ item.option_code|default:"N/A" }}</td>
+                                <td>{{ item.product_name|default:"N/A" }}</td>
+                                <td>{{ item.option_name|default:"N/A" }}</td>
+                                <td>{{ item.quantity|default:"0" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="14" class="text-center">데이터가 없습니다.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 전체 선택 체크박스 기능
+    document.getElementById('select-all').addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('#items-table tbody input[type="checkbox"]');
+        for (let checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    });
+
+    // 행 클릭 시 체크박스 토글
+    const rows = document.querySelectorAll('#items-table tbody tr');
+    rows.forEach(row => {
+        row.addEventListener('click', function(e) {
+            if (e.target.tagName.toLowerCase() !== 'input') {
+                const checkbox = this.querySelector('input[type="checkbox"]');
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                }
+            }
+        });
+    });
+
+    const issueFilter = document.getElementById('issue-filter');
+    const reasonFilter = document.getElementById('reason-filter');
+
+    function filterRows() {
+        const issueValue = issueFilter.value.trim();
+        const reasonValue = reasonFilter.value.trim();
+
+        rows.forEach(row => {
+            const issueCell = row.querySelector('.issue-cell');
+            const reasonCell = row.querySelector('.reason-cell');
+
+            if (!issueCell || !reasonCell) return;
+
+            const issueText = issueCell.textContent.trim();
+            const reasonText = reasonCell.textContent.trim();
+
+            let showRow = true;
+
+            if (issueValue !== '' && issueText !== issueValue) {
+                showRow = false;
+            }
+
+            if (reasonValue !== '' && reasonText !== reasonValue) {
+                showRow = false;
+            }
+
+            row.style.display = showRow ? '' : 'none';
+        });
+    }
+
+    issueFilter.addEventListener('change', filterRows);
+    reasonFilter.addEventListener('change', filterRows);
+    filterRows();
+
+    // 사유(검수결과) 및 노트 일괄 업데이트 관련 스크립트
+    const applyReasonBtn = document.getElementById('apply-reason');
+    const inputNote = document.getElementById('input-note');
+    const reasonButtons = document.querySelectorAll('.reason-btn');
+
+    let selectedIssue = null;
+
+    function showTemporaryMessage(msg, duration = 1000) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-info position-fixed top-0 start-50 translate-middle-x mt-3';
+        alertDiv.style.zIndex = '9999';
+        alertDiv.textContent = msg;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => {
+            alertDiv.remove();
+        }, duration);
+    }
+
+    function getCheckedIds() {
+        const checkedRows = [];
+        document.querySelectorAll('.row-checkbox:checked').forEach(chk => {
+            checkedRows.push(chk.value);
+        });
+        return checkedRows;
+    }
+
+    // 여기서 getCheckedRows 함수를 정의합니다.
+    function getCheckedRows() {
+        return Array.from(document.querySelectorAll('.row-checkbox:checked')).map(chk => chk.closest('tr'));
+    }
+
+    // 검수 결과 업데이트
+    reasonButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectedIssue = btn.getAttribute('data-reason');
+            reasonButtons.forEach(b => b.classList.remove('btn-primary'));
+            btn.classList.add('btn-primary');
+            const checkedIds = getCheckedIds();
+            if (checkedIds.length === 0) {
+                showTemporaryMessage('체크한 항목이 없습니다.');
+                return;
+            }
+
+            fetch("{% url 'scan_submit' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'update_issue',
+                    ids: checkedIds,
+                    product_issue: selectedIssue
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showTemporaryMessage('검수 결과 업데이트 완료');
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1100);
+                } else {
+                    showTemporaryMessage('업데이트 실패');
+                }
+            });
+        });
+    });
+
+    // 노트(특이사항) 일괄 적용
+    applyReasonBtn.addEventListener('click', () => {
+        const checkedIds = getCheckedIds();
+        if (checkedIds.length === 0) {
+            showTemporaryMessage('체크한 항목이 없습니다.');
+            return;
+        }
+
+        fetch("{% url 'scan_submit' %}", {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: 'update_note',
+                ids: checkedIds,
+                note: inputNote.value.trim()
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showTemporaryMessage('사유(특이사항) 업데이트 완료');
+                setTimeout(() => {
+                    location.reload();
+                }, 1100);
+            } else {
+                showTemporaryMessage('업데이트 실패');
+            }
+        });
+    });
+
+    // 반품승인 (AJAX 요청) 처리 로직
+    function showAlert(message, type='info', duration=3000) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} position-fixed top-0 start-50 translate-middle-x mt-3`;
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerText = message;
+        document.body.appendChild(alertDiv);
+
+        setTimeout(() => {
+            alertDiv.remove();
+        }, duration);
+    }
+
+    function decodeUnicode(str) {
+        try {
+            return decodeURIComponent(escape(str));
+        } catch(e) {
+            return str;
+        }
+    }
+
+    const approveButton = document.getElementById('approve-return-btn');
+    approveButton.addEventListener('click', function(e) {
+        e.preventDefault();
+
+        const checkedBoxes = document.querySelectorAll('input[name="item_ids"]:checked');
+        if (checkedBoxes.length === 0) {
+            showAlert('선택된 항목이 없습니다.', 'warning');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        checkedBoxes.forEach(cb => formData.append('item_ids', cb.value));
+
+        fetch("{% url '반품처리_bulk' %}", {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`서버 오류: ${res.status}`);
+            }
+            return res.json();
+        })
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message || '반품승인이 완료되었습니다.', 'success');
+                setTimeout(() => {
+                    location.reload();
+                }, 1100);
+            } else {
+                let errorMsg = '반품승인 중 오류가 발생했습니다.\n';
+                if (data.errors && data.errors.length > 0) {
+                    data.errors.forEach(err => {
+                        const decodedMessage = decodeUnicode(err.message);
+                        errorMsg += `ID: ${err.id}, 오류: ${decodedMessage}\n`;
+                    });
+                } else {
+                    errorMsg += (data.message || '');
+                }
+                showAlert(errorMsg, 'danger', 5000);
+            }
+        })
+        .catch(err => {
+            console.error('AJAX 요청 오류:', err);
+            showAlert(`서버 통신 중 오류 발생: ${err.message}`, 'danger', 5000);
+        });
+    });
+
+    const smsButton = document.getElementById('send-sms-btn');
+    smsButton.addEventListener('click', function(e) {
+        e.preventDefault();
+
+        console.log(">>> 배송비문자 버튼 클릭");
+        
+        // 암호 입력 요청
+        const password = prompt("암호를 입력해주세요:");
+        if (password !== '0618') {
+            showAlert('암호가 틀렸습니다.', 'danger');
+            return; // 암호 불일치 시 함수 종료
+        }
+        
+        const checkedRows = getCheckedRows();
+        if (checkedRows.length === 0) {
+            showAlert('선택된 항목이 없습니다.', 'warning');
+            return;
+        }
+
+        const directPayRows = checkedRows.filter(row => {
+            const methodCell = row.querySelector('td:nth-child(6)');
+            return methodCell && methodCell.textContent.trim() === '판매자에게 직접 송금';
+        });
+
+        if (directPayRows.length === 0) {
+            showAlert('판매자에게 직접 송금 선택한 항목이 없습니다.', 'warning');
+            return;
+        }
+
+        const smsData = directPayRows.map(row => {
+            return {
+                id: row.querySelector('.row-checkbox').value,
+                store_name: row.querySelector('td:nth-child(8)')?.textContent.trim() || "N/A",
+                return_shipping_charge: row.querySelector('td:nth-child(5)')?.textContent.trim() || "0",
+                recipient_contact: row.querySelector('td:nth-child(10)')?.textContent.trim() || "N/A"
+            }
+        });
+
+        console.log(">>> smsData:", smsData);
+
+        fetch("/send_shipping_sms/", {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ items: smsData })
+        })
+        .then(res => {
+            console.log(">>> 응답 수신:", res);
+            return res.json();
+        })
+        .then(data => {
+            console.log(">>> 응답 JSON:", data);
+            if (data.success) {
+                showAlert('문자 발송 성공', 'success');
+            } else {
+                showAlert(`문자 발송 실패: ${data.message || ''}`, 'danger');
+            }
+        })
+        .catch(err => {
+            console.error('문자 발송 요청 오류:', err);
+            showAlert(`문자 발송 요청 중 오류 발생: ${err.message}`, 'danger');
+        });
+    });
+</script>
+
+
+<style>
+     :root {
+        --primary-color: #6c5ce7;
+        --secondary-color: #a29bfe;
+        --background-color: #f8f9fa;
+        --text-color: #2d3436;
+        --border-color: #dfe6e9;
+        --table-text-color: #2d3436;
+        --table-background: #ffffff;
+    }
+    
+    body {
+        background-color: var(--background-color);
+        color: var(--text-color);
+    }
+    
+    .container-fluid {
+        max-width: 1400px;
+    }
+    
+    h2 {
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+    
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+    
+    .btn-primary:hover {
+        background-color: var(--secondary-color);
+        border-color: var(--secondary-color);
+    }
+    
+    .card {
+        border: none;
+        border-radius: 15px;
+        overflow: hidden;
+        background-color: #ffffff;
+        color: var(--text-color);
+    }
+    
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    .table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: var(--table-background);
+        color: var(--table-text-color);
+    }
+    
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background-color: var(--primary-color);
+        color: white;
+        z-index: 1;
+        padding: 15px;
+        white-space: nowrap;
+    }
+    
+    .table tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+    
+    .table tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+    
+    .table td,
+    .table th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+    }
+</style>
+{% endblock %}
