@@ -147,20 +147,16 @@ def fetch_naver_returns(account_info):
         'Authorization': f'Bearer {access_token}',
     }
 
-    # 기간 설정 (최근 7일)
     kst = timezone(timedelta(hours=9))
     end_date = datetime.now(tz=kst)
     start_date = end_date - timedelta(days=21)
-    delta = timedelta(hours=24)  # 24시간 단위로 설정
+    delta = timedelta(hours=24)
 
-    returns = []
-    current_date = start_date
-
-    # 필요한 claimStatus 값들
     target_claim_statuses = ['EXCHANGE_REQUEST', 'COLLECT_DONE', 'RETURN_REQUEST', 'RETURN_DONE', 'EXCHANGE_DONE']
-
     all_product_order_ids = []
+    max_retries = 3
 
+    current_date = start_date
     while current_date < end_date:
         last_changed_from = current_date.isoformat(timespec='milliseconds')
         last_changed_to = (current_date + delta).isoformat(timespec='milliseconds')
@@ -168,7 +164,7 @@ def fetch_naver_returns(account_info):
         params = {
             'lastChangedFrom': last_changed_from,
             'lastChangedTo': last_changed_to,
-            'limitCount': 300,  # 최대 300개
+            'limitCount': 300,
         }
 
         more_sequence = None
@@ -177,59 +173,74 @@ def fetch_naver_returns(account_info):
             if more_sequence:
                 params['moreSequence'] = more_sequence
 
-            response = requests.get(
-                'https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/last-changed-statuses',
-                headers=headers,
-                params=params
-            )
+            retry_count = 0
+            while True:
+                try:
+                    response = requests.get(
+                        'https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/last-changed-statuses',
+                        headers=headers,
+                        params=params,
+                        timeout=30  # timeout 설정
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        last_change_statuses = data.get('data', {}).get('lastChangeStatuses', [])
 
-            if response.status_code == 200:
-                data = response.json()
-                last_change_statuses = data.get('data', {}).get('lastChangeStatuses', [])
+                        for order in last_change_statuses:
+                            claim_status = order.get('claimStatus')
+                            product_order_id = order.get('productOrderId')
+                            if claim_status and claim_status in target_claim_statuses:
+                                all_product_order_ids.append(product_order_id)
 
-                for order in last_change_statuses:
-                    claim_status = order.get('claimStatus')
-                    product_order_id = order.get('productOrderId')
-                    # 클레임 상태가 None인 경우 제외
-                    if claim_status is None:
-                        continue
-                    # 필요한 클레임 상태인지 확인
-                    if claim_status in target_claim_statuses:
-                        # 클레임 상태 로그 출력
-                        # logger.info(f"주문 ID: {product_order_id}, 클레임 상태: {claim_status}")
-                        all_product_order_ids.append(product_order_id)
-                # more 객체 확인하여 다음 페이지가 있는지 확인
-                more = data.get('data', {}).get('more', {})
-                if more:
-                    more_sequence = more.get('moreSequence')
-                    params['lastChangedFrom'] = more.get('moreFrom')
-                    # 요청 간 지연 시간 추가
-                    time.sleep(1)  # 지연 시간 늘리기
-                else:
+                        more = data.get('data', {}).get('more', {})
+                        if more:
+                            more_sequence = more.get('moreSequence')
+                            params['lastChangedFrom'] = more.get('moreFrom')
+                            time.sleep(1)
+                        else:
+                            # 다음 페이지 없음
+                            break
+                        retry_count = 0
+                    elif response.status_code == 429:
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            logger.error(f"{account_info['name']} API 호출 제한에 걸렸습니다. {retry_count}/{max_retries}회 재시도")
+                            time.sleep(5)
+                            continue
+                        else:
+                            logger.error(f"{account_info['name']} API 호출 제한 반복 발생, 이 구간 처리 중단")
+                            break
+                    else:
+                        logger.error(f"{account_info['name']} 변경 상품 주문 내역 조회 실패: {response.status_code}, {response.text}")
+                        break
                     break
-            elif response.status_code == 429:
-                # API 호출 제한에 걸린 경우, 일정 시간 대기 후 재시도
-                logger.error(f"{account_info['name']} API 호출 제한에 걸렸습니다. 잠시 대기 후 재시도합니다.")
-                time.sleep(5)  # 5초 대기 후 재시도
-                continue
+                except requests.exceptions.Timeout:
+                    if retry_count < max_retries:
+                        retry_count += 1
+                        logger.warning(f"{account_info['name']} 변경 상품 주문 내역 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}")
+                        time.sleep(3)
+                        continue
+                    else:
+                        logger.error(f"{account_info['name']} 변경 상품 주문 내역 조회 타임아웃 반복 발생, 이 구간 처리 중단")
+                        break
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"요청 중 예외 발생: {e}")
+                    break
+
             else:
-                logger.error(f"{account_info['name']} 변경 상품 주문 내역 조회 실패: {response.status_code}, {response.text}")
-                break
+                # while True 블록이 break 없이 끝나면 here
+                pass
+            break  # 더 이상 nextToken이 없거나 실패 시 상위 while 탈출
 
         current_date += delta
 
-    # 주문 상세 정보 조회
     returns = fetch_naver_order_details(account_info, all_product_order_ids)
-
-    # 네이버 반품/교환 데이터 출력
     result = {
         "code": 200,
         "message": "OK",
         "data": returns
     }
-    json_result = json.dumps(result, ensure_ascii=False, indent=4)
-    # logger.info(f"{account_info['name']}에서 가져온 네이버 반품/교환 데이터:\n{json_result}")
-
+    # json_result = json.dumps(result, ensure_ascii=False, indent=4)
     return returns
 
 def fetch_naver_order_details(account_info, product_order_ids):
@@ -243,55 +254,66 @@ def fetch_naver_order_details(account_info, product_order_ids):
     }
     
     url = 'https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/query'
-    
-    # 최대 100개씩 나누어 요청 (API 제한 사항에 따라 조절 필요)
     batch_size = 100
     orders_details = []
-    
+    max_retries = 3
+
     for i in range(0, len(product_order_ids), batch_size):
         batch_ids = product_order_ids[i:i+batch_size]
         payload = {
             "productOrderIds": batch_ids,
-            "quantityClaimCompatibility": True  # 필요한 경우 설정
+            "quantityClaimCompatibility": True
         }
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
-        
-        if response.status_code == 200:
-            data = response.json()
-            # 응답 데이터 구조 확인을 위한 로그 출력
-            # logger.info(f"응답 데이터 타입: {type(data)}")
-            # logger.info(f"응답 데이터: {json.dumps(data, ensure_ascii=False, indent=4)}")
-            
-            # 응답 데이터가 리스트인 경우
-            if isinstance(data, list):
-                product_orders = data
-            elif isinstance(data, dict):
-                # 'data' 키 아래에 리스트가 있는 경우
-                if 'data' in data and isinstance(data['data'], list):
-                    product_orders = data['data']
+
+        retry_count = 0
+        while True:
+            try:
+                response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+
+                    if isinstance(data, list):
+                        product_orders = data
+                    elif isinstance(data, dict):
+                        if 'data' in data and isinstance(data['data'], list):
+                            product_orders = data['data']
+                        else:
+                            product_orders = []
+                    else:
+                        product_orders = []
+                    
+                    logger.info(f"추출된 product_orders 수: {len(product_orders)}")
+                    orders_details.extend(product_orders)
+                    break
+                elif response.status_code == 429:
+                    if retry_count < max_retries:
+                        retry_count += 1
+                        logger.error(f"{account_info['name']} 주문 상세 정보 조회 API 호출 제한. 재시도 {retry_count}/{max_retries}")
+                        time.sleep(5)
+                        continue
+                    else:
+                        logger.error(f"{account_info['name']} 주문 상세 정보 조회 API 호출 제한 반복 발생. 이 배치 처리 중단.")
+                        break
                 else:
-                    # 데이터 구조가 예상과 다를 경우 전체 데이터로 설정
-                    product_orders = data
-            else:
-                product_orders = []
-            
-            logger.info(f"추출된 product_orders 수: {len(product_orders)}")
-            
-            for order_detail in product_orders:
-                product_order_id = order_detail.get('productOrder', {}).get('productOrderId')
-                orders_details.append(order_detail)
-        elif response.status_code == 429:
-            # API 호출 제한에 걸린 경우, 일정 시간 대기 후 재시도
-            logger.error(f"{account_info['name']} 주문 상세 정보 조회 API 호출 제한에 걸렸습니다. 잠시 대기 후 재시도합니다.")
-            time.sleep(5)  # 5초 대기 후 재시도
-            continue
-        else:
-            logger.error(f"{account_info['name']} 주문 상세 정보 조회 실패: {response.status_code}, {response.text}")
-            continue
-        # 요청 간 지연 시간 추가
-        time.sleep(1)
-    
+                    logger.error(f"{account_info['name']} 주문 상세 정보 조회 실패: {response.status_code}, {response.text}")
+                    break
+            except requests.exceptions.Timeout:
+                if retry_count < max_retries:
+                    retry_count += 1
+                    logger.warning(f"{account_info['name']} 주문 상세 정보 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}")
+                    time.sleep(3)
+                    continue
+                else:
+                    logger.error(f"{account_info['name']} 주문 상세 정보 조회 타임아웃 반복 발생. 이 배치 처리 중단.")
+                    break
+            except requests.exceptions.RequestException as e:
+                logger.error(f"요청 중 예외 발생: {e}")
+                break
+
+        time.sleep(1)  # Rate Limit 고려
+
     return orders_details
+
 
 def approve_naver_return(account_info, product_order_id):
     print(f"플랫폼(계정): {account_info.get('name', '알 수 없음')} - 주문번호: {product_order_id}")
@@ -352,38 +374,32 @@ def fetch_coupang_returns(account_info):
     all_returns = []
 
     total_days = 21
-    # 하루 단위로 나눕니다.
-    # range(total_days)면 0일부터 total_days-1일까지 반복하므로 21일이면 0~20까지 -> 각 i에 대해 i일 전, i+1일 전을 from_to로 설정
-    # 예: i=0 -> 오늘~오늘, i=1 -> 어제~오늘 형태로 되므로 아래 예시에서는 i일치 데이터를 하루 단위로 조회
-    # createdAtFrom: i+1일 전, createdAtTo: i일 전 형태로 조회 예: i=0이면 오늘~오늘, i=1이면 어제~어제 등
-    # 이 부분은 원하는 날짜 범위 계산 로직에 맞게 조정하세요.
-    
     max_retries = 3
+    # 하루 단위로 조회, 과거 21일
 
     for status in status_list:
         for i in range(total_days):
-            # i일 전 날짜 계산 (createdAtFrom이 더 과거)
             from_date = (datetime.utcnow() - timedelta(days=(i+1))).strftime('%Y-%m-%d')
             to_date = (datetime.utcnow() - timedelta(days=i)).strftime('%Y-%m-%d')
 
-            next_token = ''  # next_token 초기화
-            retry_count = 0  # 재시도 횟수
+            next_token = ''
+            retry_count = 0
+
             while True:
                 query_params = {
                     'createdAtFrom': from_date,
                     'createdAtTo': to_date,
                     'status': status,
-                    'maxPerPage': 50,  # 필요에 따라 조절
+                    'maxPerPage': 50,
                 }
+
                 if next_token:
                     query_params['nextToken'] = next_token
 
-                # 서명 생성
                 signature, datetime_now = generate_coupang_signature(
                     method, url_path, query_params, account_info['secret_key']
                 )
 
-                # Authorization 헤더
                 authorization = (
                     f"CEA algorithm=HmacSHA256, access-key={account_info['access_key']}, "
                     f"signed-date={datetime_now}, signature={signature}"
@@ -397,12 +413,24 @@ def fetch_coupang_returns(account_info):
                 encoded_query_string = urllib.parse.urlencode(sorted(query_params.items()), safe='~')
                 full_url = f"https://api-gateway.coupang.com{url_path}?{encoded_query_string}"
 
-                response = requests.get(full_url, headers=headers)
-
                 try:
+                    response = requests.get(full_url, headers=headers, timeout=30)  # timeout 설정
                     response_json = response.json()
+                except requests.exceptions.Timeout:
+                    # 요청 타임아웃 시 재시도
+                    if retry_count < max_retries:
+                        retry_count += 1
+                        logger.warning(f"{account_info['name']} 반품 목록 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}, 상태({status}), 기간({from_date}~{to_date})")
+                        time.sleep(3)
+                        continue
+                    else:
+                        logger.error(f"{account_info['name']} 반품 목록 조회 타임아웃 반복 발생, 상태({status}), 기간({from_date}~{to_date}) 처리 중단")
+                        break
                 except json.JSONDecodeError:
                     logger.error(f"응답 본문이 JSON 형식이 아닙니다: {response.text}")
+                    break
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"요청 중 예외 발생: {e}")
                     break
 
                 if response.status_code == 200:
@@ -412,10 +440,12 @@ def fetch_coupang_returns(account_info):
 
                     next_token = data.get('nextToken')
                     if not next_token:
+                        # 다음 페이지 없음
                         break
+                    # 다음 페이지 존재 시
                     retry_count = 0
                 else:
-                    # 에러 처리
+                    # 에러 응답 처리
                     error_code = response_json.get('code')
                     error_message = response_json.get('message', '')
 
@@ -432,7 +462,8 @@ def fetch_coupang_returns(account_info):
                         logger.error(f"{account_info['name']} 반품 목록 조회 실패 (상태: {status}, 기간: {from_date}~{to_date}): {response.status_code}, {response.text}")
                         break
 
-                time.sleep(0.5)  # Rate Limit 고려
+                # Rate Limit 고려
+                time.sleep(0.5)
 
     logger.info(f"{account_info['name']}에서 가져온 총 쿠팡 반품 데이터 수: {len(all_returns)}")
     return all_returns
@@ -446,12 +477,10 @@ def fetch_coupang_exchanges(account_info):
         'createdAtTo': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),
     }
 
-    # 서명 생성
     signature, datetime_now = generate_coupang_signature(
         method, url_path, query_params, account_info['secret_key']
     )
 
-    # Authorization 헤더 생성
     authorization = (
         f"CEA algorithm=HmacSHA256, access-key={account_info['access_key']}, "
         f"signed-date={datetime_now}, signature={signature}"
@@ -462,29 +491,30 @@ def fetch_coupang_exchanges(account_info):
         'Authorization': authorization,
     }
 
-    # 요청 URL 생성
     encoded_query_string = urllib.parse.urlencode(sorted(query_params.items()), safe='~')
     full_url = f"https://api-gateway.coupang.com{url_path}?{encoded_query_string}"
 
-    response = requests.get(full_url, headers=headers)
-
-    # 요청 및 응답 로그 출력
-    # logger.info(f"요청한 URL: {full_url}")
-    # logger.info(f"요청한 헤더: {headers}")
-    # logger.info(f"응답 상태 코드: {response.status_code}")
     try:
-        response_json = response.json()  # JSON 파싱
-        # logger.info(f"응답 JSON: {json.dumps(response_json, indent=4, ensure_ascii=False)}")
+        response = requests.get(full_url, headers=headers, timeout=30)  # timeout 설정
+        response_json = response.json()
+    except requests.exceptions.Timeout:
+        logger.error(f"{account_info['name']} 교환 목록 조회 타임아웃 발생")
+        return []
     except json.JSONDecodeError:
         logger.error(f"응답 본문이 JSON 형식이 아닙니다: {response.text}")
+        return []
+    except requests.exceptions.RequestException as e:
+        logger.error(f"요청 중 예외 발생: {e}")
+        return []
 
     if response.status_code == 200:
-        data = response.json()
+        data = response_json
         logger.info(f"{account_info['name']}에서 가져온 쿠팡 교환 데이터 수: {len(data.get('data', []))}")
         return data.get('data', [])
     else:
         logger.error(f"{account_info['name']} 교환 목록 조회 실패: {response.status_code}, {response.text}")
         return []
+
 
 def get_seller_product_item_id(seller_product_id, account_info):
     method = 'GET'
