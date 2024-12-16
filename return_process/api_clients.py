@@ -150,7 +150,7 @@ def fetch_naver_returns(account_info):
     # 기간 설정 (최근 7일)
     kst = timezone(timedelta(hours=9))
     end_date = datetime.now(tz=kst)
-    start_date = end_date - timedelta(days=3)
+    start_date = end_date - timedelta(days=21)
     delta = timedelta(hours=24)  # 24시간 단위로 설정
 
     returns = []
@@ -351,7 +351,7 @@ def fetch_coupang_returns(account_info):
     status_list = ['UC', 'CC', 'PR']  # 필요한 모든 상태 값
     all_returns = []
 
-    total_days = 7
+    total_days = 21
     # 하루 단위로 나눕니다.
     # range(total_days)면 0일부터 total_days-1일까지 반복하므로 21일이면 0~20까지 -> 각 i에 대해 i일 전, i+1일 전을 from_to로 설정
     # 예: i=0 -> 오늘~오늘, i=1 -> 어제~오늘 형태로 되므로 아래 예시에서는 i일치 데이터를 하루 단위로 조회
@@ -442,7 +442,7 @@ def fetch_coupang_exchanges(account_info):
     method = 'GET'
     url_path = f"/v2/providers/openapi/apis/api/v4/vendors/{account_info['vendor_id']}/exchangeRequests"
     query_params = {
-        'createdAtFrom': (datetime.utcnow() - timedelta(days=3)).strftime('%Y-%m-%dT%H:%M:%S'),
+        'createdAtFrom': (datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S'),
         'createdAtTo': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),
     }
 
