@@ -34,6 +34,7 @@ import json
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse, HttpResponse
 import openpyxl
+from openpyxl import Workbook
 import warnings
 from django.db import transaction  # 이 부분을 추가
 import datetime, uuid, hmac, hashlib, base64

@@ -257,6 +257,21 @@
             return checkedRows;
         }
 
+        // 키 입력 이벤트 추가 (전역)
+        document.addEventListener('keydown', function(e) {
+            const checkedIds = getCheckedIds();
+
+            // 체크된 항목이 없고, 현재 focus가 inputNote(사유 입력창) 또는 다른 주요 인풋에 없을 때만 포커스 이동
+            // 예: 현재 포커스된 요소가 inputNote라면 바코드 스캔 포커스 이동을 생략
+            if (checkedIds.length === 0) {
+                const activeElem = document.activeElement;
+                // activeElem이 inputNote가 아니고, 수거송장번호 인풋도 아닌 경우에만 포커스
+                if (activeElem !== inputNote && activeElem !== collectTrackingFilter) {
+                    // 수거송장번호 인풋에 포커스
+                    collectTrackingFilter.focus();
+                }
+            }
+        });
         // 필터 인풋 이벤트
         collectTrackingFilter.addEventListener('input', function() {
             const filterValue = this.value.trim().toLowerCase();
@@ -318,6 +333,7 @@
                 .then(data => {
                     if (data.success) {
                         showTemporaryMessage('검수 상태 업데이트 완료');
+                        // 오배송, 이상없음, 파손및불량, 보류는 업데이트 후 새로고침
                         setTimeout(() => {
                             location.reload();
                         }, 1100);
@@ -352,14 +368,25 @@
             .then(data => {
                 if (data.success) {
                     showTemporaryMessage('사유(특이사항) 업데이트 완료');
-                    setTimeout(() => {
-                        location.reload();
-                    }, 1100);
+                    // 사유 업데이트 시에는 새로고침 없이 부분 업데이트
+                    // data.updated = [{id: '...', note: '...'}, ...] 형태라고 가정
+                    if (data.updated && Array.isArray(data.updated)) {
+                        data.updated.forEach(item => {
+                            const row = document.querySelector(`#items-table tbody tr[data-item-id="${item.id}"]`);
+                            if (row) {
+                                const noteCell = row.querySelector('.note-cell');
+                                if (noteCell) {
+                                    noteCell.textContent = item.note || "";
+                                }
+                            }
+                        });
+                    }
                 } else {
                     showTemporaryMessage('업데이트 실패');
                 }
             });
         });
+    
 
         // 데이터 삭제 기능
         deleteItemsBtn.addEventListener('click', () => {
