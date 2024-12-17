@@ -53,6 +53,11 @@ INSTALLED_APPS = [
 
 ]
 
+CRONJOBS = [
+    ('0 8 * * *', 'django.core.management.call_command', ['update_returns_command'])
+]
+
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -180,9 +185,6 @@ LOGGING = {
     },
 }
 
-CRONJOBS = [
-    ('10 * * * *', 'return_process.cron.fetch_and_update_returns'),  # 매 정시에 실행
-]
 
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)

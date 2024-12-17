@@ -40,6 +40,7 @@ from django.db import transaction  # 이 부분을 추가
 import datetime, uuid, hmac, hashlib, base64
 from decouple import config
 from django.conf import settings
+from .utils import update_returns_logic
 
 
 
@@ -155,336 +156,351 @@ status_code_mapping = {
     'WRONG_DELIVERY': '오배송',
 }
 
+
+# @login_required
+# def update_returns(request):
+#     logger.info("update_returns 뷰가 호출되었습니다.")
+#     logger.info(f"네이버 계정 수: {len(NAVER_ACCOUNTS)}")
+
+#     # 네이버 반품 및 교환 데이터 업데이트
+#     for account in NAVER_ACCOUNTS:
+#         logger.info(f"Processing Naver account: {account['name']}")
+#         naver_returns = fetch_naver_returns(account)
+#         logger.info(f"{account['name']}에서 가져온 네이버 반품/교환 데이터 수: {len(naver_returns)}")
+
+#         if not naver_returns:
+#             logger.info(f"{account['name']}에서 가져온 데이터가 없습니다.")
+#             continue
+
+#         for return_data in naver_returns:
+#             # 원본 JSON 데이터를 로깅
+#             logger.info("네이버 API로부터 받은 원본 데이터(JSON):")
+#             logger.info(json.dumps(return_data, ensure_ascii=False, indent=4))
+
+#             product_order = return_data.get('productOrder', {})
+#             delivery = return_data.get('delivery', {})
+
+#             order_number = product_order.get('productOrderId')
+#             if not order_number:
+#                 logger.error("order_number가 없습니다. 데이터를 건너뜁니다.")
+#                 continue
+
+#             # claimType에 따라 처리 로직 분기
+#             claim_type = product_order.get('claimType')
+#             claim_type_kor = status_code_mapping.get(claim_type, claim_type)
+
+#             if claim_type == 'RETURN':
+#                 # 반품건
+#                 claim_data = return_data.get('return', {})
+#                 claim_reason = claim_data.get('returnReason', "N/A")
+#                 customer_reason = claim_data.get('returnDetailedReason', '')
+#                 collect_tracking_number = claim_data.get('collectTrackingNumber', '')
+#                 collect_delivery_company = claim_data.get('collectDeliveryCompany', '')
+#             elif claim_type == 'EXCHANGE':
+#                 # 교환건
+#                 claim_data = return_data.get('exchange', {})
+#                 # 교환 사유 관련 필드명 확인
+#                 # exchangeReason, exchangeDetailedReason 사용
+#                 claim_reason = claim_data.get('exchangeReason', "N/A")
+#                 customer_reason = claim_data.get('exchangeDetailedReason', '')
+#                 collect_tracking_number = claim_data.get('collectTrackingNumber', '')
+#                 collect_delivery_company = claim_data.get('collectDeliveryCompany', '')
+
+#                 # 교환건에만 있을 수 있는 재배송 정보가 필요하다면 여기서 추가 가능
+#                 # 예: reDeliveryTrackingNumber = claim_data.get('reDeliveryTrackingNumber', '')
+#             else:
+#                 # 그 외 클레임 유형이 있을 경우 기본 처리
+#                 claim_data = {}
+#                 claim_reason = "N/A"
+#                 customer_reason = ""
+#                 collect_tracking_number = ""
+#                 collect_delivery_company = ""
+
+#             # 공통 필드 처리
+#             store_name = account['name']
+#             recipient_name = product_order.get('shippingAddress', {}).get('name')
+#             recipient_contact = product_order.get('shippingAddress', {}).get('tel1', '')
+#             option_code = product_order.get('optionManageCode')
+#             product_name = product_order.get('productName')
+#             option_name = product_order.get('productOption')
+
+#             # 요청 수량
+#             quantity = claim_data.get('requestQuantity', 1)
+
+#             invoice_number = delivery.get('trackingNumber', '')
+#             claim_status = claim_data.get('claimStatus')
+#             claim_status_kor = status_code_mapping.get(claim_status, claim_status if claim_status else "N/A")
+
+#             # 반품/교환 배송비 관련 필드 (공통)
+#             return_shipping_charge = claim_data.get('claimDeliveryFeeDemandAmount')
+#             shipping_charge_payment_method = claim_data.get('claimDeliveryFeePayMethod')
+
+#             # 클레임 요청 일자
+#             claim_request_date_str = claim_data.get('claimRequestDate')
+#             if claim_request_date_str:
+#                 try:
+#                     claim_request_date = parse(claim_request_date_str)
+#                 except Exception as e:
+#                     logger.error(f"claim_request_date 변환 중 오류 발생 (주문번호: {order_number}): {e}")
+#                     claim_request_date = None
+#             else:
+#                 claim_request_date = None
+
+#             # 배송완료일자
+#             delivered_date_str = delivery.get('deliveredDate')
+#             if delivered_date_str:
+#                 try:
+#                     delivered_date = parse(delivered_date_str)
+#                 except Exception as e:
+#                     logger.error(f"delivered_date 변환 중 오류 발생 (주문번호: {order_number}): {e}")
+#                     delivered_date = None
+#             else:
+#                 delivered_date = None
+
+#             # 기존에 아이템이 있으며 collect_tracking_number가 존재하면 스킵
+#             existing_item = ReturnItem.objects.filter(platform='Naver', order_number=order_number).first()
+#             if existing_item and existing_item.collect_tracking_number:
+#                 logger.info(f"주문번호 {order_number}는 이미 collect_tracking_number가 존재하여 업데이트 생략")
+#                 continue
+
+#             # reason 매핑
+#             claim_reason_kor = status_code_mapping.get(claim_reason, claim_reason)
+#             customer_reason_kor = status_code_mapping.get(customer_reason, customer_reason)
+
+#             logger.info("ReturnItem update_or_create 호출 전 필드 값:")
+#             logger.info(f"platform='Naver', order_number={order_number}, claim_status={claim_status_kor}")
+
+#             try:
+#                 ReturnItem.objects.update_or_create(
+#                     platform='Naver',
+#                     order_number=order_number,
+#                     defaults={
+#                         'claim_type': claim_type_kor,
+#                         'store_name': store_name,
+#                         'recipient_name': recipient_name,
+#                         'recipient_contact': recipient_contact,
+#                         'option_code': option_code,
+#                         'product_name': product_name,
+#                         'option_name': option_name,
+#                         'quantity': quantity,
+#                         'invoice_number': invoice_number,
+#                         'claim_status': claim_status_kor,
+#                         'claim_reason': claim_reason_kor,
+#                         'customer_reason': customer_reason_kor,
+#                         'return_shipping_charge': return_shipping_charge,
+#                         'shipping_charge_payment_method': shipping_charge_payment_method,
+#                         'collect_tracking_number': collect_tracking_number,
+#                         'collect_delivery_company': collect_delivery_company,
+#                         'claim_request_date': claim_request_date,
+#                         'delivered_date': delivered_date,
+#                     }
+#                 )
+#                 logger.info(f"ReturnItem 저장 또는 업데이트 성공: {order_number}")
+#             except Exception as e:
+#                 logger.error(f"ReturnItem 저장 중 오류 발생 (주문번호: {order_number}): {e}")
+#                 logger.error("오류 발생 시 return_data 전체:")
+#                 logger.error(json.dumps(return_data, ensure_ascii=False, indent=4))
+#                 continue
+
+#     logger.info(f"쿠팡 계정 수: {len(COUPANG_ACCOUNTS)}")
+
+#     # 쿠팡 반품 및 교환 데이터 업데이트
+#     for account in COUPANG_ACCOUNTS:
+#         logger.info(f"Processing Coupang account: {account['name']}")
+#         coupang_returns = fetch_coupang_returns(account)
+#         logger.info(f"{account['name']}에서 가져온 쿠팡 반품 데이터 수: {len(coupang_returns)}")
+
+#         for return_data in coupang_returns:
+#             order_id = return_data.get('orderId')
+#             store_name = account['name']
+#             recipient_name = return_data.get('requesterName')
+#             product_name = return_data.get('returnItems', [{}])[0].get('vendorItemName')
+#             option_name = product_name
+#             quantity = return_data.get('returnItems', [{}])[0].get('purchaseCount', 1)
+
+#             claim_type = return_data.get('receiptType')
+#             claim_type_kor = receipt_type_map.get(claim_type, claim_type)
+
+#             claim_status = return_data.get('receiptStatus')
+#             claim_status_kor = receipt_status_map.get(claim_status, claim_status)
+
+#             claim_reason = return_data.get('cancelReasonCategory1')
+#             claim_reason_kor = cancel_reason_category_map.get(claim_reason, claim_reason)
+
+#             customer_reason = return_data.get('cancelReasonCategory2')
+#             customer_reason_kor = cancel_reason_category_map.get(customer_reason, customer_reason)
+
+#             return_shipping_charge = return_data.get('returnShippingCharge')
+#             claim_request_date_str = return_data.get('createdAt')
+
+#             if claim_request_date_str:
+#                 claim_request_date = parse(claim_request_date_str)
+#                 if timezone.is_naive(claim_request_date):
+#                     claim_request_date = timezone.make_aware(claim_request_date, timezone.get_current_timezone())
+#             else:
+#                 claim_request_date = None
+
+#             seller_product_id = return_data.get('returnItems', [{}])[0].get('sellerProductId')
+#             vendor_item_id = return_data.get('returnItems', [{}])[0].get('vendorItemId')
+
+#             external_vendor_sku = get_external_vendor_sku(seller_product_id, vendor_item_id, account)
+#             option_code = external_vendor_sku
+
+#             invoice_number, delivered_date = get_order_detail(order_id, account)
+
+#             if delivered_date and delivered_date.strip():
+#                 try:
+#                     delivered_date = parse(delivered_date)
+#                     if timezone.is_naive(delivered_date):
+#                         delivered_date = timezone.make_aware(delivered_date, timezone.get_current_timezone())
+#                 except Exception as e:
+#                     logger.error(f"Delivered date parsing error: {e}")
+#                     delivered_date = None
+#             else:
+#                 delivered_date = None
+
+#             return_request_details = get_return_request_details(account['vendor_id'], return_data.get('receiptId'), account)
+
+#             collect_tracking_number = ''
+#             collect_delivery_company = ''
+#             if return_request_details:
+#                 data_item = return_request_details.get('data', {})
+#                 if data_item:
+#                     return_delivery_dtos = data_item.get('returnDeliveryDtos', [])
+#                     if return_delivery_dtos:
+#                         for dto in return_delivery_dtos:
+#                             collect_tracking_number = dto.get('deliveryInvoiceNo', '')
+#                             collect_delivery_company = dto.get('deliveryCompanyCode', '')
+#                             break
+
+#             # 기존 아이템 조회
+#             existing_item = ReturnItem.objects.filter(platform='Coupang', order_number=order_id).first()
+#             if existing_item and existing_item.collect_tracking_number:
+#                 # 이미 수거 송장번호가 있으므로 다시 업데이트하지 않음
+#                 continue
+
+#             ReturnItem.objects.update_or_create(
+#                 platform='Coupang',
+#                 order_number=order_id,
+#                 defaults={
+#                     'claim_type': claim_type_kor,
+#                     'store_name': store_name,
+#                     'recipient_name': recipient_name,
+#                     'option_code': option_code,
+#                     'product_name': product_name,
+#                     'option_name': option_name,
+#                     'quantity': quantity,
+#                     'invoice_number': invoice_number,
+#                     'claim_status': claim_status_kor,
+#                     'claim_reason': claim_reason_kor,
+#                     'customer_reason': customer_reason_kor,
+#                     'return_shipping_charge': return_shipping_charge,
+#                     'collect_tracking_number': collect_tracking_number,
+#                     'collect_delivery_company': collect_delivery_company,
+#                     'claim_request_date': claim_request_date,
+#                     'delivered_date': delivered_date,
+#                 }
+#             )
+
+#         # 쿠팡 교환 데이터 처리
+#         exchanges = fetch_coupang_exchanges(account)
+#         logger.info(f"{account['name']}에서 가져온 쿠팡 교환 데이터 수: {len(exchanges)}")
+
+#         for exchange_data in exchanges:
+#             order_id = exchange_data.get('orderId')
+#             store_name = account['name']
+#             recipient_name = exchange_data.get('requesterName')
+#             product_name = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('vendorItemName')
+#             option_name = product_name
+#             quantity = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('purchaseCount', 1)
+
+#             claim_type = exchange_data.get('receiptType')
+#             claim_type_kor = receipt_type_map.get(claim_type, claim_type)
+
+#             claim_status = exchange_data.get('exchangeStatus')
+#             claim_status_kor = receipt_status_map.get(claim_status, claim_status)
+
+#             claim_reason = exchange_data.get('reasonCode')
+#             claim_reason_kor = cancel_reason_category_map.get(claim_reason, claim_reason)
+
+#             customer_reason = exchange_data.get('reasonCodeText', '')
+
+#             return_shipping_charge = exchange_data.get('returnShippingCharge')
+#             claim_request_date_str = exchange_data.get('createdAt')
+
+#             if claim_request_date_str:
+#                 claim_request_date = parse(claim_request_date_str)
+#                 if timezone.is_naive(claim_request_date):
+#                     claim_request_date = timezone.make_aware(claim_request_date, timezone.get_current_timezone())
+#             else:
+#                 claim_request_date = None
+
+#             seller_product_id = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('sellerProductId')
+#             vendor_item_id = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('vendorItemId')
+
+#             external_vendor_sku = get_external_vendor_sku(seller_product_id, vendor_item_id, account)
+#             option_code = external_vendor_sku
+
+#             invoice_number, delivered_date = get_order_detail(order_id, account)
+#             if delivered_date and delivered_date.strip():
+#                 try:
+#                     delivered_date = parse(delivered_date)
+#                     if timezone.is_naive(delivered_date):
+#                         delivered_date = timezone.make_aware(delivered_date, timezone.get_current_timezone())
+#                 except Exception as e:
+#                     logger.error(f"Delivered date parsing error: {e}")
+#                     delivered_date = None
+#             else:
+#                 delivered_date = None
+
+#             collect_tracking_number = ''
+#             collect_delivery_company = ''
+
+#             existing_item = ReturnItem.objects.filter(platform='Coupang', order_number=order_id).first()
+#             if existing_item and existing_item.collect_tracking_number:
+#                 # 이미 수거 송장번호가 있으므로 업데이트 생략
+#                 continue
+
+#             ReturnItem.objects.update_or_create(
+#                 platform='Coupang',
+#                 order_number=order_id,
+#                 defaults={
+#                     'claim_type': claim_type_kor,
+#                     'store_name': store_name,
+#                     'recipient_name': recipient_name,
+#                     'option_code': option_code,
+#                     'product_name': product_name,
+#                     'option_name': option_name,
+#                     'quantity': quantity,
+#                     'invoice_number': invoice_number,
+#                     'claim_status': claim_status_kor,
+#                     'claim_reason': claim_reason_kor,
+#                     'customer_reason': customer_reason,
+#                     'return_shipping_charge': return_shipping_charge,
+#                     'collect_tracking_number': collect_tracking_number,
+#                     'collect_delivery_company': collect_delivery_company,
+#                     'claim_request_date': claim_request_date,
+#                     'delivered_date': delivered_date,
+#                 }
+#             )
+
+#     messages.success(request, '반품 데이터 업데이트가 완료되었습니다.')
+#     return redirect('반품목록')
+
 @login_required
 def update_returns(request):
-    logger.info("update_returns 뷰가 호출되었습니다.")
-    logger.info(f"네이버 계정 수: {len(NAVER_ACCOUNTS)}")
-
-    # 네이버 반품 및 교환 데이터 업데이트
-    for account in NAVER_ACCOUNTS:
-        logger.info(f"Processing Naver account: {account['name']}")
-        naver_returns = fetch_naver_returns(account)
-        logger.info(f"{account['name']}에서 가져온 네이버 반품/교환 데이터 수: {len(naver_returns)}")
-
-        if not naver_returns:
-            logger.info(f"{account['name']}에서 가져온 데이터가 없습니다.")
-            continue
-
-        for return_data in naver_returns:
-            # 원본 JSON 데이터를 로깅
-            logger.info("네이버 API로부터 받은 원본 데이터(JSON):")
-            logger.info(json.dumps(return_data, ensure_ascii=False, indent=4))
-
-            product_order = return_data.get('productOrder', {})
-            delivery = return_data.get('delivery', {})
-
-            order_number = product_order.get('productOrderId')
-            if not order_number:
-                logger.error("order_number가 없습니다. 데이터를 건너뜁니다.")
-                continue
-
-            # claimType에 따라 처리 로직 분기
-            claim_type = product_order.get('claimType')
-            claim_type_kor = status_code_mapping.get(claim_type, claim_type)
-
-            if claim_type == 'RETURN':
-                # 반품건
-                claim_data = return_data.get('return', {})
-                claim_reason = claim_data.get('returnReason', "N/A")
-                customer_reason = claim_data.get('returnDetailedReason', '')
-                collect_tracking_number = claim_data.get('collectTrackingNumber', '')
-                collect_delivery_company = claim_data.get('collectDeliveryCompany', '')
-            elif claim_type == 'EXCHANGE':
-                # 교환건
-                claim_data = return_data.get('exchange', {})
-                # 교환 사유 관련 필드명 확인
-                # exchangeReason, exchangeDetailedReason 사용
-                claim_reason = claim_data.get('exchangeReason', "N/A")
-                customer_reason = claim_data.get('exchangeDetailedReason', '')
-                collect_tracking_number = claim_data.get('collectTrackingNumber', '')
-                collect_delivery_company = claim_data.get('collectDeliveryCompany', '')
-
-                # 교환건에만 있을 수 있는 재배송 정보가 필요하다면 여기서 추가 가능
-                # 예: reDeliveryTrackingNumber = claim_data.get('reDeliveryTrackingNumber', '')
-            else:
-                # 그 외 클레임 유형이 있을 경우 기본 처리
-                claim_data = {}
-                claim_reason = "N/A"
-                customer_reason = ""
-                collect_tracking_number = ""
-                collect_delivery_company = ""
-
-            # 공통 필드 처리
-            store_name = account['name']
-            recipient_name = product_order.get('shippingAddress', {}).get('name')
-            recipient_contact = product_order.get('shippingAddress', {}).get('tel1', '')
-            option_code = product_order.get('optionManageCode')
-            product_name = product_order.get('productName')
-            option_name = product_order.get('productOption')
-
-            # 요청 수량
-            quantity = claim_data.get('requestQuantity', 1)
-
-            invoice_number = delivery.get('trackingNumber', '')
-            claim_status = claim_data.get('claimStatus')
-            claim_status_kor = status_code_mapping.get(claim_status, claim_status if claim_status else "N/A")
-
-            # 반품/교환 배송비 관련 필드 (공통)
-            return_shipping_charge = claim_data.get('claimDeliveryFeeDemandAmount')
-            shipping_charge_payment_method = claim_data.get('claimDeliveryFeePayMethod')
-
-            # 클레임 요청 일자
-            claim_request_date_str = claim_data.get('claimRequestDate')
-            if claim_request_date_str:
-                try:
-                    claim_request_date = parse(claim_request_date_str)
-                except Exception as e:
-                    logger.error(f"claim_request_date 변환 중 오류 발생 (주문번호: {order_number}): {e}")
-                    claim_request_date = None
-            else:
-                claim_request_date = None
-
-            # 배송완료일자
-            delivered_date_str = delivery.get('deliveredDate')
-            if delivered_date_str:
-                try:
-                    delivered_date = parse(delivered_date_str)
-                except Exception as e:
-                    logger.error(f"delivered_date 변환 중 오류 발생 (주문번호: {order_number}): {e}")
-                    delivered_date = None
-            else:
-                delivered_date = None
-
-            # 기존에 아이템이 있으며 collect_tracking_number가 존재하면 스킵
-            existing_item = ReturnItem.objects.filter(platform='Naver', order_number=order_number).first()
-            if existing_item and existing_item.collect_tracking_number:
-                logger.info(f"주문번호 {order_number}는 이미 collect_tracking_number가 존재하여 업데이트 생략")
-                continue
-
-            # reason 매핑
-            claim_reason_kor = status_code_mapping.get(claim_reason, claim_reason)
-            customer_reason_kor = status_code_mapping.get(customer_reason, customer_reason)
-
-            logger.info("ReturnItem update_or_create 호출 전 필드 값:")
-            logger.info(f"platform='Naver', order_number={order_number}, claim_status={claim_status_kor}")
-
-            try:
-                ReturnItem.objects.update_or_create(
-                    platform='Naver',
-                    order_number=order_number,
-                    defaults={
-                        'claim_type': claim_type_kor,
-                        'store_name': store_name,
-                        'recipient_name': recipient_name,
-                        'recipient_contact': recipient_contact,
-                        'option_code': option_code,
-                        'product_name': product_name,
-                        'option_name': option_name,
-                        'quantity': quantity,
-                        'invoice_number': invoice_number,
-                        'claim_status': claim_status_kor,
-                        'claim_reason': claim_reason_kor,
-                        'customer_reason': customer_reason_kor,
-                        'return_shipping_charge': return_shipping_charge,
-                        'shipping_charge_payment_method': shipping_charge_payment_method,
-                        'collect_tracking_number': collect_tracking_number,
-                        'collect_delivery_company': collect_delivery_company,
-                        'claim_request_date': claim_request_date,
-                        'delivered_date': delivered_date,
-                    }
-                )
-                logger.info(f"ReturnItem 저장 또는 업데이트 성공: {order_number}")
-            except Exception as e:
-                logger.error(f"ReturnItem 저장 중 오류 발생 (주문번호: {order_number}): {e}")
-                logger.error("오류 발생 시 return_data 전체:")
-                logger.error(json.dumps(return_data, ensure_ascii=False, indent=4))
-                continue
-
-    logger.info(f"쿠팡 계정 수: {len(COUPANG_ACCOUNTS)}")
-
-    # 쿠팡 반품 및 교환 데이터 업데이트
-    for account in COUPANG_ACCOUNTS:
-        logger.info(f"Processing Coupang account: {account['name']}")
-        coupang_returns = fetch_coupang_returns(account)
-        logger.info(f"{account['name']}에서 가져온 쿠팡 반품 데이터 수: {len(coupang_returns)}")
-
-        for return_data in coupang_returns:
-            order_id = return_data.get('orderId')
-            store_name = account['name']
-            recipient_name = return_data.get('requesterName')
-            product_name = return_data.get('returnItems', [{}])[0].get('vendorItemName')
-            option_name = product_name
-            quantity = return_data.get('returnItems', [{}])[0].get('purchaseCount', 1)
-
-            claim_type = return_data.get('receiptType')
-            claim_type_kor = receipt_type_map.get(claim_type, claim_type)
-
-            claim_status = return_data.get('receiptStatus')
-            claim_status_kor = receipt_status_map.get(claim_status, claim_status)
-
-            claim_reason = return_data.get('cancelReasonCategory1')
-            claim_reason_kor = cancel_reason_category_map.get(claim_reason, claim_reason)
-
-            customer_reason = return_data.get('cancelReasonCategory2')
-            customer_reason_kor = cancel_reason_category_map.get(customer_reason, customer_reason)
-
-            return_shipping_charge = return_data.get('returnShippingCharge')
-            claim_request_date_str = return_data.get('createdAt')
-
-            if claim_request_date_str:
-                claim_request_date = parse(claim_request_date_str)
-                if timezone.is_naive(claim_request_date):
-                    claim_request_date = timezone.make_aware(claim_request_date, timezone.get_current_timezone())
-            else:
-                claim_request_date = None
-
-            seller_product_id = return_data.get('returnItems', [{}])[0].get('sellerProductId')
-            vendor_item_id = return_data.get('returnItems', [{}])[0].get('vendorItemId')
-
-            external_vendor_sku = get_external_vendor_sku(seller_product_id, vendor_item_id, account)
-            option_code = external_vendor_sku
-
-            invoice_number, delivered_date = get_order_detail(order_id, account)
-
-            if delivered_date and delivered_date.strip():
-                try:
-                    delivered_date = parse(delivered_date)
-                    if timezone.is_naive(delivered_date):
-                        delivered_date = timezone.make_aware(delivered_date, timezone.get_current_timezone())
-                except Exception as e:
-                    logger.error(f"Delivered date parsing error: {e}")
-                    delivered_date = None
-            else:
-                delivered_date = None
-
-            return_request_details = get_return_request_details(account['vendor_id'], return_data.get('receiptId'), account)
-
-            collect_tracking_number = ''
-            collect_delivery_company = ''
-            if return_request_details:
-                data_item = return_request_details.get('data', {})
-                if data_item:
-                    return_delivery_dtos = data_item.get('returnDeliveryDtos', [])
-                    if return_delivery_dtos:
-                        for dto in return_delivery_dtos:
-                            collect_tracking_number = dto.get('deliveryInvoiceNo', '')
-                            collect_delivery_company = dto.get('deliveryCompanyCode', '')
-                            break
-
-            # 기존 아이템 조회
-            existing_item = ReturnItem.objects.filter(platform='Coupang', order_number=order_id).first()
-            if existing_item and existing_item.collect_tracking_number:
-                # 이미 수거 송장번호가 있으므로 다시 업데이트하지 않음
-                continue
-
-            ReturnItem.objects.update_or_create(
-                platform='Coupang',
-                order_number=order_id,
-                defaults={
-                    'claim_type': claim_type_kor,
-                    'store_name': store_name,
-                    'recipient_name': recipient_name,
-                    'option_code': option_code,
-                    'product_name': product_name,
-                    'option_name': option_name,
-                    'quantity': quantity,
-                    'invoice_number': invoice_number,
-                    'claim_status': claim_status_kor,
-                    'claim_reason': claim_reason_kor,
-                    'customer_reason': customer_reason_kor,
-                    'return_shipping_charge': return_shipping_charge,
-                    'collect_tracking_number': collect_tracking_number,
-                    'collect_delivery_company': collect_delivery_company,
-                    'claim_request_date': claim_request_date,
-                    'delivered_date': delivered_date,
-                }
-            )
-
-        # 쿠팡 교환 데이터 처리
-        exchanges = fetch_coupang_exchanges(account)
-        logger.info(f"{account['name']}에서 가져온 쿠팡 교환 데이터 수: {len(exchanges)}")
-
-        for exchange_data in exchanges:
-            order_id = exchange_data.get('orderId')
-            store_name = account['name']
-            recipient_name = exchange_data.get('requesterName')
-            product_name = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('vendorItemName')
-            option_name = product_name
-            quantity = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('purchaseCount', 1)
-
-            claim_type = exchange_data.get('receiptType')
-            claim_type_kor = receipt_type_map.get(claim_type, claim_type)
-
-            claim_status = exchange_data.get('exchangeStatus')
-            claim_status_kor = receipt_status_map.get(claim_status, claim_status)
-
-            claim_reason = exchange_data.get('reasonCode')
-            claim_reason_kor = cancel_reason_category_map.get(claim_reason, claim_reason)
-
-            customer_reason = exchange_data.get('reasonCodeText', '')
-
-            return_shipping_charge = exchange_data.get('returnShippingCharge')
-            claim_request_date_str = exchange_data.get('createdAt')
-
-            if claim_request_date_str:
-                claim_request_date = parse(claim_request_date_str)
-                if timezone.is_naive(claim_request_date):
-                    claim_request_date = timezone.make_aware(claim_request_date, timezone.get_current_timezone())
-            else:
-                claim_request_date = None
-
-            seller_product_id = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('sellerProductId')
-            vendor_item_id = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('vendorItemId')
-
-            external_vendor_sku = get_external_vendor_sku(seller_product_id, vendor_item_id, account)
-            option_code = external_vendor_sku
-
-            invoice_number, delivered_date = get_order_detail(order_id, account)
-            if delivered_date and delivered_date.strip():
-                try:
-                    delivered_date = parse(delivered_date)
-                    if timezone.is_naive(delivered_date):
-                        delivered_date = timezone.make_aware(delivered_date, timezone.get_current_timezone())
-                except Exception as e:
-                    logger.error(f"Delivered date parsing error: {e}")
-                    delivered_date = None
-            else:
-                delivered_date = None
-
-            collect_tracking_number = ''
-            collect_delivery_company = ''
-
-            existing_item = ReturnItem.objects.filter(platform='Coupang', order_number=order_id).first()
-            if existing_item and existing_item.collect_tracking_number:
-                # 이미 수거 송장번호가 있으므로 업데이트 생략
-                continue
-
-            ReturnItem.objects.update_or_create(
-                platform='Coupang',
-                order_number=order_id,
-                defaults={
-                    'claim_type': claim_type_kor,
-                    'store_name': store_name,
-                    'recipient_name': recipient_name,
-                    'option_code': option_code,
-                    'product_name': product_name,
-                    'option_name': option_name,
-                    'quantity': quantity,
-                    'invoice_number': invoice_number,
-                    'claim_status': claim_status_kor,
-                    'claim_reason': claim_reason_kor,
-                    'customer_reason': customer_reason,
-                    'return_shipping_charge': return_shipping_charge,
-                    'collect_tracking_number': collect_tracking_number,
-                    'collect_delivery_company': collect_delivery_company,
-                    'claim_request_date': claim_request_date,
-                    'delivered_date': delivered_date,
-                }
-            )
-
+    update_returns_logic()
     messages.success(request, '반품 데이터 업데이트가 완료되었습니다.')
     return redirect('반품목록')
 
+
+@login_required
+def update_returns(request):
+    update_returns_logic()
+    messages.success(request, '반품 데이터 업데이트가 완료되었습니다.')
+    return redirect('반품목록')
+
+@login_required
 def delete_return_item(request):
     if request.method == 'POST':
         data = json.loads(request.body.decode('utf-8'))
