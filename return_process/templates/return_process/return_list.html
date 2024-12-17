@@ -73,11 +73,13 @@
                             <th>제품 사유</th>
                             <th>배송 완료일</th>
                             <th>클레임 요청일</th>
+                            <th>삭제</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in return_items %}
-                        <tr data-claim_type="{{ item.claim_type|default:'N/A' }}"
+                        <tr data-item_id="{{ item.id }}"
+                            data-claim_type="{{ item.claim_type|default:'N/A' }}"
                             data-store_name="{{ item.store_name|default:'N/A' }}"
                             data-recipient_name="{{ item.recipient_name|default:'N/A' }}"
                             data-option_code="{{ item.option_code|default:'N/A' }}"
@@ -122,10 +124,11 @@
                             <td>{{ item.product_issue|default:"N/A" }}</td>
                             <td>{{ item.delivered_date }}</td>
                             <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
+                            <td><button type="button" class="btn btn-danger btn-sm" onclick="deleteReturnItem({{ item.id }})">삭제</button></td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="23" class="text-center">데이터가 없습니다.</td>
+                            <td colspan="24" class="text-center">데이터가 없습니다.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -451,6 +454,31 @@
     </div>
 </div>
 <script>
+    function deleteReturnItem(itemId) {
+        if (!confirm("정말로 이 항목을 삭제하시겠습니까?")) return;
+
+        fetch("{% url 'delete_return_item' %}", {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({item_id: itemId})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert("삭제 완료");
+                location.reload(); // 페이지 새로고침
+            } else {
+                alert(data.message || "삭제 중 오류 발생");
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert("삭제 요청 실패");
+        });
+    }
     function uploadExcel(type) {
         let form;
         let url;
