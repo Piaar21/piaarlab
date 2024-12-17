@@ -42,16 +42,18 @@
                             <th>수거배송비</th>
                             <th>배송비지급방식</th>
                             <th>주문번호</th>
-                            
+
                             <th>검수자</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in items %}
-                        <tr data-item-id="{{ item.id }}" data-inspection="{{ item.product_issue|default:'' }}" class="item-row">
+                        <tr data-item-id="{{ item.id }}" data-inspection="{{ item.product_issue|default:'' }}"
+                            class="item-row">
                             <td><input type="checkbox" class="row-checkbox"></td>
                             <td>
-                                <a href="#" class="row-number text-decoration-none text-primary fw-bold open-modal" data-item-id="{{ item.id }}">
+                                <a href="#" class="row-number text-decoration-none text-primary fw-bold open-modal"
+                                    data-item-id="{{ item.id }}">
                                     {{ forloop.counter }}
                                 </a>
                             </td>
@@ -131,7 +133,7 @@
 </div>
 
 <style>
-     :root {
+    :root {
         --primary-color: #6c5ce7;
         --secondary-color: #a29bfe;
         --background-color: #f8f9fa;
@@ -140,31 +142,31 @@
         --table-text-color: #2d3436;
         --table-background: #ffffff;
     }
-    
+
     body {
         background-color: var(--background-color);
         color: var(--text-color);
     }
-    
+
     .container-fluid {
         max-width: 1400px;
     }
-    
+
     h2 {
         color: var(--primary-color);
         font-weight: bold;
     }
-    
+
     .btn-primary {
         background-color: var(--primary-color);
         border-color: var(--primary-color);
     }
-    
+
     .btn-primary:hover {
         background-color: var(--secondary-color);
         border-color: var(--secondary-color);
     }
-    
+
     .card {
         border: none;
         border-radius: 15px;
@@ -172,19 +174,19 @@
         background-color: #ffffff;
         color: var(--text-color);
     }
-    
+
     .table-responsive {
         max-height: 70vh;
         overflow-y: auto;
     }
-    
+
     .table {
         border-collapse: separate;
         border-spacing: 0;
         background-color: var(--table-background);
         color: var(--table-text-color);
     }
-    
+
     .table thead th {
         position: sticky;
         top: 0;
@@ -194,15 +196,15 @@
         padding: 15px;
         white-space: nowrap;
     }
-    
+
     .table tbody tr:nth-child(even) {
         background-color: rgba(108, 92, 231, 0.1);
     }
-    
+
     .table tbody tr:hover {
         background-color: rgba(108, 92, 231, 0.2);
     }
-    
+
     .table td,
     .table th {
         padding: 12px;
@@ -214,7 +216,7 @@
         text-overflow: ellipsis;
         max-width: 200px;
     }
-    
+
     #modal-item-details td {
         white-space: normal;
         max-width: none;
@@ -222,7 +224,7 @@
 </style>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         const applyReasonBtn = document.getElementById('apply-reason');
         const deleteItemsBtn = document.getElementById('delete-items');
         const inputNote = document.getElementById('input-note');
@@ -258,7 +260,7 @@
         }
 
         // 키 입력 이벤트 추가 (전역)
-        document.addEventListener('keydown', function(e) {
+        document.addEventListener('keydown', function (e) {
             const checkedIds = getCheckedIds();
 
             // 체크된 항목이 없고, 현재 focus가 inputNote(사유 입력창) 또는 다른 주요 인풋에 없을 때만 포커스 이동
@@ -273,7 +275,7 @@
             }
         });
         // 필터 인풋 이벤트
-        collectTrackingFilter.addEventListener('input', function() {
+        collectTrackingFilter.addEventListener('input', function () {
             const filterValue = this.value.trim().toLowerCase();
             rows.forEach(row => {
                 const ctCell = row.querySelector('.collect-tracking');
@@ -293,7 +295,7 @@
 
         // 행 클릭 시 체크박스 토글
         rows.forEach(row => {
-            row.addEventListener('click', function(e) {
+            row.addEventListener('click', function (e) {
                 if (e.target.tagName.toLowerCase() !== 'input' &&
                     !e.target.classList.contains('quantity-cell') &&
                     !e.target.classList.contains('open-modal')) {
@@ -329,18 +331,18 @@
                         product_issue: selectedIssue
                     })
                 })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        showTemporaryMessage('검수 상태 업데이트 완료');
-                        // 오배송, 이상없음, 파손및불량, 보류는 업데이트 후 새로고침
-                        setTimeout(() => {
-                            location.reload();
-                        }, 1100);
-                    } else {
-                        showTemporaryMessage('업데이트 실패');
-                    }
-                });
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            showTemporaryMessage('검수 상태 업데이트 완료');
+                            // 오배송, 이상없음, 파손및불량, 보류는 업데이트 후 새로고침
+                            setTimeout(() => {
+                                location.reload();
+                            }, 1100);
+                        } else {
+                            showTemporaryMessage('업데이트 실패');
+                        }
+                    });
             });
         });
 
@@ -364,29 +366,29 @@
                     note: inputNote.value.trim()
                 })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    showTemporaryMessage('사유(특이사항) 업데이트 완료');
-                    // 사유 업데이트 시에는 새로고침 없이 부분 업데이트
-                    // data.updated = [{id: '...', note: '...'}, ...] 형태라고 가정
-                    if (data.updated && Array.isArray(data.updated)) {
-                        data.updated.forEach(item => {
-                            const row = document.querySelector(`#items-table tbody tr[data-item-id="${item.id}"]`);
-                            if (row) {
-                                const noteCell = row.querySelector('.note-cell');
-                                if (noteCell) {
-                                    noteCell.textContent = item.note || "";
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showTemporaryMessage('사유(특이사항) 업데이트 완료');
+                        // 사유 업데이트 시에는 새로고침 없이 부분 업데이트
+                        // data.updated = [{id: '...', note: '...'}, ...] 형태라고 가정
+                        if (data.updated && Array.isArray(data.updated)) {
+                            data.updated.forEach(item => {
+                                const row = document.querySelector(`#items-table tbody tr[data-item-id="${item.id}"]`);
+                                if (row) {
+                                    const noteCell = row.querySelector('.note-cell');
+                                    if (noteCell) {
+                                        noteCell.textContent = item.note || "";
+                                    }
                                 }
-                            }
-                        });
+                            });
+                        }
+                    } else {
+                        showTemporaryMessage('업데이트 실패');
                     }
-                } else {
-                    showTemporaryMessage('업데이트 실패');
-                }
-            });
+                });
         });
-    
+
 
         // 데이터 삭제 기능
         deleteItemsBtn.addEventListener('click', () => {
@@ -411,17 +413,17 @@
                     ids: checkedIds
                 })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    showTemporaryMessage('데이터 삭제 완료');
-                    setTimeout(() => {
-                        location.reload();
-                    }, 1100);
-                } else {
-                    showTemporaryMessage('삭제 실패');
-                }
-            });
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showTemporaryMessage('데이터 삭제 완료');
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1100);
+                    } else {
+                        showTemporaryMessage('삭제 실패');
+                    }
+                });
         });
 
         // 상세 정보 모달 열기
@@ -441,28 +443,28 @@
                         id: itemId
                     })
                 })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        const details = data.details;
-                        const tbody = document.getElementById('modal-item-details');
-                        tbody.innerHTML = '';
-                        for (const key in details) {
-                            const tr = document.createElement('tr');
-                            const th = document.createElement('th');
-                            th.textContent = key;
-                            const td = document.createElement('td');
-                            td.textContent = details[key];
-                            tr.appendChild(th);
-                            tr.appendChild(td);
-                            tbody.appendChild(tr);
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            const details = data.details;
+                            const tbody = document.getElementById('modal-item-details');
+                            tbody.innerHTML = '';
+                            for (const key in details) {
+                                const tr = document.createElement('tr');
+                                const th = document.createElement('th');
+                                th.textContent = key;
+                                const td = document.createElement('td');
+                                td.textContent = details[key];
+                                tr.appendChild(th);
+                                tr.appendChild(td);
+                                tbody.appendChild(tr);
+                            }
+                            const modal = new bootstrap.Modal(document.getElementById('itemModal'));
+                            modal.show();
+                        } else {
+                            showTemporaryMessage('데이터를 가져오는데 실패했습니다.');
                         }
-                        const modal = new bootstrap.Modal(document.getElementById('itemModal'));
-                        modal.show();
-                    } else {
-                        showTemporaryMessage('데이터를 가져오는데 실패했습니다.');
-                    }
-                });
+                    });
             });
         });
 
@@ -501,17 +503,17 @@
                     new_quantity: parseInt(newQuantity, 10)
                 })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    showTemporaryMessage('수량 업데이트 완료');
-                    setTimeout(() => {
-                        location.reload();
-                    }, 1100);
-                } else {
-                    showTemporaryMessage('수량 업데이트 실패');
-                }
-            });
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showTemporaryMessage('수량 업데이트 완료');
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1100);
+                    } else {
+                        showTemporaryMessage('수량 업데이트 실패');
+                    }
+                });
         });
 
     });

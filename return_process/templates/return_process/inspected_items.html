@@ -21,7 +21,6 @@
         <div class="card-body">
             <form id="return-form">
                 {% csrf_token %}
-                <!-- 폼 제출로 인한 페이지 이동 방지를 위해 action, method 제거 및 button type="button" 적용 필요 -->
                 <button type="button" class="btn btn-primary mb-3" id="approve-return-btn">반품승인</button>
                 <button type="button" class="btn btn-info mb-3" id="send-sms-btn">배송비문자</button>
                 <!-- 필터 영역 시작 -->
@@ -79,7 +78,21 @@
                         </thead>
                         <tbody>
                             {% for item in items %}
-                            <tr>
+                            <tr data-product_issue="{{ item.product_issue|default:'미검수' }}"
+                                data-claim_reason="{{ item.claim_reason|default:'N/A' }}"
+                                data-customer_reason="{{ item.customer_reason|default:'N/A' }}"
+                                data-note="{{ item.note|default:' ' }}"
+                                data-collect_tracking_number="{{ item.collect_tracking_number|default:'N/A' }}"
+                                data-return_shipping_charge="{{ item.return_shipping_charge|default:'0' }}"
+                                data-shipping_charge_payment_method="{{ item.shipping_charge_payment_method|default:'N/A' }}"
+                                data-order_number="{{ item.order_number }}"
+                                data-store_name="{{ item.store_name|default:'N/A' }}"
+                                data-recipient_name="{{ item.recipient_name|default:'N/A' }}"
+                                data-recipient_contact="{{ item.recipient_contact|default:'N/A' }}"
+                                data-option_code="{{ item.option_code|default:'N/A' }}"
+                                data-product_name="{{ item.product_name|default:'N/A' }}"
+                                data-option_name="{{ item.option_name|default:'N/A' }}"
+                                data-quantity="{{ item.quantity|default:'0' }}">
                                 <td><input type="checkbox" class="row-checkbox" name="item_ids" value="{{ item.id }}"></td>
                                 <td class="issue-cell">{{ item.product_issue|default:"미검수" }}</td>
                                 <td class="reason-cell">{{ item.claim_reason|default:"N/A" }}</td>
@@ -88,7 +101,7 @@
                                 <td class="collect-tracking">{{ item.collect_tracking_number|default:"N/A" }}</td>
                                 <td>{{ item.return_shipping_charge|default:"0" }}</td>
                                 <td>{{ item.shipping_charge_payment_method|default:"N/A" }}</td>
-                                <td>{{ item.order_number }}</td>
+                                <td class="order-number-cell text-primary" style="cursor:pointer;">{{ item.order_number }}</td>
                                 <td>{{ item.store_name|default:"N/A" }}</td>
                                 <td>{{ item.recipient_name|default:"N/A" }}</td>
                                 <td>{{ item.recipient_contact|default:"N/A" }}</td>
@@ -99,13 +112,62 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="14" class="text-center">데이터가 없습니다.</td>
+                                <td colspan="16" class="text-center">데이터가 없습니다.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- 상세 모달 -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" style="max-height:80%;">
+        <div class="modal-content" style="max-height:80%; overflow-y:auto;">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="detailModalLabel">상세 정보</h1>
+                <button type="button" class="btn btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="row">
+                    <dt class="col-sm-3">검수 결과</dt>
+                    <dd class="col-sm-9" id="modal_product_issue"></dd>
+                    <dt class="col-sm-3">클레임 사유</dt>
+                    <dd class="col-sm-9" id="modal_claim_reason"></dd>
+                    <dt class="col-sm-3">고객 사유</dt>
+                    <dd class="col-sm-9" id="modal_customer_reason"></dd>
+                    <dt class="col-sm-3">특이사항</dt>
+                    <dd class="col-sm-9" id="modal_note"></dd>
+                    <dt class="col-sm-3">수거 송장번호</dt>
+                    <dd class="col-sm-9" id="modal_collect_tracking_number"></dd>
+                    <dt class="col-sm-3">수거 배송비</dt>
+                    <dd class="col-sm-9" id="modal_return_shipping_charge"></dd>
+                    <dt class="col-sm-3">배송비 지급 방식</dt>
+                    <dd class="col-sm-9" id="modal_shipping_charge_payment_method"></dd>
+                    <dt class="col-sm-3">주문번호</dt>
+                    <dd class="col-sm-9" id="modal_order_number"></dd>
+                    <dt class="col-sm-3">스토어명</dt>
+                    <dd class="col-sm-9" id="modal_store_name"></dd>
+                    <dt class="col-sm-3">수취인명</dt>
+                    <dd class="col-sm-9" id="modal_recipient_name"></dd>
+                    <dt class="col-sm-3">연락처</dt>
+                    <dd class="col-sm-9" id="modal_recipient_contact"></dd>
+                    <dt class="col-sm-3">옵션코드</dt>
+                    <dd class="col-sm-9" id="modal_option_code"></dd>
+                    <dt class="col-sm-3">상품명</dt>
+                    <dd class="col-sm-9" id="modal_product_name"></dd>
+                    <dt class="col-sm-3">옵션명</dt>
+                    <dd class="col-sm-9" id="modal_option_name"></dd>
+                    <dt class="col-sm-3">수량</dt>
+                    <dd class="col-sm-9" id="modal_quantity"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
         </div>
     </div>
 </div>
@@ -123,7 +185,7 @@
     const rows = document.querySelectorAll('#items-table tbody tr');
     rows.forEach(row => {
         row.addEventListener('click', function(e) {
-            if (e.target.tagName.toLowerCase() !== 'input') {
+            if (e.target.tagName.toLowerCase() !== 'input' && !e.target.classList.contains('order-number-cell')) {
                 const checkbox = this.querySelector('input[type="checkbox"]');
                 if (checkbox) {
                     checkbox.checked = !checkbox.checked;
@@ -166,7 +228,6 @@
     reasonFilter.addEventListener('change', filterRows);
     filterRows();
 
-    // 사유(검수결과) 및 노트 일괄 업데이트 관련 스크립트
     const applyReasonBtn = document.getElementById('apply-reason');
     const inputNote = document.getElementById('input-note');
     const reasonButtons = document.querySelectorAll('.reason-btn');
@@ -192,7 +253,6 @@
         return checkedRows;
     }
 
-    // 여기서 getCheckedRows 함수를 정의합니다.
     function getCheckedRows() {
         return Array.from(document.querySelectorAll('.row-checkbox:checked')).map(chk => chk.closest('tr'));
     }
@@ -268,7 +328,6 @@
         });
     });
 
-    // 반품승인 (AJAX 요청) 처리 로직
     function showAlert(message, type='info', duration=3000) {
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} position-fixed top-0 start-50 translate-middle-x mt-3`;
@@ -342,15 +401,12 @@
     smsButton.addEventListener('click', function(e) {
         e.preventDefault();
 
-        console.log(">>> 배송비문자 버튼 클릭");
-        
-        // 암호 입력 요청
         const password = prompt("암호를 입력해주세요:");
         if (password !== '0618') {
             showAlert('암호가 틀렸습니다.', 'danger');
-            return; // 암호 불일치 시 함수 종료
+            return; 
         }
-        
+
         const checkedRows = getCheckedRows();
         if (checkedRows.length === 0) {
             showAlert('선택된 항목이 없습니다.', 'warning');
@@ -376,8 +432,6 @@
             }
         });
 
-        console.log(">>> smsData:", smsData);
-
         fetch("/send_shipping_sms/", {
             method: 'POST',
             headers: {
@@ -386,12 +440,8 @@
             },
             body: JSON.stringify({ items: smsData })
         })
-        .then(res => {
-            console.log(">>> 응답 수신:", res);
-            return res.json();
-        })
+        .then(res => res.json())
         .then(data => {
-            console.log(">>> 응답 JSON:", data);
             if (data.success) {
                 showAlert('문자 발송 성공', 'success');
             } else {
@@ -403,8 +453,40 @@
             showAlert(`문자 발송 요청 중 오류 발생: ${err.message}`, 'danger');
         });
     });
-</script>
 
+    // 주문번호 클릭 시 모달 표시
+    document.addEventListener("DOMContentLoaded", function() {
+        const orderNumberCells = document.querySelectorAll(".order-number-cell");
+        const detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+
+        orderNumberCells.forEach(cell => {
+            cell.addEventListener('click', function(event) {
+                // 클릭한 셀의 부모 tr
+                const row = this.closest('tr');
+                if (!row) return;
+
+                document.getElementById('modal_product_issue').textContent = row.dataset.product_issue;
+                document.getElementById('modal_claim_reason').textContent = row.dataset.claim_reason;
+                document.getElementById('modal_customer_reason').textContent = row.dataset.customer_reason;
+                document.getElementById('modal_note').textContent = row.dataset.note;
+                document.getElementById('modal_collect_tracking_number').textContent = row.dataset.collect_tracking_number;
+                document.getElementById('modal_return_shipping_charge').textContent = row.dataset.return_shipping_charge;
+                document.getElementById('modal_shipping_charge_payment_method').textContent = row.dataset.shipping_charge_payment_method;
+                document.getElementById('modal_order_number').textContent = row.dataset.order_number;
+                document.getElementById('modal_store_name').textContent = row.dataset.store_name;
+                document.getElementById('modal_recipient_name').textContent = row.dataset.recipient_name;
+                document.getElementById('modal_recipient_contact').textContent = row.dataset.recipient_contact;
+                document.getElementById('modal_option_code').textContent = row.dataset.option_code;
+                document.getElementById('modal_product_name').textContent = row.dataset.product_name;
+                document.getElementById('modal_option_name').textContent = row.dataset.option_name;
+                document.getElementById('modal_quantity').textContent = row.dataset.quantity;
+
+                detailModal.show();
+                event.stopPropagation();
+            });
+        });
+    });
+</script>
 
 <style>
      :root {
