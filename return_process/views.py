@@ -504,13 +504,14 @@ def update_returns(request):
 def delete_return_item(request):
     if request.method == 'POST':
         data = json.loads(request.body.decode('utf-8'))
-        item_id = data.get('item_id')
-        if not item_id:
-            return JsonResponse({'success': False, 'message': '아이템 ID가 필요합니다.'})
+        item_ids = data.get('item_ids', [])
 
-        deleted_count, _ = ReturnItem.objects.filter(id=item_id).delete()
+        if not item_ids:
+            return JsonResponse({'success': False, 'message': '아이템 ID 목록이 필요합니다.'})
+
+        deleted_count, _ = ReturnItem.objects.filter(id__in=item_ids).delete()
         if deleted_count > 0:
-            return JsonResponse({'success': True})
+            return JsonResponse({'success': True, 'message': f'{deleted_count}개 항목 삭제 완료'})
         else:
             return JsonResponse({'success': False, 'message': '해당 ID의 레코드를 찾을 수 없습니다.'})
     else:

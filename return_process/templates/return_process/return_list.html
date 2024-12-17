@@ -46,10 +46,15 @@
 
     <div class="card shadow-sm">
         <div class="card-body">
+            <!-- 일괄 삭제 버튼 추가 -->
+            <button type="button" class="btn btn-danger mb-3" id="bulk-delete-btn">선택 항목 삭제</button>
+
             <div class="table-responsive">
                 <table class="table table-hover table-striped" id="returnTable">
                     <thead>
                         <tr>
+                            <!-- 전체선택 체크박스 헤더 -->
+                            <th><input type="checkbox" id="select-all-checkbox"></th>
                             <th>상태</th>
                             <th>클레임 종류</th>
                             <th>스토어명</th>
@@ -73,7 +78,6 @@
                             <th>제품 사유</th>
                             <th>배송 완료일</th>
                             <th>클레임 요청일</th>
-                            <th>삭제</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -101,6 +105,7 @@
                             data-order_number="{{ item.order_number }}"
                             data-delivered_date="{{ item.delivered_date }}"
                             data-claim_request_date="{{ item.claim_request_date }}">
+                            <td><input type="checkbox" class="select-item-checkbox" value="{{ item.id }}"></td>
                             <td>{{ item.display_status }}</td>
                             <td>{{ item.claim_type|default:"N/A" }}</td>
                             <td>{{ item.store_name|default:"N/A" }}</td>
@@ -124,7 +129,6 @@
                             <td>{{ item.product_issue|default:"N/A" }}</td>
                             <td>{{ item.delivered_date }}</td>
                             <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
-                            <td><button type="button" class="btn btn-danger btn-sm" onclick="deleteReturnItem({{ item.id }})">삭제</button></td>
                         </tr>
                         {% empty %}
                         <tr>
@@ -453,9 +457,50 @@
         </div>
     </div>
 </div>
+
+
 <script>
-    function deleteReturnItem(itemId) {
-        if (!confirm("정말로 이 항목을 삭제하시겠습니까?")) return;
+    // 전체 선택 체크박스
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const itemCheckboxes = document.querySelectorAll('.select-item-checkbox');
+
+    selectAllCheckbox.addEventListener('change', function() {
+        itemCheckboxes.forEach(chk => chk.checked = selectAllCheckbox.checked);
+    });
+
+    // 행 클릭 시 체크박스 토글
+    const tableRows = document.querySelectorAll('#returnTable tbody tr');
+    tableRows.forEach(row => {
+        row.addEventListener('click', function(e) {
+            // 클릭한 요소가 'order-number-cell' 클래스거나 'select-item-checkbox' 자체라면 토글하지 않음
+            if (e.target.classList.contains('order-number-cell') || e.target.classList.contains('select-item-checkbox')) {
+                return;
+            }
+
+            const checkbox = this.querySelector('.select-item-checkbox');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+
+            // 모든 체크박스 상태에 따라 전체선택 체크박스 상태 갱신
+            updateSelectAllCheckbox();
+        });
+    });
+
+    function updateSelectAllCheckbox() {
+        const allChecked = Array.from(itemCheckboxes).every(chk => chk.checked);
+        selectAllCheckbox.checked = allChecked;
+    }
+
+    // 일괄 삭제
+    document.getElementById('bulk-delete-btn').addEventListener('click', function() {
+        const checkedBoxes = document.querySelectorAll('.select-item-checkbox:checked');
+        if (checkedBoxes.length === 0) {
+            alert("삭제할 항목을 선택하세요.");
+            return;
+        }
+
+        const ids = Array.from(checkedBoxes).map(chk => chk.value);
 
         fetch("{% url 'delete_return_item' %}", {
             method: 'POST',
@@ -463,13 +508,13 @@
                 'X-CSRFToken': '{{ csrf_token }}',
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({item_id: itemId})
+            body: JSON.stringify({item_ids: ids})
         })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert("삭제 완료");
-                location.reload(); // 페이지 새로고침
+                alert(data.message || "삭제 완료");
+                location.reload(); 
             } else {
                 alert(data.message || "삭제 중 오류 발생");
             }
@@ -478,7 +523,25 @@
             console.error(err);
             alert("삭제 요청 실패");
         });
-    }
+    });
+
+    // 상태 필터 기능
+    const statusFilter = document.getElementById('statusFilter');
+    const rows = document.querySelectorAll('#returnTable tbody tr');
+
+    statusFilter.addEventListener('change', function() {
+        const filterValue = this.value;
+        rows.forEach(row => {
+            const rowStatus = row.dataset.processing_status;
+            if (!filterValue || rowStatus === filterValue) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+
+    
     function uploadExcel(type) {
         let form;
         let url;
