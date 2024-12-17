@@ -485,7 +485,20 @@ def update_returns(request):
     messages.success(request, '반품 데이터 업데이트가 완료되었습니다.')
     return redirect('반품목록')
 
+def delete_return_item(request):
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        item_id = data.get('item_id')
+        if not item_id:
+            return JsonResponse({'success': False, 'message': '아이템 ID가 필요합니다.'})
 
+        deleted_count, _ = ReturnItem.objects.filter(id=item_id).delete()
+        if deleted_count > 0:
+            return JsonResponse({'success': True})
+        else:
+            return JsonResponse({'success': False, 'message': '해당 ID의 레코드를 찾을 수 없습니다.'})
+    else:
+        return JsonResponse({'success': False, 'message': 'POST 요청만 가능합니다.'})
 
 
 logger = logging.getLogger(__name__)
@@ -528,6 +541,8 @@ def upload_returns_excel(request):
             return formatted
 
         for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+            values = [c.value for c in row]
+            print(f"Row {row_idx} values: {values}")
             def cell_value(idx, is_numeric=False):
                 if idx < len(row):
                     val = row[idx].value
@@ -576,14 +591,33 @@ def upload_returns_excel(request):
                 })
                 continue
 
+            # 스토어명 매핑
+            store_name_map = {
+                "노는 개 최고양": "노는개최고양",
+                "수비다 SUBIDA": "수비다"
+            }
+            if store_name in store_name_map:
+                store_name = store_name_map[store_name]
+
+            # 특정 스토어일 경우 platform='Naver' 설정
+            naver_stores = ["니뜰리히", "노는개최고양", "아르빙", "수비다"]
+            # store_name이 매핑된 후의 값으로 확인
+            # 예: "노는 개 최고양" -> "노는개최고양" 후에 체크
+            if store_name in naver_stores:
+                platform_val = 'Naver'
+            else:
+                platform_val = ''  # 혹은 필요하다면 다른 값
+
+            # 기존에 platform='Naver'로 제한했던 get_or_create 제거
             item, created = ReturnItem.objects.get_or_create(
-                platform='Naver',
-                order_number=order_number
+                order_number=order_number,
+                option_code=option_code
             )
+            
+            # platform 설정
+            item.platform = platform_val
 
             item.processing_status = processing_status
-            # item.status = status # status 필드 없으므로 제거
-
             item.claim_type = claim_type
             item.store_name = store_name
             item.collect_tracking_number = collect_tracking_number
@@ -634,7 +668,7 @@ def upload_returns_excel(request):
 
             success_items.append({
                 'order_number': item.order_number,
-                'display_status': item.display_status,
+                'display_status': getattr(item, 'display_status', ''), # display_status 필드가 없을 수 있으니 getattr 사용
                 'claim_type': item.claim_type,
                 'store_name': item.store_name,
                 'collect_tracking_number': item.collect_tracking_number,
@@ -656,7 +690,7 @@ def upload_returns_excel(request):
                 'product_issue': item.product_issue,
                 'delivered_date': formatted_delivered,
                 'claim_request_date': formatted_claim_request,
-                'display_status': item.display_status,
+                'display_status': getattr(item, 'display_status', ''),
             })
 
         logger.debug(f"업로드 완료: 성공={len(success_items)}개, 실패={len(error_items)}개")
@@ -671,7 +705,6 @@ def upload_returns_excel(request):
             'errors': error_items
         })
     return JsonResponse({'success': False, 'message': 'Invalid request'})
-
 
 @login_required
 def upload_courier_excel(request):
@@ -691,7 +724,7 @@ def upload_courier_excel(request):
         ws = wb.active
 
         header = next(ws.iter_rows(min_row=1, max_row=1))
-        header_values = [cell.value for cell in header]  # header[0] 제거
+        header_values = [cell.value for cell in header]
         logger.debug(f"택배사 엑셀 헤더: {header_values}")
 
         related_col_name = "관련운송장"
@@ -770,7 +803,6 @@ def upload_courier_excel(request):
             if new_collect_tracking:
                 new_collect_tracking = new_collect_tracking.replace("-", "")
 
-            # 배송일자 파싱
             logger.debug(f"[Row {row_idx}] 배송일자 파싱 시작: {raw_delivered_date}")
             courier_delivered_date = parse_date(raw_delivered_date)
             logger.debug(f"[Row {row_idx}] 파싱 결과 courier_delivered_date={courier_delivered_date}")
@@ -841,6 +873,7 @@ def upload_courier_excel(request):
 
     return JsonResponse({'success': False, 'message': 'Invalid request'})
 
+
 @login_required
 def finalize_excel_import(request):
     """
@@ -855,6 +888,8 @@ def finalize_excel_import(request):
     # 하지만 문제를 피하기 위해 아무것도 하지 않고 바로 반품목록 페이지로 이동
     messages.success(request, '엑셀 업로드 데이터가 반품목록에 반영되었습니다.')
     return redirect('반품목록')
+
+
 
 # views.py 변경 없음 (단, 날짜 파싱 부분 수정)
 @csrf_exempt
