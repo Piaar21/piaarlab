@@ -1,7 +1,7 @@
 {% extends 'delayed_management_base.html' %}
 {% block content %}
 <div class="container-fluid mt-4">
-    <h2 class="mb-4 text-primary">지연 주문 엑셀 업로드</h2>
+    <h2 class="mb-4 text-primary">엑셀 업로드</h2>
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <!-- 엑셀 업로드 폼 -->
@@ -29,6 +29,7 @@
                             <th>연락처</th>
                             <th>주문상품명</th>
                             <th>주문옵션명</th>
+                            <th>수량</th> <!-- 수량 열 추가 -->
                             <th>셀러툴상품명</th>
                             <th>셀러툴옵션명</th>
                             <th>주문번호1</th>
@@ -46,6 +47,7 @@
                             <td>{{ order.customer_contact }}</td>
                             <td>{{ order.order_product_name }}</td>
                             <td>{{ order.order_option_name }}</td>
+                            <td>{{ order.quantity }}</td> <!-- 수량 표시 -->
                             <td>{{ order.seller_product_name }}</td>
                             <td>{{ order.seller_option_name }}</td>
                             <td>{{ order.order_number_1 }}</td>
