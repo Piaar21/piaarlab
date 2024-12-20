@@ -1,0 +1,161 @@
+{% extends 'delayed_management_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-primary">배송지연 목록</h2>
+    <div class="card shadow-sm mb-4">
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>확인여부</th>
+                        <th>기다리기</th>
+                        <th>변경된옵션</th>
+                        <th>주문번호1</th>
+                        <th>옵션코드</th>
+                        <th>주문상품명</th>
+                        <th>주문옵션명</th>
+                        <th>수량</th>
+                        <th>변경가능옵션</th>
+                        <th>재입고일자</th>
+                        <th>스토어</th>
+                        <th>성함</th>
+                        <th>연락처</th>
+                        <th>셀러툴상품명</th>
+                        <th>셀러툴옵션명</th>
+                        <th>주문번호2</th>
+                        <th>옵션변경</th>
+                        <th>삭제</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in shipments %}
+                    <tr>
+                        <td>{% if s.confirmed %}확인됨{% else %}미확인{% endif %}</td>
+                        <td>{% if s.waiting %}기다리는 중{% else %}-{% endif %}</td>
+                        <td>{{ s.changed_option }}</td>
+                        <td>{{ s.order_number_1 }}</td>
+                        <td>{{ s.option_code }}</td>
+                        <td>{{ s.order_product_name }}</td>
+                        <td>{{ s.order_option_name }}</td>
+                        <td>{{ s.quantity }}</td>
+                        <td>{{ s.exchangeable_options }}</td>
+                        <td>{% if s.restock_date %}{{ s.restock_date|date:"Y-m-d" }}{% endif %}</td>
+                        <td>{{ s.store_name }}</td>
+                        <td>{{ s.customer_name }}</td>
+                        <td>{{ s.customer_contact }}</td>
+                        <td>{{ s.seller_product_name }}</td>
+                        <td>{{ s.seller_option_name }}</td>
+                        <td>{{ s.order_number_2 }}</td>
+                        <td>
+                            <form method="post" action="{% url 'change_exchangeable_options' %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="option_code" value="{{ s.option_code }}">
+                                <button type="submit" class="btn btn-sm btn-warning">옵션변경</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" action="{% url 'delete_delayed_shipment' s.id %}" onsubmit="return confirm('삭제하시겠습니까?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-danger">삭제</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="18" class="text-center text-muted">데이터가 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<style>
+    thead th {
+        position: relative;
+    }
+    .resizer {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 5px;
+        height: 100%;
+        cursor: col-resize;
+        background-color: transparent;
+    }
+    .resizer:hover {
+        background-color: rgba(0,0,0,0.1);
+    }
+    .container-fluid {
+        max-width: 1400px;
+    }
+    .card {
+        border: none;
+        border-radius: 15px;
+        background-color: #ffffff;
+        color: #2d3436;
+        padding: 20px;
+    }
+    table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: #ffffff;
+        color: #2d3436;
+    }
+    thead th {
+        background-color: #6c5ce7;
+        color: white;
+        padding: 15px;
+        white-space: nowrap;
+        user-select: none;
+        border-bottom: 2px solid #dfe6e9;
+    }
+    tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+    tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+    td, th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid #dfe6e9;
+        border-bottom: 1px solid #dfe6e9;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.querySelector('table');
+    const ths = table.querySelectorAll('thead th');
+    let startX, startWidth, currentTh;
+
+    ths.forEach(th => {
+        const resizer = th.querySelector('.resizer');
+        if (!resizer) return;
+
+        resizer.addEventListener('mousedown', function(e) {
+            startX = e.pageX;
+            currentTh = th;
+            startWidth = currentTh.offsetWidth;
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+            e.preventDefault();
+        });
+    });
+
+    function mouseMoveHandler(e) {
+        if (!currentTh) return;
+        const newWidth = startWidth + (e.pageX - startX);
+        currentTh.style.width = newWidth + 'px';
+    }
+
+    function mouseUpHandler(e) {
+        document.removeEventListener('mousemove', mouseMoveHandler);
+        document.removeEventListener('mouseup', mouseUpHandler);
+        currentTh = null;
+    }
+});
+</script>
+{% endblock %}
