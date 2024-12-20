@@ -24,7 +24,7 @@
                 <table class="table table-hover table-striped align-middle" id="items-table">
                     <thead>
                         <tr>
-                            <th></th>
+                            <th><input type="checkbox" id="check-all"></th>
                             <th>순번</th>
                             <th>검수</th>
                             <th>사유</th>
@@ -47,8 +47,8 @@
                             <th>배송비지급방식</th>
                             <th>주문번호</th>
                             <th>검수자</th>
-                            <th>배송 완료일</th>
-                            <th>클레임 요청일</th>
+                            <th>배송완료일</th>
+                            <th>클레임요청일</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -240,10 +240,16 @@
         const reasonButtons = document.querySelectorAll('.reason-btn');
         const rows = document.querySelectorAll('#items-table tbody tr');
         const collectTrackingFilter = document.getElementById('collect-tracking-filter');
+        const checkAll = document.getElementById('check-all');
 
         let selectedIssue = null;
         let currentEditItemId = null; // 수량 수정용
-
+        checkAll.addEventListener('change', function() {
+            const allRowCheckboxes = document.querySelectorAll('.row-checkbox');
+            allRowCheckboxes.forEach(chk => {
+                chk.checked = checkAll.checked;
+            });
+        });
         // 알림 표시 함수 (1초 후 자동 제거)
         function showTemporaryMessage(msg, duration = 1000) {
             const alertDiv = document.createElement('div');
