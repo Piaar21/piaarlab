@@ -1075,43 +1075,52 @@ def scan_submit(request):
         if not action:
             return JsonResponse({'success': False, 'error': 'action parameter is missing'})
 
-        # 기존 로직
-        if action == 'check_number':
-            number = data.get('number', '').strip()
-            if not number:
-                return JsonResponse({'success': False, 'error': 'no number provided'})
+        # # 기존 로직
+        # print("DEBUG: action value:", action, flush=True)
+        # if action == 'check_number':
+        #     number = data.get('number', '').strip()
+        #     print("DEBUG: check_number received:", repr(number), flush=True)
+            
+        #     if not number:
+        #         return JsonResponse({'success': False, 'error': 'no number provided', 'action': 'check_number'})
 
-            exists = ReturnItem.objects.filter(collect_tracking_number=number).exists()
-            if exists:
-                if number not in scanned_numbers and number not in unmatched_numbers:
-                    scanned_numbers.append(number)
-                    request.session['scanned_numbers'] = scanned_numbers
-                return JsonResponse({'success': True, 'matched': True, 'number': number})
-            else:
-                if number not in unmatched_numbers and number not in scanned_numbers:
-                    unmatched_numbers.append(number)
-                    request.session['unmatched_numbers'] = unmatched_numbers
-                return JsonResponse({'success': True, 'matched': False, 'number': number})
+        #     exists = ReturnItem.objects.filter(collect_tracking_number=number).exists()
+        #     if exists:
+        #         if number not in scanned_numbers and number not in unmatched_numbers:
+        #             scanned_numbers.append(number)
+        #             request.session['scanned_numbers'] = scanned_numbers
+        #         return JsonResponse({'success': True, 'matched': True, 'number': number, 'action': 'check_number'})
+        #     else:
+        #         if number not in unmatched_numbers and number not in scanned_numbers:
+        #             unmatched_numbers.append(number)
+        #             request.session['unmatched_numbers'] = unmatched_numbers
+        #         return JsonResponse({'success': True, 'matched': False, 'number': number, 'action': 'check_number'})
 
         elif action == 'approve_returns':
+            scanned_numbers = request.session.get('scanned_numbers', [])
+            unmatched_numbers = request.session.get('unmatched_numbers', [])
+
+            # 디버깅용 출력
+            print("DEBUG: scanned_numbers at approve_returns:", scanned_numbers)
+
             if scanned_numbers:
                 existing_items = ReturnItem.objects.filter(collect_tracking_number__in=scanned_numbers)
                 existing_numbers = list(existing_items.values_list('collect_tracking_number', flat=True))
+
+                print("DEBUG: existing_numbers found in DB:", existing_numbers)
+
                 scanned_set = set(scanned_numbers)
                 existing_set = set(existing_numbers)
                 new_unmatched = list(scanned_set - existing_set)
 
-                # 수거완료 처리
-                if existing_numbers:
-                    ReturnItem.objects.filter(collect_tracking_number__in=existing_numbers).update(processing_status='수거완료')
+                ReturnItem.objects.filter(collect_tracking_number__in=existing_numbers).update(processing_status='수거완료')
 
-                # 스캔 리스트 초기화
                 request.session['scanned_numbers'] = []
-
-                # 미일치 리스트 업데이트
                 old_unmatched = request.session.get('unmatched_numbers', [])
                 combined_unmatched = list(set(old_unmatched + new_unmatched))
                 request.session['unmatched_numbers'] = combined_unmatched
+
+                print("DEBUG: unmatched_numbers after process:", request.session['unmatched_numbers'])
 
                 if new_unmatched:
                     return JsonResponse({
@@ -1232,7 +1241,46 @@ def scan_submit(request):
         
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
+@csrf_exempt
+def check_number_submit(request):
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        numbers = data.get('numbers', [])
 
+        scanned_numbers = request.session.get('scanned_numbers', [])
+        unmatched_numbers = request.session.get('unmatched_numbers', [])
+
+        matched_list = []
+        unmatched_list = []
+
+        for num in numbers:
+            number = num.strip()
+            # 공백이나 빈 문자열인 경우 continue로 넘어감
+            if not number:
+                continue
+
+            exists = ReturnItem.objects.filter(collect_tracking_number=number).exists()
+            if exists:
+                if number not in scanned_numbers and number not in unmatched_numbers:
+                    scanned_numbers.append(number)
+                matched_list.append(number)
+            else:
+                if number not in unmatched_numbers and number not in scanned_numbers:
+                    unmatched_numbers.append(number)
+                unmatched_list.append(number)
+
+        request.session['scanned_numbers'] = scanned_numbers
+        request.session['unmatched_numbers'] = unmatched_numbers
+
+        return JsonResponse({
+            'success': True,
+            'matched_list': matched_list,
+            'unmatched_list': unmatched_list
+        })
+    else:
+        return JsonResponse({'success': False, 'message': 'Only POST allowed'})
+    
+            
 @login_required
 def download_unmatched(request):
     # 미일치 리스트를 엑셀로 다운로드
