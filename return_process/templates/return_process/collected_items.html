@@ -1,0 +1,546 @@
+{% extends 'return_process_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-primary">수거완료 목록</h2>
+
+    <div class="d-flex align-items-center mb-3">
+        <div class="btn-group me-3">
+            <button class="btn btn-outline-danger reason-btn" data-reason="오배송">오배송</button>
+            <button class="btn btn-outline-success reason-btn" data-reason="이상없음">이상없음</button>
+            <button class="btn btn-outline-warning reason-btn" data-reason="파손및불량">파손및불량</button>
+            <button class="btn btn-outline-info reason-btn" data-reason="보류">보류</button>
+        </div>
+
+        <input type="text" class="form-control w-auto" id="input-note" placeholder="사유(특이사항) 입력">
+        <button class="btn btn-primary ms-2" id="apply-reason">사유 일괄 적용</button>
+        <!-- 새로운 버튼 추가 -->
+        <button class="btn btn-warning ms-2" id="update-product-order-status">현재클레임상태 업데이트</button>
+        <button class="btn btn-danger ms-2" id="delete-items">데이터 삭제</button>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                <table class="table table-hover table-striped align-middle" id="items-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>순번</th>
+                            <th>검수</th>
+                            <th>사유</th>
+                            <th>
+                                수거 송장번호<br>
+                                <input type="text" id="collect-tracking-filter" placeholder="필터">
+                            </th>
+                            <th>현재클레임상태</th>
+                            <th>클레임 종류</th>
+                            <th>클레임사유</th>
+                            <th>고객사유</th>
+                            <th>상품명</th>
+                            <th>옵션명</th>
+                            <th>수량</th>
+                            <th>스토어명</th>
+                            <th>수취인명</th>
+                            <th>연락처</th>
+                            <th>옵션코드</th>
+                            <th>수거배송비</th>
+                            <th>배송비지급방식</th>
+                            <th>주문번호</th>
+                            <th>검수자</th>
+                            <th>배송 완료일</th>
+                            <th>클레임 요청일</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr data-item-id="{{ item.id }}" data-inspection="{{ item.product_issue|default:'' }}"
+                            class="item-row">
+                            <td><input type="checkbox" class="row-checkbox"></td>
+                            <td>
+                                <a href="#" class="row-number text-decoration-none text-primary fw-bold open-modal"
+                                    data-item-id="{{ item.id }}">
+                                    {{ forloop.counter }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if item.product_issue %}
+                                <span class="text-primary fw-bold">검수완료 ({{ item.product_issue }})</span>
+                                {% else %}
+                                <span class="text-danger fw-bold">미검수</span>
+                                {% endif %}
+                            </td>
+                            <td class="note-cell">{{ item.note|default:"N/A" }}</td>
+                            <td class="collect-tracking">{{ item.collect_tracking_number|default:"N/A" }}</td>
+                            <td class="product-order-status-cell">{{ item.product_order_status|default:"N/A" }}</td>
+                            <td>{{ item.claim_type|default:"N/A" }}</td>
+                            <td>{{ item.claim_reason|default:"N/A" }}</td>
+                            <td>{{ item.customer_reason|default:"N/A" }}</td>
+                            <td>{{ item.product_name|default:"N/A" }}</td>
+                            <td>{{ item.option_name|default:"N/A" }}</td>
+                            <td class="quantity-cell">{{ item.quantity|default:"0" }}</td>
+                            <td>{{ item.store_name|default:"N/A" }}</td>
+                            <td>{{ item.recipient_name|default:"N/A" }}</td>
+                            <td>{{ item.recipient_contact|default:"N/A" }}</td>
+                            <td>{{ item.option_code|default:"N/A" }}</td>
+                            <td>{{ item.return_shipping_charge|default:"0" }}</td>
+                            <td>{{ item.shipping_charge_payment_method|default:"N/A" }}</td>
+                            <td class="order-number">{{ item.order_number }}</td>
+                            <td>{{ item.inspector|default:"N/A" }}</td>
+                            <td>{{ item.delivered_date }}</td>
+                            <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="19" class="text-center">데이터가 없습니다.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 상세 정보 모달 -->
+<div class="modal fade" id="itemModal" tabindex="-1" aria-labelledby="itemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl" style="max-height:80%; overflow-y:auto;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold text-primary" id="itemModalLabel">상세 정보</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <table class="table table-striped">
+                    <tbody id="modal-item-details"></tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 수량 수정 모달 -->
+<div class="modal fade" id="quantityModal" tabindex="-1" aria-labelledby="quantityModalLabel" aria-hidden="true">
+    <div class="modal-dialog" style="max-width:400px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold text-primary" id="quantityModalLabel">수량 수정</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="number" class="form-control" id="quantity-input" placeholder="새로운 수량 입력">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" id="save-quantity-btn">저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    :root {
+        --primary-color: #6c5ce7;
+        --secondary-color: #a29bfe;
+        --background-color: #f8f9fa;
+        --text-color: #2d3436;
+        --border-color: #dfe6e9;
+        --table-text-color: #2d3436;
+        --table-background: #ffffff;
+    }
+
+    body {
+        background-color: var(--background-color);
+        color: var(--text-color);
+    }
+
+    .container-fluid {
+        max-width: 1400px;
+    }
+
+    h2 {
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+
+    .btn-primary:hover {
+        background-color: var(--secondary-color);
+        border-color: var(--secondary-color);
+    }
+
+    .card {
+        border: none;
+        border-radius: 15px;
+        overflow: hidden;
+        background-color: #ffffff;
+        color: var(--text-color);
+    }
+
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: var(--table-background);
+        color: var(--table-text-color);
+    }
+
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background-color: var(--primary-color);
+        color: white;
+        z-index: 1;
+        padding: 15px;
+        white-space: nowrap;
+    }
+
+    .table tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+
+    .table tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+
+    .table td,
+    .table th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+    }
+
+    #modal-item-details td {
+        white-space: normal;
+        max-width: none;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const applyReasonBtn = document.getElementById('apply-reason');
+        const deleteItemsBtn = document.getElementById('delete-items');
+        const updateStatusBtn = document.getElementById('update-product-order-status');
+        const inputNote = document.getElementById('input-note');
+        const reasonButtons = document.querySelectorAll('.reason-btn');
+        const rows = document.querySelectorAll('#items-table tbody tr');
+        const collectTrackingFilter = document.getElementById('collect-tracking-filter');
+
+        let selectedIssue = null;
+        let currentEditItemId = null; // 수량 수정용
+
+        // 알림 표시 함수 (1초 후 자동 제거)
+        function showTemporaryMessage(msg, duration = 1000) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-info position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertDiv.style.zIndex = '9999';
+            alertDiv.textContent = msg;
+            document.body.appendChild(alertDiv);
+
+            setTimeout(() => {
+                alertDiv.remove();
+            }, duration);
+        }
+
+        function getCheckedRows() {
+            const checkedRows = [];
+            document.querySelectorAll('.row-checkbox:checked').forEach(chk => {
+                const tr = chk.closest('tr');
+                if (tr) {
+                    checkedRows.push(tr);
+                }
+            });
+            return checkedRows;
+        }
+
+        function getCheckedIds() {
+            return getCheckedRows().map(tr => tr.getAttribute('data-item-id'));
+        }
+
+        // 키 입력 이벤트 추가 (전역)
+        document.addEventListener('keydown', function (e) {
+            const checkedIds = getCheckedIds();
+            const activeElem = document.activeElement;
+            if (checkedIds.length === 0 && activeElem !== inputNote && activeElem !== collectTrackingFilter) {
+                collectTrackingFilter.focus();
+            }
+        });
+
+        // 필터 인풋 이벤트
+        collectTrackingFilter.addEventListener('input', function () {
+            const filterValue = this.value.trim().toLowerCase();
+            rows.forEach(row => {
+                const ctCell = row.querySelector('.collect-tracking');
+                if (!ctCell) return;
+                const ctValue = ctCell.textContent.trim().toLowerCase();
+                if (filterValue === '') {
+                    row.style.display = '';
+                } else {
+                    if (ctValue.includes(filterValue)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                }
+            });
+        });
+
+        // 행 클릭 시 체크박스 토글
+        rows.forEach(row => {
+            row.addEventListener('click', function (e) {
+                if (e.target.tagName.toLowerCase() !== 'input' &&
+                    !e.target.classList.contains('quantity-cell') &&
+                    !e.target.classList.contains('open-modal')) {
+                    const checkbox = this.querySelector('input[type="checkbox"]');
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                    }
+                }
+            });
+        });
+
+        // 검수 상태 업데이트 (오배송, 이상없음, 파손및불량, 보류)
+        reasonButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedIssue = btn.getAttribute('data-reason');
+                reasonButtons.forEach(b => b.classList.remove('btn-primary'));
+                btn.classList.add('btn-primary');
+                const checkedIds = getCheckedIds();
+                if (checkedIds.length === 0) {
+                    showTemporaryMessage('체크한 항목이 없습니다.');
+                    return;
+                }
+
+                fetch("{% url 'scan_submit' %}", {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'update_issue',
+                        ids: checkedIds,
+                        product_issue: selectedIssue
+                    })
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            showTemporaryMessage('검수 상태 업데이트 완료');
+                            setTimeout(() => {
+                                location.reload();
+                            }, 1100);
+                        } else {
+                            showTemporaryMessage('업데이트 실패');
+                        }
+                    });
+            });
+        });
+
+        // 사유(특이사항) 일괄 적용
+        applyReasonBtn.addEventListener('click', () => {
+            const checkedIds = getCheckedIds();
+            if (checkedIds.length === 0) {
+                showTemporaryMessage('체크한 항목이 없습니다.');
+                return;
+            }
+
+            fetch("{% url 'scan_submit' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'update_note',
+                    ids: checkedIds,
+                    note: inputNote.value.trim()
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showTemporaryMessage('사유(특이사항) 업데이트 완료');
+                        // 부분 업데이트
+                        if (data.updated && Array.isArray(data.updated)) {
+                            data.updated.forEach(item => {
+                                const row = document.querySelector(`#items-table tbody tr[data-item-id="${item.id}"]`);
+                                if (row) {
+                                    const noteCell = row.querySelector('.note-cell');
+                                    if (noteCell) {
+                                        noteCell.textContent = item.note || "";
+                                    }
+                                }
+                            });
+                        }
+                    } else {
+                        showTemporaryMessage('업데이트 실패');
+                    }
+                });
+        });
+
+
+        // 데이터 삭제 기능
+        deleteItemsBtn.addEventListener('click', () => {
+            const checkedIds = getCheckedIds();
+            if (checkedIds.length === 0) {
+                showTemporaryMessage('체크한 항목이 없습니다.');
+                return;
+            }
+
+            if (!confirm('선택한 데이터를 정말 삭제하시겠습니까?')) {
+                return;
+            }
+
+            fetch("{% url 'scan_submit' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'delete_items',
+                    ids: checkedIds
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showTemporaryMessage('데이터 삭제 완료');
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1100);
+                    } else {
+                        showTemporaryMessage('삭제 실패');
+                    }
+                });
+        });
+
+        document.getElementById('update-product-order-status').addEventListener('click', function() {
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action: 'update_all_claim_status' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('현재 클레임 상태 업데이트 완료: ' + data.updated_count + '개 항목');
+                    location.reload();
+                } else {
+                    alert('현재 클레임 상태 업데이트 실패: ' + (data.message || '알 수 없는 오류'));
+                }
+            });
+        });
+
+        // 상세 정보 모달 열기
+        document.querySelectorAll('.open-modal').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const itemId = el.getAttribute('data-item-id');
+                fetch("{% url 'scan_submit' %}", {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'get_details',
+                        id: itemId
+                    })
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            const details = data.details;
+                            const tbody = document.getElementById('modal-item-details');
+                            tbody.innerHTML = '';
+                            for (const key in details) {
+                                const tr = document.createElement('tr');
+                                const th = document.createElement('th');
+                                th.textContent = key;
+                                const td = document.createElement('td');
+                                td.textContent = details[key];
+                                tr.appendChild(th);
+                                tr.appendChild(td);
+                                tbody.appendChild(tr);
+                            }
+                            const modal = new bootstrap.Modal(document.getElementById('itemModal'));
+                            modal.show();
+                        } else {
+                            showTemporaryMessage('데이터를 가져오는데 실패했습니다.');
+                        }
+                    });
+            });
+        });
+
+        // 수량 수정 기능
+        const quantityCells = document.querySelectorAll('.quantity-cell');
+        const quantityModal = new bootstrap.Modal(document.getElementById('quantityModal'));
+        const quantityInput = document.getElementById('quantity-input');
+        const saveQuantityBtn = document.getElementById('save-quantity-btn');
+
+        quantityCells.forEach(cell => {
+            cell.addEventListener('click', (e) => {
+                e.stopPropagation(); // 행 클릭 이벤트 중단
+                const tr = cell.closest('tr');
+                currentEditItemId = tr.getAttribute('data-item-id');
+                quantityInput.value = cell.textContent.trim();
+                quantityModal.show();
+            });
+        });
+
+        saveQuantityBtn.addEventListener('click', () => {
+            const newQuantity = quantityInput.value.trim();
+            if (newQuantity === '' || isNaN(newQuantity)) {
+                showTemporaryMessage('유효한 수량을 입력하세요.');
+                return;
+            }
+
+            fetch("{% url 'scan_submit' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'update_quantity',
+                    id: currentEditItemId,
+                    new_quantity: parseInt(newQuantity, 10)
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showTemporaryMessage('수량 업데이트 완료');
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1100);
+                    } else {
+                        showTemporaryMessage('수량 업데이트 실패');
+                    }
+                });
+        });
+
+    });
+</script>
+{% endblock %}

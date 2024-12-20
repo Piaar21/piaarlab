@@ -1,0 +1,364 @@
+{% extends 'return_process_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-primary">운송장 스캔</h2>
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            {% if messages %}
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+
+            <!-- 상단 알림 표시 영역 -->
+            <div id="scan-alert" style="display:none;" class="alert text-center" role="alert"></div>
+
+            <!-- 오디오 요소: 일치/불일치 시 소리 -->
+            <audio id="matched-audio" src="/static/sounds/matched_sound.mp3" preload="auto"></audio>
+            <audio id="unmatched-audio" src="/static/sounds/unmatched_sound.mp3" preload="auto"></audio>
+
+            <!-- CJ대한통운 이동 버튼 추가 -->
+            <div class="mb-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <label class="form-label">운송장 번호 입력 후 엔터(여러 개는 콤마로 구분):</label>
+                    <input type="text" id="tracking-input" class="form-control" placeholder="예: 123456789,987654321">
+                </div>
+            </div>
+
+            <div class="text-end mb-3">
+                <button type="button" class="btn btn-success" id="submitBtn">전송 (수거완료 처리)</button>
+                <a class="btn btn-info" href="{% url 'download_unmatched' %}">
+                    미일치송장 엑셀 다운로드
+                </a>
+                <a class="btn btn-warning" href="https://loisparcelp.cjlogistics.com/index.do" target="_blank">
+                    CJ대한통운
+                </a>
+            </div>
+
+            <div class="table-responsive mb-3">
+                <h5>일치하는 운송장번호 (스캔 리스트)</h5>
+                <table class="table table-hover table-striped align-middle" id="scanned-table">
+                    <thead>
+                        <tr>
+                            <th>순번</th>
+                            <th>운송장번호</th>
+                            <th>삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for number in scanned_numbers %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td class="invoice-number">{{ number }}</td>
+                            <td>
+                                <form method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="remove_number" value="{{ number }}">
+                                    <button type="submit" class="btn btn-sm btn-danger">삭제</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-responsive mb-3">
+                <h5 class="text-danger">일치하지 않는 운송장번호</h5>
+                <div class="mb-2">
+                    <!-- 재확인 버튼 추가 -->
+                    <button type="button" class="btn btn-secondary" id="recheckBtn">재확인</button>
+                </div>
+                <table class="table table-hover table-striped align-middle" id="unmatched-table">
+                    <thead>
+                        <tr>
+                            <th>순번</th>
+                            <th>운송장번호</th>
+                            <th>삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for number in unmatched_numbers %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td class="invoice-number">{{ number }}</td>
+                            <td>
+                                <form method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="remove_number" value="{{ number }}">
+                                    <button type="submit" class="btn btn-sm btn-danger">삭제</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <p class="text-muted">엔터 칠 때마다 콤마로 구분된 모든 운송장번호가 즉시 스캔 리스트나 미일치 리스트에 반영됩니다.</p>
+
+        </div>
+    </div>
+</div>
+
+<style>
+     :root {
+        --primary-color: #6c5ce7;
+        --secondary-color: #a29bfe;
+        --background-color: #f8f9fa;
+        --text-color: #2d3436;
+        --border-color: #dfe6e9;
+        --table-text-color: #2d3436;
+        --table-background: #ffffff;
+    }
+    
+    body {
+        background-color: var(--background-color);
+        color: var(--text-color);
+    }
+    
+    .container-fluid {
+        max-width: 1400px;
+    }
+    
+    h2 {
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+    
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+    
+    .btn-primary:hover {
+        background-color: var(--secondary-color);
+        border-color: var(--secondary-color);
+    }
+    
+    .card {
+        border: none;
+        border-radius: 15px;
+        overflow: hidden;
+    }
+    
+    .table thead th {
+        background-color: var(--primary-color);
+        color: white;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    
+    .table-striped tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+</style>
+
+<!-- 모달: 전송 결과 표시용 -->
+<div class="modal fade" id="resultModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">알림</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body" id="resultMessage"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">확인</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const input = document.getElementById('tracking-input');
+    const scannedTableBody = document.querySelector('#scanned-table tbody');
+    const unmatchedTableBody = document.querySelector('#unmatched-table tbody');
+    const scanAlert = document.getElementById('scan-alert');
+    const matchedAudio = document.getElementById('matched-audio');
+    const unmatchedAudio = document.getElementById('unmatched-audio');
+
+    // 엔터키로 운송장번호 입력 (여러개 콤마 구분)
+    input.addEventListener('keyup', function(e) {
+        if (e.key === 'Enter') {
+            const inputValue = input.value.trim();
+            if (!inputValue) return;
+            
+            // 콤마로 구분
+            const numbers = inputValue.split(',');
+            numbers.forEach(num => {
+                const trimmedNum = num.trim();
+                if (trimmedNum) {
+                    checkNumber(trimmedNum);
+                }
+            });
+
+            input.value = '';
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        input.focus();
+    });
+
+    function showScanAlert(message, type = 'danger', playMatched = false) {
+        scanAlert.textContent = message;
+        scanAlert.className = 'alert text-center alert-' + type;
+        scanAlert.style.display = 'block';
+
+        if (playMatched) {
+            matchedAudio.currentTime = 0;
+            matchedAudio.play().catch(err => console.error(err));
+        } else {
+            unmatchedAudio.currentTime = 0;
+            unmatchedAudio.play().catch(err => console.error(err));
+        }
+
+        setTimeout(() => {
+            scanAlert.style.display = 'none';
+        }, 5000);
+    }
+
+    function checkDuplicate(tbody, number) {
+        const rows = tbody.querySelectorAll('tr');
+        for (let row of rows) {
+            const cellNumber = row.querySelector('.invoice-number');
+            if (cellNumber && cellNumber.textContent === number) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function checkNumber(number) {
+        fetch("{% url 'scan_submit' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: "check_number",
+                    number: number
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const isScannedDuplicate = checkDuplicate(scannedTableBody, data.number);
+                    const isUnmatchedDuplicate = checkDuplicate(unmatchedTableBody, data.number);
+
+                    if (isScannedDuplicate || isUnmatchedDuplicate) {
+                        showScanAlert(`중복 운송장 번호: ${data.number}`, 'danger', false);
+                        return;
+                    }
+
+                    if (data.matched) {
+                        addRow(scannedTableBody, data.number, true);
+                        showScanAlert(`운송장번호 ${data.number}는 [일치하는 목록]에 추가되었습니다.`, 'primary', true);
+                    } else {
+                        addRow(unmatchedTableBody, data.number, false);
+                        showScanAlert(`운송장번호 ${data.number}는 [일치하지 않는 목록]에 추가되었습니다.`, 'danger', false);
+                    }
+                } else {
+                    showScanAlert(data.error || '에러 발생', 'danger', false);
+                }
+                input.focus();
+            })
+            .catch(err => {
+                console.error(err);
+                showScanAlert('에러 발생', 'danger', false);
+                input.focus();
+            });
+    }
+
+    function addRow(tbody, number, matched) {
+        const rowCount = tbody.querySelectorAll('tr').length;
+        const tr = document.createElement('tr');
+        const tdIndex = document.createElement('td');
+        tdIndex.textContent = rowCount + 1;
+
+        const tdNumber = document.createElement('td');
+        tdNumber.classList.add('invoice-number');
+        tdNumber.textContent = number;
+
+        const tdDelete = document.createElement('td');
+        tdDelete.innerHTML = `
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="remove_number" value="${number}">
+                <button type="submit" class="btn btn-sm btn-danger">삭제</button>
+            </form>
+        `;
+
+        tr.appendChild(tdIndex);
+        tr.appendChild(tdNumber);
+        tr.appendChild(tdDelete);
+        tbody.appendChild(tr);
+    }
+
+    document.getElementById('submitBtn').addEventListener('click', function() {
+        fetch("{% url 'scan_submit' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: "approve_returns"
+                })
+            }).then(response => response.json())
+            .then(data => {
+                var resultModal = new bootstrap.Modal(document.getElementById('resultModal'));
+                document.getElementById('resultMessage').innerText = data.message || '결과를 확인할 수 없습니다.';
+                resultModal.show();
+
+                input.focus();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                var resultModal = new bootstrap.Modal(document.getElementById('resultModal'));
+                document.getElementById('resultMessage').innerText = '오류가 발생했습니다.';
+                resultModal.show();
+                input.focus();
+            });
+    });
+
+    // 재확인 버튼 로직
+    document.getElementById('recheckBtn').addEventListener('click', function() {
+        fetch("{% url 'scan_submit' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: "recheck_unmatched"
+                })
+            }).then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showScanAlert(data.message || '재확인 완료', 'primary', true);
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    showScanAlert(data.error || '재확인 중 에러 발생', 'danger', false);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showScanAlert('재확인 중 에러 발생', 'danger', false);
+            });
+    });
+</script>
+{% endblock %}

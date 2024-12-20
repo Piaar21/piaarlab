@@ -1,0 +1,758 @@
+{% extends 'return_process_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-primary">반품목록</h2>
+    <div class="mb-3">
+        <a href="{% url 'update_returns' %}" class="btn btn-primary">반품 목록 업데이트</a>
+        <!-- 모달 오픈 버튼 -->
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">엑셀 업로드</button>
+        <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#reasonUploadModal">사유 엑셀 업로드</button>
+    </div>
+    <!-- 총 반품건수 및 상태별 건수 표시 -->
+    <div class="mb-3">
+        <p>총 반품건수: {{ total_count }}건</p>
+        <div class="status-container">
+            <ul class="status-list">
+                {% for status_count in status_counts %}
+                <li>{{ status_count.processing_status }}: {{ status_count.count }}건</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- 상태 필터 섹션 추가 -->
+    <div class="mb-3 d-flex align-items-center">
+        <label for="statusFilter" class="me-2">상태 필터:</label>
+        <select id="statusFilter" class="form-select" style="width:auto;">
+            <option value="">전체 보기</option>
+            <option value="미처리">미처리</option>
+            <option value="스캔">스캔</option>
+            <option value="수거완료">수거완료</option>
+            <option value="검수완료">검수완료</option>
+            <option value="반품완료">반품완료</option>
+            <option value="재고반영">재고반영</option>
+            <option value="처리완료">처리완료</option>
+        </select>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <!-- 일괄 삭제 버튼 추가 -->
+            <button type="button" class="btn btn-danger mb-3" id="bulk-delete-btn">선택 항목 삭제</button>
+
+            <div class="table-responsive">
+                <table class="table table-hover table-striped" id="returnTable">
+                    <thead>
+                        <tr>
+                            <!-- 전체선택 체크박스 헤더 -->
+                            <th><input type="checkbox" id="select-all-checkbox"></th>
+                            <th>상태</th>
+                            <th>클레임 종류</th>
+                            <th>스토어명</th>
+                            <th>주문번호</th>
+                            <th>수거 송장번호</th>
+                            <th>회수 배송사</th>
+                            <th>수취인명</th>
+                            <th>옵션코드</th>
+                            <th>상품명</th>
+                            <th>옵션명1</th>
+                            <th>수량</th>
+                            <th>운송장번호</th>
+                            <th>클레임 상태</th>
+                            <th>클레임사유</th>
+                            <th>고객사유</th>
+                            <th>수거 배송비</th>
+                            <th>배송비 지급 방식</th>
+                            <th>처리여부</th>
+                            <th>특이사항</th>
+                            <th>검수자</th>
+                            <th>제품 사유</th>
+                            <th>배송 완료일</th>
+                            <th>클레임 요청일</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in return_items %}
+                        <tr data-item_id="{{ item.id }}"
+                            data-claim_type="{{ item.claim_type|default:'N/A' }}"
+                            data-store_name="{{ item.store_name|default:'N/A' }}"
+                            data-recipient_name="{{ item.recipient_name|default:'N/A' }}"
+                            data-option_code="{{ item.option_code|default:'N/A' }}"
+                            data-product_name="{{ item.product_name|default:'N/A' }}"
+                            data-option_name="{{ item.option_name|default:'N/A' }}"
+                            data-quantity="{{ item.quantity }}"
+                            data-invoice_number="{{ item.invoice_number|default:'N/A' }}"
+                            data-claim_status="{{ item.claim_status|default:'N/A' }}"
+                            data-claim_reason="{{ item.claim_reason|default:'N/A' }}"
+                            data-customer_reason="{{ item.customer_reason|default:'N/A' }}"
+                            data-return_shipping_charge="{{ item.return_shipping_charge|default:'0' }}"
+                            data-shipping_charge_payment_method="{{ item.shipping_charge_payment_method|default:'N/A' }}"
+                            data-collect_tracking_number="{{ item.collect_tracking_number|default:'N/A' }}"
+                            data-collect_delivery_company="{{ item.collect_delivery_company|default:'N/A' }}"
+                            data-processing_status="{{ item.processing_status }}"
+                            data-note="{{ item.note|default:'N/A' }}"
+                            data-inspector="{{ item.inspector|default:'N/A' }}"
+                            data-product_issue="{{ item.product_issue|default:'N/A' }}"
+                            data-order_number="{{ item.order_number }}"
+                            data-delivered_date="{{ item.delivered_date }}"
+                            data-claim_request_date="{{ item.claim_request_date }}">
+                            <td><input type="checkbox" class="select-item-checkbox" value="{{ item.id }}"></td>
+                            <td>{{ item.display_status }}</td>
+                            <td>{{ item.claim_type|default:"N/A" }}</td>
+                            <td>{{ item.store_name|default:"N/A" }}</td>
+                            <td class="order-number-cell text-primary" style="cursor:pointer;">{{ item.order_number }}</td>
+                            <td>{{ item.collect_tracking_number|default:"N/A" }}</td>
+                            <td>{{ item.collect_delivery_company|default:"N/A" }}</td>
+                            <td>{{ item.recipient_name|default:"N/A" }}</td>
+                            <td>{{ item.option_code|default:"N/A" }}</td>
+                            <td class="text-truncate" style="max-width:200px;">{{ item.product_name|default:"N/A" }}</td>
+                            <td class="text-truncate" style="max-width:200px;">{{ item.option_name|default:"N/A" }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>{{ item.invoice_number|default:"N/A" }}</td>
+                            <td>{{ item.claim_status|default:"N/A" }}</td>
+                            <td class="text-truncate" style="max-width:200px;">{{ item.claim_reason|default:"N/A" }}</td>
+                            <td class="text-truncate" style="max-width:200px;">{{ item.customer_reason|default:"N/A" }}</td>
+                            <td>{{ item.return_shipping_charge|default:"0" }}</td>
+                            <td>{{ item.shipping_charge_payment_method|default:"N/A" }}</td>
+                            <td>{{ item.processing_status }}</td>
+                            <td class="text-truncate" style="max-width:200px;">{{ item.note|default:"N/A" }}</td>
+                            <td>{{ item.inspector|default:"N/A" }}</td>
+                            <td>{{ item.product_issue|default:"N/A" }}</td>
+                            <td>{{ item.delivered_date }}</td>
+                            <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="24" class="text-center">데이터가 없습니다.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 업로드 모달 -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">엑셀 업로드</h5>
+                <button type="button" class="btn btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 업로드 버튼 2개: 셀러툴 / 택배사 -->
+                <div class="mb-3 d-flex gap-2">
+                    <form id="sellerToolForm" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <label class="form-label">셀러툴 엑셀 업로드:</label>
+                        <input type="file" class="form-control mb-2" name="excel_file" accept=".xlsx,.xls">
+                        <button type="button" class="btn btn-success w-100" onclick="uploadExcel('seller')">셀러툴 업로드</button>
+                    </form>
+
+                    <form id="courierForm" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <label class="form-label">택배사 엑셀 업로드:</label>
+                        <input type="file" class="form-control mb-2" name="excel_file" accept=".xlsx,.xls">
+                        <button type="button" class="btn btn-warning w-100" onclick="uploadExcel('courier')">택배사 업로드</button>
+                    </form>
+                </div>
+                <div class="mb-3">
+                    <a href="{% url 'finalize_excel_import' %}" class="btn btn-primary w-100">반품 목록 업데이트</a>
+                </div>
+                <hr>
+                <h5>업로드 결과</h5>
+                <div class="table-responsive" style="max-height: 300px; overflow:auto;">
+                    <table class="table table-bordered" id="uploadResultTable">
+                        <thead>
+                            <tr>
+                                <th>상태</th>
+                                <th>클레임 종류</th>
+                                <th>스토어명</th>
+                                <th>주문번호</th>
+                                <th>수거 송장번호</th>
+                                <th>회수 배송사</th>
+                                <th>수취인명</th>
+                                <th>옵션코드</th>
+                                <th>상품명</th>
+                                <th>옵션명1</th>
+                                <th>수량</th>
+                                <th>운송장번호</th>
+                                <th>클레임 상태</th>
+                                <th>클레임사유</th>
+                                <th>고객사유</th>
+                                <th>수거 배송비</th>
+                                <th>배송비 지급 방식</th>
+                                <th>처리여부</th>
+                                <th>특이사항</th>
+                                <th>검수자</th>
+                                <th>제품 사유</th>
+                                <th>배송 완료일</th>
+                                <th>클레임 요청일</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Ajax 업로드 후 결과 표시 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <!-- 필요하다면 추가 버튼 -->
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 사유 엑셀 업로드 모달 -->
+<div class="modal fade" id="reasonUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">사유 엑셀 업로드</h5>
+                <button type="button" class="btn btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="reasonExcelForm" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <label class="form-label">사유 엑셀 파일 선택:</label>
+                    <input type="file" class="form-control mb-2" name="excel_file" accept=".xlsx,.xls">
+                    <button type="button" class="btn btn-info w-100" onclick="uploadReasonExcel()">업로드</button>
+                </form>
+                <hr>
+                <h5>업로드 결과</h5>
+                <div class="table-responsive" style="max-height:300px; overflow:auto;">
+                    <table class="table table-bordered" id="reasonUploadResultTable">
+                        <thead>
+                            <tr>
+                                <th>상태</th>
+                                <th>클레임 종류</th>
+                                <th>스토어명</th>
+                                <th>주문번호</th>
+                                <th>수거 송장번호</th>
+                                <th>회수 배송사</th>
+                                <th>수취인명</th>
+                                <th>옵션코드</th>
+                                <th>상품명</th>
+                                <th>옵션명1</th>
+                                <th>수량</th>
+                                <th>운송장번호</th>
+                                <th>클레임 상태</th>
+                                <th>클레임사유</th>
+                                <th>고객사유</th>
+                                <th>수거 배송비</th>
+                                <th>배송비 지급 방식</th>
+                                <th>처리여부</th>
+                                <th>특이사항</th>
+                                <th>검수자</th>
+                                <th>제품 사유</th>
+                                <th>배송 완료일</th>
+                                <th>클레임 요청일</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- 업로드 후 결과 표시 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <!-- 반품 목록 업데이트 버튼 -->
+                <button type="button" class="btn btn-primary" id="update-returns-btn">반품 목록 업데이트</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<style>
+    .status-container {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    
+    .status-list {
+        display: flex;
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+    }
+    
+    .status-list li {
+        margin-right: 1rem;
+    }
+    
+    :root {
+        --primary-color: #6c5ce7;
+        --secondary-color: #a29bfe;
+        --background-color: #f8f9fa;
+        --text-color: #2d3436;
+        --border-color: #dfe6e9;
+        --table-text-color: #2d3436;
+        --table-background: #ffffff;
+    }
+    
+    body {
+        background-color: var(--background-color);
+        color: var(--text-color);
+    }
+    
+    .container-fluid {
+        max-width: 1400px;
+    }
+    
+    h2 {
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+    
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+    
+    .btn-primary:hover {
+        background-color: var(--secondary-color);
+        border-color: var(--secondary-color);
+    }
+    
+    .card {
+        border: none;
+        border-radius: 15px;
+        overflow: hidden;
+        background-color: #ffffff;
+        color: var(--text-color);
+    }
+    
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    .table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: var(--table-background);
+        color: var(--table-text-color);
+    }
+    
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background-color: var(--primary-color);
+        color: white;
+        z-index: 1;
+        padding: 15px;
+        white-space: nowrap;
+    }
+    
+    .table tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+    
+    .table tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+    
+    .table td,
+    .table th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+    }
+    
+    .modal-content {
+        background-color: #ffffff;
+        color: #2d3436;
+    }
+    
+    .modal-header,
+    .modal-footer {
+        border: none;
+    }
+    
+    .modal-title {
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+</style>
+
+<!-- Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" style="max-height:80%;">
+        <div class="modal-content" style="max-height:80%; overflow-y:auto;">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="detailModalLabel">상세 정보</h1>
+                <button type="button" class="btn btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="row">
+                    <dt class="col-sm-3">클레임 종류</dt>
+                    <dd class="col-sm-9" id="modal_claim_type"></dd>
+                    <dt class="col-sm-3">스토어명</dt>
+                    <dd class="col-sm-9" id="modal_store_name"></dd>
+                    <dt class="col-sm-3">수취인명</dt>
+                    <dd class="col-sm-9" id="modal_recipient_name"></dd>
+                    <dt class="col-sm-3">옵션코드</dt>
+                    <dd class="col-sm-9" id="modal_option_code"></dd>
+                    <dt class="col-sm-3">상품명</dt>
+                    <dd class="col-sm-9" id="modal_product_name"></dd>
+                    <dt class="col-sm-3">옵션명1</dt>
+                    <dd class="col-sm-9" id="modal_option_name"></dd>
+                    <dt class="col-sm-3">수량</dt>
+                    <dd class="col-sm-9" id="modal_quantity"></dd>
+                    <dt class="col-sm-3">운송장번호</dt>
+                    <dd class="col-sm-9" id="modal_invoice_number"></dd>
+                    <dt class="col-sm-3">클레임 상태</dt>
+                    <dd class="col-sm-9" id="modal_claim_status"></dd>
+                    <dt class="col-sm-3">클레임사유</dt>
+                    <dd class="col-sm-9" id="modal_claim_reason"></dd>
+                    <dt class="col-sm-3">고객사유</dt>
+                    <dd class="col-sm-9" id="modal_customer_reason"></dd>
+                    <dt class="col-sm-3">수거 배송비</dt>
+                    <dd class="col-sm-9" id="modal_return_shipping_charge"></dd>
+                    <dt class="col-sm-3">배송비 지급 방식</dt>
+                    <dd class="col-sm-9" id="modal_shipping_charge_payment_method"></dd>
+                    <dt class="col-sm-3">수거 송장번호</dt>
+                    <dd class="col-sm-9" id="modal_collect_tracking_number"></dd>
+                    <dt class="col-sm-3">회수 배송사</dt>
+                    <dd class="col-sm-9" id="modal_collect_delivery_company"></dd>
+                    <dt class="col-sm-3">처리여부</dt>
+                    <dd class="col-sm-9" id="modal_processing_status"></dd>
+                    <dt class="col-sm-3">특이사항</dt>
+                    <dd class="col-sm-9" id="modal_note"></dd>
+                    <dt class="col-sm-3">검수자</dt>
+                    <dd class="col-sm-9" id="modal_inspector"></dd>
+                    <dt class="col-sm-3">제품 사유</dt>
+                    <dd class="col-sm-9" id="modal_product_issue"></dd>
+                    <dt class="col-sm-3">주문번호</dt>
+                    <dd class="col-sm-9" id="modal_order_number"></dd>
+                    <dt class="col-sm-3">배송 완료일</dt>
+                    <dd class="col-sm-9" id="modal_delivered_date"></dd>
+                    <dt class="col-sm-3">클레임 요청일</dt>
+                    <dd class="col-sm-9" id="modal_claim_request_date"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    // 전체 선택 체크박스
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const itemCheckboxes = document.querySelectorAll('.select-item-checkbox');
+
+    selectAllCheckbox.addEventListener('change', function() {
+        itemCheckboxes.forEach(chk => chk.checked = selectAllCheckbox.checked);
+    });
+
+    // 행 클릭 시 체크박스 토글
+    const tableRows = document.querySelectorAll('#returnTable tbody tr');
+    tableRows.forEach(row => {
+        row.addEventListener('click', function(e) {
+            // 클릭한 요소가 'order-number-cell' 클래스거나 'select-item-checkbox' 자체라면 토글하지 않음
+            if (e.target.classList.contains('order-number-cell') || e.target.classList.contains('select-item-checkbox')) {
+                return;
+            }
+
+            const checkbox = this.querySelector('.select-item-checkbox');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+
+            // 모든 체크박스 상태에 따라 전체선택 체크박스 상태 갱신
+            updateSelectAllCheckbox();
+        });
+    });
+
+    function updateSelectAllCheckbox() {
+        const allChecked = Array.from(itemCheckboxes).every(chk => chk.checked);
+        selectAllCheckbox.checked = allChecked;
+    }
+
+    // 일괄 삭제
+    document.getElementById('bulk-delete-btn').addEventListener('click', function() {
+        const checkedBoxes = document.querySelectorAll('.select-item-checkbox:checked');
+        if (checkedBoxes.length === 0) {
+            alert("삭제할 항목을 선택하세요.");
+            return;
+        }
+
+        const ids = Array.from(checkedBoxes).map(chk => chk.value);
+
+        fetch("{% url 'delete_return_item' %}", {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({item_ids: ids})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message || "삭제 완료");
+                location.reload(); 
+            } else {
+                alert(data.message || "삭제 중 오류 발생");
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert("삭제 요청 실패");
+        });
+    });
+
+    // 상태 필터 기능
+    const statusFilter = document.getElementById('statusFilter');
+    const rows = document.querySelectorAll('#returnTable tbody tr');
+
+    statusFilter.addEventListener('change', function() {
+        const filterValue = this.value;
+        rows.forEach(row => {
+            const rowStatus = row.dataset.processing_status;
+            if (!filterValue || rowStatus === filterValue) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+
+    
+    function uploadExcel(type) {
+        let form;
+        let url;
+        if (type === 'seller') {
+            form = document.getElementById('sellerToolForm');
+            url = "{% url 'upload_returns_excel' %}";
+        } else {
+            form = document.getElementById('courierForm');
+            url = "{% url 'upload_courier_excel' %}";
+        }
+
+        const formData = new FormData(form);
+        fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: formData
+            }).then(res => res.json())
+            .then(data => {
+                const tbody = document.querySelector('#uploadResultTable tbody');
+                tbody.innerHTML = '';
+                if (data.success) {
+                    data.items.forEach(item => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${item.display_status}</td>
+                            <td>${item.claim_type}</td>
+                            <td>${item.store_name}</td>
+                            <td>${item.order_number}</td>
+                            <td>${item.collect_tracking_number}</td>
+                            <td>${item.collect_delivery_company}</td>
+                            <td>${item.recipient_name}</td>
+                            <td>${item.option_code}</td>
+                            <td>${item.product_name}</td>
+                            <td>${item.option_name}</td>
+                            <td>${item.quantity}</td>
+                            <td>${item.invoice_number}</td>
+                            <td>${item.claim_status}</td>
+                            <td>${item.claim_reason}</td>
+                            <td>${item.customer_reason}</td>
+                            <td>${item.return_shipping_charge}</td>
+                            <td>${item.shipping_charge_payment_method}</td>
+                            <td>${item.processing_status}</td>
+                            <td>${item.note}</td>
+                            <td>${item.inspector}</td>
+                            <td>${item.product_issue}</td>
+                            <td>${item.delivered_date}</td>
+                            <td>${item.claim_request_date}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td colspan="4">${data.message || '오류 발생'}</td>`;
+                    tbody.appendChild(tr);
+                }
+            }).catch(err => {
+                console.error(err);
+                const tbody = document.querySelector('#uploadResultTable tbody');
+                tbody.innerHTML = '<tr><td colspan="4">업로드 중 오류 발생</td></tr>';
+            });
+    }
+    function updateReturns() {
+        // "반품 목록 업데이트" 버튼 클릭 시 AJAX로 update_returns 뷰 호출
+        fetch("{% url 'update_returns' %}", {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(res => {
+            if (!res.ok) {
+                throw new Error('네트워크 응답 에러');
+            }
+            // 성공하면 페이지 새로고침
+            location.reload();
+        })
+        .catch(err => {
+            console.error('반품 목록 업데이트 중 오류:', err);
+            alert('반품 목록 업데이트 중 오류 발생');
+        });
+    }
+</script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const orderNumberCells = document.querySelectorAll(".order-number-cell");
+        const detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+
+        orderNumberCells.forEach(cell => {
+            cell.addEventListener('click', function(event) {
+                // 클릭한 셀의 부모 tr을 찾음
+                const row = this.closest('tr');
+                if (!row) return;
+
+                document.getElementById('modal_claim_type').textContent = row.dataset.claim_type;
+                document.getElementById('modal_store_name').textContent = row.dataset.store_name;
+                document.getElementById('modal_recipient_name').textContent = row.dataset.recipient_name;
+                document.getElementById('modal_option_code').textContent = row.dataset.option_code;
+                document.getElementById('modal_product_name').textContent = row.dataset.product_name;
+                document.getElementById('modal_option_name').textContent = row.dataset.option_name;
+                document.getElementById('modal_quantity').textContent = row.dataset.quantity;
+                document.getElementById('modal_invoice_number').textContent = row.dataset.invoice_number;
+                document.getElementById('modal_claim_status').textContent = row.dataset.claim_status;
+                document.getElementById('modal_claim_reason').textContent = row.dataset.claim_reason;
+                document.getElementById('modal_customer_reason').textContent = row.dataset.customer_reason;
+                document.getElementById('modal_return_shipping_charge').textContent = row.dataset.return_shipping_charge;
+                document.getElementById('modal_shipping_charge_payment_method').textContent = row.dataset.shipping_charge_payment_method;
+                document.getElementById('modal_collect_tracking_number').textContent = row.dataset.collect_tracking_number;
+                document.getElementById('modal_collect_delivery_company').textContent = row.dataset.collect_delivery_company;
+                document.getElementById('modal_processing_status').textContent = row.dataset.processing_status;
+                document.getElementById('modal_note').textContent = row.dataset.note;
+                document.getElementById('modal_inspector').textContent = row.dataset.inspector;
+                document.getElementById('modal_product_issue').textContent = row.dataset.product_issue;
+                document.getElementById('modal_order_number').textContent = row.dataset.order_number;
+                document.getElementById('modal_delivered_date').textContent = row.dataset.delivered_date;
+                document.getElementById('modal_claim_request_date').textContent = row.dataset.claim_request_date;
+
+                detailModal.show();
+                event.stopPropagation();
+            });
+        });
+
+        // 상태 필터 기능
+        const statusFilter = document.getElementById('statusFilter');
+        const rows = document.querySelectorAll('#returnTable tbody tr');
+
+        statusFilter.addEventListener('change', function() {
+            const filterValue = this.value;
+            rows.forEach(row => {
+                const rowStatus = row.dataset.processing_status;
+                if (!filterValue || rowStatus === filterValue) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    });
+    function uploadReasonExcel() {
+            const form = document.getElementById('reasonExcelForm');
+            const formData = new FormData(form);
+
+            fetch("{% url 'upload_reason_excel' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.querySelector('#reasonUploadResultTable tbody');
+                tbody.innerHTML = '';
+                if (data.success) {
+                    data.items.forEach(item => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${item.display_status}</td>
+                            <td>${item.claim_type}</td>
+                            <td>${item.store_name}</td>
+                            <td>${item.order_number}</td>
+                            <td>${item.collect_tracking_number}</td>
+                            <td>${item.collect_delivery_company}</td>
+                            <td>${item.recipient_name}</td>
+                            <td>${item.option_code}</td>
+                            <td>${item.product_name}</td>
+                            <td>${item.option_name}</td>
+                            <td>${item.quantity}</td>
+                            <td>${item.invoice_number}</td>
+                            <td>${item.claim_status}</td>
+                            <td>${item.claim_reason}</td>
+                            <td>${item.customer_reason}</td>
+                            <td>${item.return_shipping_charge}</td>
+                            <td>${item.shipping_charge_payment_method}</td>
+                            <td>${item.processing_status}</td>
+                            <td>${item.note}</td>
+                            <td>${item.inspector}</td>
+                            <td>${item.product_issue}</td>
+                            <td>${item.delivered_date}</td>
+                            <td>${item.claim_request_date}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td colspan="23">${data.message || '오류 발생'}</td>`;
+                    tbody.appendChild(tr);
+                }
+
+                if (data.errors && data.errors.length > 0) {
+                    console.warn('업로드 중 오류 항목:', data.errors);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                const tbody = document.querySelector('#reasonUploadResultTable tbody');
+                tbody.innerHTML = '<tr><td colspan="23">업로드 중 오류 발생</td></tr>';
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const updateReturnsBtn = document.getElementById('update-returns-btn');
+            updateReturnsBtn.addEventListener('click', function() {
+                // 업로드된 엑셀 데이터가 기존 데이터에 매핑되었다고 가정하므로
+                // 여기서는 모달 닫고 반품목록 페이지로 이동
+                const reasonUploadModal = bootstrap.Modal.getInstance(document.getElementById('reasonUploadModal'));
+                reasonUploadModal.hide();
+                window.location.href = "{% url '반품목록' %}";
+            });
+        });
+</script>
+
+{% endblock %}
