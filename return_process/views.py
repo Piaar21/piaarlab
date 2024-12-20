@@ -18,6 +18,7 @@ from .api_clients import (
     get_external_vendor_sku,
     get_return_request_details,
     approve_naver_return,
+    get_product_order_details,
 )
 from django.contrib.auth import login
 from django.contrib.auth.forms import UserCreationForm
@@ -156,6 +157,17 @@ status_code_mapping = {
     'WRONG_DELIVERY': '오배송',
 }
 
+product_order_status_map = {
+    'PAYMENT_WAITING': '결제 대기',
+    'PAYED': '결제 완료',
+    'DELIVERING': '배송 중',
+    'DELIVERED': '배송 완료',
+    'PURCHASE_DECIDED': '구매 확정',
+    'EXCHANGED': '교환완료',
+    'CANCELED': '취소완료',
+    'RETURNED': '반품완료',
+    'CANCELED_BY_NOPAYMENT': '미결제 취소'
+}
 
 # @login_required
 # def update_returns(request):
@@ -164,12 +176,12 @@ status_code_mapping = {
 
 #     # 네이버 반품 및 교환 데이터 업데이트
 #     for account in NAVER_ACCOUNTS:
-#         logger.info(f"Processing Naver account: {account['name']}")
+#         logger.info(f"Processing Naver account: {account['names'][0]}")
 #         naver_returns = fetch_naver_returns(account)
-#         logger.info(f"{account['name']}에서 가져온 네이버 반품/교환 데이터 수: {len(naver_returns)}")
+#         logger.info(f"{account['names'][0]}에서 가져온 네이버 반품/교환 데이터 수: {len(naver_returns)}")
 
 #         if not naver_returns:
-#             logger.info(f"{account['name']}에서 가져온 데이터가 없습니다.")
+#             logger.info(f"{account['names'][0]}에서 가져온 데이터가 없습니다.")
 #             continue
 
 #         for return_data in naver_returns:
@@ -217,7 +229,7 @@ status_code_mapping = {
 #                 collect_delivery_company = ""
 
 #             # 공통 필드 처리
-#             store_name = account['name']
+#             store_name = account['names'][0]
 #             recipient_name = product_order.get('shippingAddress', {}).get('name')
 #             recipient_contact = product_order.get('shippingAddress', {}).get('tel1', '')
 #             option_code = product_order.get('optionManageCode')
@@ -306,13 +318,13 @@ status_code_mapping = {
 
 #     # 쿠팡 반품 및 교환 데이터 업데이트
 #     for account in COUPANG_ACCOUNTS:
-#         logger.info(f"Processing Coupang account: {account['name']}")
+#         logger.info(f"Processing Coupang account: {account['names'][0]}")
 #         coupang_returns = fetch_coupang_returns(account)
-#         logger.info(f"{account['name']}에서 가져온 쿠팡 반품 데이터 수: {len(coupang_returns)}")
+#         logger.info(f"{account['names'][0]}에서 가져온 쿠팡 반품 데이터 수: {len(coupang_returns)}")
 
 #         for return_data in coupang_returns:
 #             order_id = return_data.get('orderId')
-#             store_name = account['name']
+#             store_name = account['names'][0]
 #             recipient_name = return_data.get('requesterName')
 #             product_name = return_data.get('returnItems', [{}])[0].get('vendorItemName')
 #             option_name = product_name
@@ -404,11 +416,11 @@ status_code_mapping = {
 
 #         # 쿠팡 교환 데이터 처리
 #         exchanges = fetch_coupang_exchanges(account)
-#         logger.info(f"{account['name']}에서 가져온 쿠팡 교환 데이터 수: {len(exchanges)}")
+#         logger.info(f"{account['names'][0]}에서 가져온 쿠팡 교환 데이터 수: {len(exchanges)}")
 
 #         for exchange_data in exchanges:
 #             order_id = exchange_data.get('orderId')
-#             store_name = account['name']
+#             store_name = account['names'][0]
 #             recipient_name = exchange_data.get('requesterName')
 #             product_name = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('vendorItemName')
 #             option_name = product_name
@@ -1242,8 +1254,52 @@ def download_unmatched(request):
 
 @login_required
 def collected_items(request):
-    # 수거완료 상태이면서, product_issue가 설정되지 않은 (검수 미완료) 아이템만 가져오기
     items = ReturnItem.objects.filter(processing_status='수거완료')
+
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        action = data.get('action')
+
+        if action == 'update_all_claim_status':
+            order_numbers = list(items.values_list('order_number', flat=True))
+
+            if not items.exists():
+                return JsonResponse({'success': False, 'message': '수거완료 상태인 아이템이 없습니다.'}, status=400)
+
+            # 첫 번째 아이템 기준으로 account_info 결정 (예시)
+            first_item = items.first()
+            platform = first_item.platform.lower()
+            store_name = first_item.store_name
+            if platform == 'naver':
+                target_account = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
+                if not target_account:
+                    return JsonResponse({'success': False, 'message': 'NAVER 계정을 찾을 수 없음'}, status=400)
+                account_info = target_account
+            else:
+                return JsonResponse({'success': False, 'message': '지원되지 않는 플랫폼'}, status=400)
+
+            MAX_IDS = 50  # API 제한을 고려한 최대 갯수
+            chunked_details = []
+
+            for i in range(0, len(order_numbers), MAX_IDS):
+                batch = order_numbers[i:i+MAX_IDS]
+                batch_result = get_product_order_details(account_info, batch)
+                if not batch_result.get('success'):
+                    return JsonResponse({'success': False, 'message': batch_result.get('message')}, status=400)
+                chunked_details.extend(batch_result.get('details', []))
+
+            updated_count = 0
+            for detail in chunked_details:
+                order_id = detail.get('productOrderId')
+                status = detail.get('productOrderStatus', 'N/A')
+                item = ReturnItem.objects.filter(order_number=order_id, processing_status='수거완료').first()
+                if item:
+                    item.product_order_status = status
+                    item.save()
+                    updated_count += 1
+
+            return JsonResponse({'success': True, 'updated_count': updated_count})
+
     return render(request, 'return_process/collected_items.html', {'items': items})
 
 @login_required
@@ -1269,9 +1325,67 @@ def inspect(request, item_id):
 
 @login_required
 def inspected_items(request):
-    # 검수완료 상태인 아이템들만 표시
     items = ReturnItem.objects.filter(processing_status='검수완료')
+
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        action = data.get('action')
+
+        if action == 'update_all_claim_status':
+            if not items.exists():
+                return JsonResponse({'success': False, 'message': '검수완료 상태인 아이템이 없습니다.'}, status=400)
+
+            # 1. 아이템별로 (platform, store_name)을 기준으로 그룹화
+            from collections import defaultdict
+            grouped_by_account = defaultdict(list)
+            for item in items:
+                platform = item.platform.lower()
+                store_name = item.store_name
+                # account_info를 결정하는 로직 필요
+                if platform == 'naver':
+                    target_account = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
+                    if not target_account:
+                        # 해당 아이템은 업데이트 불가
+                        continue
+                    account_key = (platform, store_name)
+                    grouped_by_account[account_key].append(item.order_number)
+                else:
+                    # 지원하지 않는 플랫폼이면 skip 혹은 에러 처리
+                    pass
+
+            MAX_IDS = 50
+            total_updated_count = 0
+
+            # 2. 그룹별로 API 호출
+            for (platform, store_name), order_numbers in grouped_by_account.items():
+                # account_info 결정 (naver 계정 예시)
+                account_info = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
+                if not account_info:
+                    continue
+
+                # 청크 단위로 API 호출
+                chunked_details = []
+                for i in range(0, len(order_numbers), MAX_IDS):
+                    batch = order_numbers[i:i+MAX_IDS]
+                    batch_result = get_product_order_details(account_info, batch)
+                    if not batch_result.get('success'):
+                        return JsonResponse({'success': False, 'message': batch_result.get('message')}, status=400)
+                    chunked_details.extend(batch_result.get('details', []))
+
+                # 3. DB 업데이트
+                for detail in chunked_details:
+                    order_id = detail.get('productOrderId')
+                    status = detail.get('productOrderStatus', 'N/A')
+                    item = ReturnItem.objects.filter(order_number=order_id, processing_status='검수완료').first()
+                    if item:
+                        item.product_order_status = status
+                        item.save()
+                        total_updated_count += 1
+
+            return JsonResponse({'success': True, 'updated_count': total_updated_count})
+
     return render(request, 'return_process/inspected_items.html', {'items': items})
+
 
 
 @csrf_exempt
@@ -1361,10 +1475,6 @@ def send_shipping_sms(request):
         return JsonResponse({"success": False, "message": "Invalid request method"}, status=405)
 
 
-from django.shortcuts import get_object_or_404, redirect
-from .models import ReturnItem
-from .api_clients import approve_naver_return  # 실제 경로에 맞게 수정
-
 @login_required
 def process_return(request, item_id):
     print("process_return 함수 호출됨")  # 디버깅용 로그
@@ -1372,7 +1482,7 @@ def process_return(request, item_id):
     print("플랫폼:", item.platform, "주문번호:", item.order_number)  # 디버깅용 로그
 
     if item.platform.lower() == 'naver':
-        target_account = next((acc for acc in NAVER_ACCOUNTS if acc['name'] == item.store_name), None)
+        target_account = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
         if not target_account:
             print("해당 이름의 NAVER 계정을 찾지 못했습니다.")
             return False, "NAVER 계정을 찾을 수 없음"

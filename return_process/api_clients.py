@@ -13,45 +13,46 @@ from decouple import config
 import json
 import pytz
 import pandas as pd
+from .maps import product_order_status_map
 
 logger = logging.getLogger(__name__)
 
 # 네이버 계정 정보 불러오기
 NAVER_ACCOUNTS = [
-
     {
-        'name': '니뜰리히',
+        'names': ['니뜰리히'],  # 예: 동일 계정에 여러 변형된 이름
         'client_id': config('NAVER_CLIENT_ID_01', default=None),
         'client_secret': config('NAVER_CLIENT_SECRET_01', default=None),
     },
     {
-        'name': '수비다',
+        'names': ['수비다', '수비다 SUBIDA'],  # 예: 여러 스토어명 변형
         'client_id': config('NAVER_CLIENT_ID_02', default=None),
         'client_secret': config('NAVER_CLIENT_SECRET_02', default=None),
     },
     {
-        'name': '노는개최고양',
+        'names': ['노는개최고양', '노는 개 최고양'],  # 예: 스페이스나 변형된 이름
         'client_id': config('NAVER_CLIENT_ID_03', default=None),
         'client_secret': config('NAVER_CLIENT_SECRET_03', default=None),
     },
     {
-        'name': '아르빙',
+        'names': ['아르빙'],  # 예: 공백 추가 변형
         'client_id': config('NAVER_CLIENT_ID_04', default=None),
         'client_secret': config('NAVER_CLIENT_SECRET_04', default=None),
     },
     # 필요에 따라 추가
 ]
 
+
 # 쿠팡 계정 정보 불러오기
 COUPANG_ACCOUNTS = [
     {
-        'name': 'A00291106',
+        'names': ['A00291106','쿠팡01'],
         'access_key': config('COUPANG_ACCESS_KEY_01', default=None),
         'secret_key': config('COUPANG_SECRET_KEY_01', default=None),
         'vendor_id': config('COUPANG_VENDOR_ID_01', default=None),
     },
     {
-        'name': 'A00800631',
+        'names': ['A00800631','쿠팡02'],
         'access_key': config('COUPANG_ACCESS_KEY_02', default=None),
         'secret_key': config('COUPANG_SECRET_KEY_02', default=None),
         'vendor_id': config('COUPANG_VENDOR_ID_02', default=None),
@@ -87,46 +88,10 @@ def fetch_naver_access_token(account_info):
         account_info['token_expires_at'] = datetime.now() + timedelta(seconds=expires_in)
         return access_token
     else:
-        logger.error(f"{account_info['name']} 액세스 토큰 발급 실패: {response.text}")
+        logger.error(f"{account_info['names'][0]} 액세스 토큰 발급 실패: {response.text}")
         return None
 
-# def fetch_naver_access_token(account_info):
-#     print("account_info before fetch token:", account_info)  # 여기서 account_info 값 확인
-#     # 밀리초 단위 timestamp (정수 -> 문자열)
-#     timestamp = str(int(time.time() * 1000))
-    
-#     # client_id와 timestamp 이어붙이기 (구분자 없이)
-#     message = f"{account_info['client_id']}{timestamp}".encode('utf-8')
 
-#     # HMAC-SHA256 해싱
-#     hashed = hmac.new(account_info['client_secret'].encode('utf-8'), message, hashlib.sha256).digest()
-
-#     # Base64 인코딩
-#     client_secret_sign = base64.b64encode(hashed).decode('utf-8')
-
-#     url = 'https://api.commerce.naver.com/external/v1/oauth2/token'
-#     params = {
-#         'client_id': account_info['client_id'],
-#         'timestamp': timestamp,
-#         'client_secret_sign': client_secret_sign,
-#         'grant_type': 'client_credentials',
-#         'type': 'SELF'
-#     }
-
-#     # 요청 전 파라미터 및 URL 로그 출력하여 확인
-#     print("Request Params:", params)
-
-#     response = requests.post(url, data=params)
-#     if response.status_code == 200:
-#         token_data = response.json()
-#         access_token = token_data['access_token']
-#         expires_in = token_data.get('expires_in', 0)
-#         account_info['access_token'] = access_token
-#         account_info['token_expires_at'] = datetime.now() + timedelta(seconds=expires_in)
-#         return access_token
-#     else:
-#         logger.error(f"{account_info['name']} 액세스 토큰 발급 실패: {response.text}")
-#         return None
     
 def get_access_token(account_info):
     print("account_info in fetch_naver_access_token:", account_info)
@@ -204,24 +169,24 @@ def fetch_naver_returns(account_info):
                     elif response.status_code == 429:
                         if retry_count < max_retries:
                             retry_count += 1
-                            logger.error(f"{account_info['name']} API 호출 제한에 걸렸습니다. {retry_count}/{max_retries}회 재시도")
+                            logger.error(f"{account_info['names'][0]} API 호출 제한에 걸렸습니다. {retry_count}/{max_retries}회 재시도")
                             time.sleep(5)
                             continue
                         else:
-                            logger.error(f"{account_info['name']} API 호출 제한 반복 발생, 이 구간 처리 중단")
+                            logger.error(f"{account_info['names'][0]} API 호출 제한 반복 발생, 이 구간 처리 중단")
                             break
                     else:
-                        logger.error(f"{account_info['name']} 변경 상품 주문 내역 조회 실패: {response.status_code}, {response.text}")
+                        logger.error(f"{account_info['names'][0]} 변경 상품 주문 내역 조회 실패: {response.status_code}, {response.text}")
                         break
                     break
                 except requests.exceptions.Timeout:
                     if retry_count < max_retries:
                         retry_count += 1
-                        logger.warning(f"{account_info['name']} 변경 상품 주문 내역 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}")
+                        logger.warning(f"{account_info['names'][0]} 변경 상품 주문 내역 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}")
                         time.sleep(3)
                         continue
                     else:
-                        logger.error(f"{account_info['name']} 변경 상품 주문 내역 조회 타임아웃 반복 발생, 이 구간 처리 중단")
+                        logger.error(f"{account_info['names'][0]} 변경 상품 주문 내역 조회 타임아웃 반복 발생, 이 구간 처리 중단")
                         break
                 except requests.exceptions.RequestException as e:
                     logger.error(f"요청 중 예외 발생: {e}")
@@ -288,23 +253,23 @@ def fetch_naver_order_details(account_info, product_order_ids):
                 elif response.status_code == 429:
                     if retry_count < max_retries:
                         retry_count += 1
-                        logger.error(f"{account_info['name']} 주문 상세 정보 조회 API 호출 제한. 재시도 {retry_count}/{max_retries}")
+                        logger.error(f"{account_info['names'][0]} 주문 상세 정보 조회 API 호출 제한. 재시도 {retry_count}/{max_retries}")
                         time.sleep(5)
                         continue
                     else:
-                        logger.error(f"{account_info['name']} 주문 상세 정보 조회 API 호출 제한 반복 발생. 이 배치 처리 중단.")
+                        logger.error(f"{account_info['names'][0]} 주문 상세 정보 조회 API 호출 제한 반복 발생. 이 배치 처리 중단.")
                         break
                 else:
-                    logger.error(f"{account_info['name']} 주문 상세 정보 조회 실패: {response.status_code}, {response.text}")
+                    logger.error(f"{account_info['names'][0]} 주문 상세 정보 조회 실패: {response.status_code}, {response.text}")
                     break
             except requests.exceptions.Timeout:
                 if retry_count < max_retries:
                     retry_count += 1
-                    logger.warning(f"{account_info['name']} 주문 상세 정보 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}")
+                    logger.warning(f"{account_info['names'][0]} 주문 상세 정보 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}")
                     time.sleep(3)
                     continue
                 else:
-                    logger.error(f"{account_info['name']} 주문 상세 정보 조회 타임아웃 반복 발생. 이 배치 처리 중단.")
+                    logger.error(f"{account_info['names'][0]} 주문 상세 정보 조회 타임아웃 반복 발생. 이 배치 처리 중단.")
                     break
             except requests.exceptions.RequestException as e:
                 logger.error(f"요청 중 예외 발생: {e}")
@@ -316,7 +281,7 @@ def fetch_naver_order_details(account_info, product_order_ids):
 
 
 def approve_naver_return(account_info, product_order_id):
-    print(f"플랫폼(계정): {account_info.get('name', '알 수 없음')} - 주문번호: {product_order_id}")
+    print(f"플랫폼(계정): {account_info['names'][0] if 'names' in account_info else '알 수 없음'} - 주문번호: {product_order_id}")
     access_token = fetch_naver_access_token(account_info)
 
     if not access_token:
@@ -344,6 +309,90 @@ def approve_naver_return(account_info, product_order_id):
             return False, f"반품 승인 실패: {fail_info}"
     else:
         return False, f"API 호출 실패: {response.status_code}, {response.text}"
+
+
+def get_product_order_details(account_info, product_order_ids):
+    print(account_info, product_order_ids)
+    logger.debug("get_product_order_details 호출")
+    logger.debug(f"account_info: {account_info}")
+    logger.debug(f"product_order_ids: {product_order_ids}")
+
+    # product_order_ids가 문자열일 경우 리스트로 변환
+    if isinstance(product_order_ids, str):
+        product_order_ids = [product_order_ids.strip()]
+
+    # product_order_ids가 리스트이지만 유효한 문자열이 아닐 경우 정제
+    elif isinstance(product_order_ids, list):
+        product_order_ids = [str(p).strip() for p in product_order_ids if p]
+
+    if not product_order_ids:
+        logger.error("유효한 product_order_ids가 없습니다.")
+        return {
+            'success': False,
+            'message': '유효한 product_order_ids를 제공해주세요.'
+        }
+
+    access_token = fetch_naver_access_token(account_info)
+    logger.debug(f"access_token: {access_token}")
+
+    if not access_token:
+        logger.error("액세스 토큰을 가져오지 못했습니다.")
+        return {'success': False, 'message': '액세스 토큰 불가'}
+
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+
+    url = 'https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/query'
+    payload = {
+        "productOrderIds": product_order_ids,
+        "quantityClaimCompatibility": True
+    }
+
+    logger.debug(f"요청 URL: {url}")
+    logger.debug(f"요청 headers: {headers}")
+    logger.debug(f"요청 payload: {payload}")
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        logger.debug(f"응답 상태코드: {response.status_code}")
+        logger.debug(f"응답 본문: {response.text}")
+
+        response.raise_for_status()
+    except requests.HTTPError as he:
+        logger.error(f"상품 주문 상세 조회 중 HTTP 오류 발생: {he}")
+        logger.error(f"응답 본문: {response.text if response else 'No Response'}")
+        return {'success': False, 'message': f"상품 주문 상세 조회 실패(HTTP Error): {he}, 응답: {response.text if response else 'No Response'}"}
+    except requests.RequestException as e:
+        logger.error(f"상품 주문 상세 조회 중 요청 예외 발생: {e}")
+        return {'success': False, 'message': f"상품 주문 상세 조회 실패(Request Exception): {e}"}
+
+    data = response.json()
+    result_data = data.get('data', [])
+    details_list = []
+    for item in result_data:
+        product_order = item.get('productOrder', {})
+        productOrderId = product_order.get('productOrderId', '')
+        productOrderStatus = product_order.get('productOrderStatus', 'N/A')
+        claimStatus = item.get('claimStatus', 'N/A')
+        claimType = item.get('claimType', 'N/A')
+
+        details_list.append({
+            'productOrderId': productOrderId,
+            'productOrderStatus': productOrderStatus,
+            'claimStatus': claimStatus,
+            'claimType': claimType,
+        })
+
+    # 여기서 productOrderStatus를 한글로 매핑
+    for detail in details_list:
+        original_status = detail['productOrderStatus']
+        detail['productOrderStatus'] = product_order_status_map.get(original_status, original_status)
+
+    logger.debug(f"파싱된 details_list: {details_list}")
+
+    return {'success': True, 'details': details_list}
 
 def generate_coupang_signature(method, url_path, query_params, secret_key):
     datetime_now = time.strftime('%y%m%dT%H%M%SZ', time.gmtime())
@@ -420,11 +469,11 @@ def fetch_coupang_returns(account_info):
                     # 요청 타임아웃 시 재시도
                     if retry_count < max_retries:
                         retry_count += 1
-                        logger.warning(f"{account_info['name']} 반품 목록 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}, 상태({status}), 기간({from_date}~{to_date})")
+                        logger.warning(f"{account_info['names'][0]} 반품 목록 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}, 상태({status}), 기간({from_date}~{to_date})")
                         time.sleep(3)
                         continue
                     else:
-                        logger.error(f"{account_info['name']} 반품 목록 조회 타임아웃 반복 발생, 상태({status}), 기간({from_date}~{to_date}) 처리 중단")
+                        logger.error(f"{account_info['names'][0]} 반품 목록 조회 타임아웃 반복 발생, 상태({status}), 기간({from_date}~{to_date}) 처리 중단")
                         break
                 except json.JSONDecodeError:
                     logger.error(f"응답 본문이 JSON 형식이 아닙니다: {response.text}")
@@ -452,20 +501,20 @@ def fetch_coupang_returns(account_info):
                     if error_code == 'ERROR' and 'Request timed out' in error_message:
                         if retry_count < max_retries:
                             retry_count += 1
-                            logger.warning(f"{account_info['name']} 반품 목록 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}, 상태({status}), 기간({from_date}~{to_date})")
+                            logger.warning(f"{account_info['names'][0]} 반품 목록 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}, 상태({status}), 기간({from_date}~{to_date})")
                             time.sleep(3)
                             continue
                         else:
-                            logger.error(f"{account_info['name']} 반품 목록 조회 타임아웃 반복 발생, 상태({status}), 기간({from_date}~{to_date}) 처리 중단")
+                            logger.error(f"{account_info['names'][0]} 반품 목록 조회 타임아웃 반복 발생, 상태({status}), 기간({from_date}~{to_date}) 처리 중단")
                             break
                     else:
-                        logger.error(f"{account_info['name']} 반품 목록 조회 실패 (상태: {status}, 기간: {from_date}~{to_date}): {response.status_code}, {response.text}")
+                        logger.error(f"{account_info['names'][0]} 반품 목록 조회 실패 (상태: {status}, 기간: {from_date}~{to_date}): {response.status_code}, {response.text}")
                         break
 
                 # Rate Limit 고려
                 time.sleep(0.5)
 
-    logger.info(f"{account_info['name']}에서 가져온 총 쿠팡 반품 데이터 수: {len(all_returns)}")
+    logger.info(f"{account_info['names'][0]}에서 가져온 총 쿠팡 반품 데이터 수: {len(all_returns)}")
     return all_returns
 
 
@@ -498,7 +547,7 @@ def fetch_coupang_exchanges(account_info):
         response = requests.get(full_url, headers=headers, timeout=30)  # timeout 설정
         response_json = response.json()
     except requests.exceptions.Timeout:
-        logger.error(f"{account_info['name']} 교환 목록 조회 타임아웃 발생")
+        logger.error(f"{account_info['names'][0]} 교환 목록 조회 타임아웃 발생")
         return []
     except json.JSONDecodeError:
         logger.error(f"응답 본문이 JSON 형식이 아닙니다: {response.text}")
@@ -509,10 +558,10 @@ def fetch_coupang_exchanges(account_info):
 
     if response.status_code == 200:
         data = response_json
-        logger.info(f"{account_info['name']}에서 가져온 쿠팡 교환 데이터 수: {len(data.get('data', []))}")
+        logger.info(f"{account_info['names'][0]}에서 가져온 쿠팡 교환 데이터 수: {len(data.get('data', []))}")
         return data.get('data', [])
     else:
-        logger.error(f"{account_info['name']} 교환 목록 조회 실패: {response.status_code}, {response.text}")
+        logger.error(f"{account_info['names'][0]} 교환 목록 조회 실패: {response.status_code}, {response.text}")
         return []
 
 

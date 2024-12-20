@@ -78,6 +78,7 @@ class ReturnItem(models.Model):
     # 추가 필드
     seller_product_item_id = models.CharField(max_length=50, null=True, blank=True, default="")
     recipient_contact = models.CharField(max_length=50, null=True, blank=True, default="")
+    product_order_status = models.CharField(max_length=100, blank=True, null=True)
     
     @property
     def display_status(self):
