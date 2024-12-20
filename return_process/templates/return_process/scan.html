@@ -193,15 +193,11 @@
             const inputValue = input.value.trim();
             if (!inputValue) return;
             
-            // 콤마로 구분
-            const numbers = inputValue.split(',');
-            numbers.forEach(num => {
-                const trimmedNum = num.trim();
-                if (trimmedNum) {
-                    checkNumber(trimmedNum);
-                }
-            });
-
+            // 콤마로 구분된 번호를 배열로 만듭니다.
+            const numbers = inputValue.split(',').map(num => num.trim()).filter(n => n);
+            
+            // 한번에 여러 번호를 전송
+            checkNumbers(numbers);
             input.value = '';
         }
     });
@@ -239,46 +235,43 @@
         return false;
     }
 
-    function checkNumber(number) {
-        fetch("{% url 'scan_submit' %}", {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: "check_number",
-                    number: number
-                })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    const isScannedDuplicate = checkDuplicate(scannedTableBody, data.number);
-                    const isUnmatchedDuplicate = checkDuplicate(unmatchedTableBody, data.number);
+    const checkNumberUrl = "{% url 'check_number_submit' %}";
 
-                    if (isScannedDuplicate || isUnmatchedDuplicate) {
-                        showScanAlert(`중복 운송장 번호: ${data.number}`, 'danger', false);
-                        return;
-                    }
-
-                    if (data.matched) {
-                        addRow(scannedTableBody, data.number, true);
-                        showScanAlert(`운송장번호 ${data.number}는 [일치하는 목록]에 추가되었습니다.`, 'primary', true);
-                    } else {
-                        addRow(unmatchedTableBody, data.number, false);
-                        showScanAlert(`운송장번호 ${data.number}는 [일치하지 않는 목록]에 추가되었습니다.`, 'danger', false);
-                    }
-                } else {
-                    showScanAlert(data.error || '에러 발생', 'danger', false);
-                }
-                input.focus();
-            })
-            .catch(err => {
-                console.error(err);
-                showScanAlert('에러 발생', 'danger', false);
-                input.focus();
+    function checkNumbers(numbers) {
+        fetch("{% url 'check_number_submit' %}", {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ numbers: numbers })
+        })
+        .then(res => res.json())
+        .then(data => {
+            console.log("Check numbers response:", data);
+            
+            // 서버에서 matched/unmatched에 대한 응답을 주도록 수정해야 합니다.
+            // 예: {success: true, matched_list: [...], unmatched_list: [...]}
+            
+            // matched_list에 있는 번호들 scanned-table에 추가
+            data.matched_list.forEach(num => {
+                addRow(scannedTableBody, num, true);
+                showScanAlert(`운송장번호 ${num}는 [일치하는 목록]에 추가되었습니다.`, 'primary', true);
             });
+            
+            // unmatched_list에 있는 번호들 unmatched-table에 추가
+            data.unmatched_list.forEach(num => {
+                addRow(unmatchedTableBody, num, false);
+                showScanAlert(`운송장번호 ${num}는 [일치하지 않는 목록]에 추가되었습니다.`, 'danger', false);
+            });
+
+            input.focus();
+        })
+        .catch(err => {
+            console.error(err);
+            showScanAlert('에러 발생', 'danger', false);
+            input.focus();
+        });
     }
 
     function addRow(tbody, number, matched) {
