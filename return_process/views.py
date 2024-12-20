@@ -112,6 +112,11 @@ receipt_status_map = {
     'EXCHANGE_REQUEST': '교환 요청',
     'EXCHANGE_ACCEPT': '교환 수락',
     'EXCHANGE_REJECT': '교환 거부',
+    'COLLECTING'	: '수거중',
+    'COLLECT_DONE'    : '수거완료',
+    'EXCHANGE_DONE	': '교환완료',
+    'RETURN_REJECT	': '반품철회',
+    'EXCHANGE_REJECT': '교환철회',
 }
 
 cancel_reason_category_map = {
@@ -1482,6 +1487,8 @@ def process_return(request, item_id):
     print("플랫폼:", item.platform, "주문번호:", item.order_number)  # 디버깅용 로그
 
     if item.platform.lower() == 'naver':
+        # NAVER_ACCOUNTS에서 account_info 찾는 로직
+        store_name = item.store_name
         target_account = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
         if not target_account:
             print("해당 이름의 NAVER 계정을 찾지 못했습니다.")
@@ -1489,32 +1496,41 @@ def process_return(request, item_id):
 
         account_info = target_account
 
-        print("네이버 반품 승인 시작")  # 디버깅용 로그
-        success, message = approve_naver_return(account_info, item.order_number)
-        print("반품 승인 결과:", success, message)  # 디버깅용 로그
+        # 조건 체크
+        # claim_type가 RETURN 또는 N/A, 그리고 product_order_status가 DELIVERED, DELIVERING, PURCHASE_DECIDED 일 때만 API 호출
+        condition_call_api = (item.claim_type in ['RETURN', 'N/A']) and (item.product_order_status in ['DELIVERED', 'DELIVERING', 'PURCHASE_DECIDED'])
 
-        if success:
-            # 현재 아이템 반품완료 처리
-            item.processing_status = 'returned'
-            item.save()
+        if condition_call_api:
+            print("네이버 반품 승인 시작")  # 디버깅용 로그
+            success, message = approve_naver_return(account_info, item.order_number)
+            print("반품 승인 결과:", success, message)  # 디버깅용 로그
 
-            order_prefix = item.order_number[:10]
-            related_items = ReturnItem.objects.filter(
-                recipient_name=item.recipient_name,
-                recipient_contact=item.recipient_contact,
-                order_number__startswith=order_prefix,
-                processing_status='inspected'
-            ).exclude(id=item.id)
-
-            print("연관 아이템들:", related_items)
-            for ri in related_items:
-                ri.processing_status = 'returned'
-                ri.save()
-
-            return True, "반품완료 처리 성공"
+            if not success:
+                print("네이버 반품 승인 실패:", message)
+                return False, message
         else:
-            print("네이버 반품 승인 실패:", message)
-            return False, message
+            # API 호출 없이 바로 반품완료 처리
+            print("API 호출 없이 바로 반품 완료 처리")
+            message = "API 호출 없이 반품완료 처리"
+
+        # 여기까지 왔다면 반품완료 처리 공통 로직
+        item.processing_status = 'returned'
+        item.save()
+
+        order_prefix = item.order_number[:10]
+        related_items = ReturnItem.objects.filter(
+            recipient_name=item.recipient_name,
+            recipient_contact=item.recipient_contact,
+            order_number__startswith=order_prefix,
+            processing_status='inspected'
+        ).exclude(id=item.id)
+
+        print("연관 아이템들:", related_items)
+        for ri in related_items:
+            ri.processing_status = 'returned'
+            ri.save()
+
+        return True, "반품완료 처리 성공"
 
     elif item.platform.lower() == 'coupang':
         print("쿠팡 반품 승인 로직 시작")  # 디버깅용 로그
@@ -1524,7 +1540,7 @@ def process_return(request, item_id):
 
     else:
         return False, "지원되지 않는 플랫폼"
-
+    
 @login_required
 def process_return_bulk(request):
     if request.method == 'POST':

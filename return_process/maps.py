@@ -22,6 +22,11 @@ receipt_status_map = {
     'EXCHANGE_REQUEST': '교환 요청',
     'EXCHANGE_ACCEPT': '교환 수락',
     'EXCHANGE_REJECT': '교환 거부',
+    'COLLECTING'	: '수거중',
+    'COLLECT_DONE'    : '수거완료',
+    'EXCHANGE_DONE	': '교환완료',
+    'RETURN_REJECT	': '반품철회',
+    'EXCHANGE_REJECT': '교환철회',
 }
 
 cancel_reason_category_map = {
