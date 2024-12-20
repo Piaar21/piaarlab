@@ -13,6 +13,8 @@
 
         <input type="text" class="form-control w-auto" id="input-note" placeholder="사유(특이사항) 입력">
         <button class="btn btn-primary ms-2" id="apply-reason">사유 일괄 적용</button>
+        <!-- 새로운 버튼 추가 -->
+        <button class="btn btn-warning ms-2" id="update-product-order-status">현재클레임상태 업데이트</button>
         <button class="btn btn-danger ms-2" id="delete-items">데이터 삭제</button>
     </div>
 
@@ -30,6 +32,8 @@
                                 수거 송장번호<br>
                                 <input type="text" id="collect-tracking-filter" placeholder="필터">
                             </th>
+                            <th>현재클레임상태</th>
+                            <th>클레임 종류</th>
                             <th>클레임사유</th>
                             <th>고객사유</th>
                             <th>상품명</th>
@@ -42,8 +46,9 @@
                             <th>수거배송비</th>
                             <th>배송비지급방식</th>
                             <th>주문번호</th>
-
                             <th>검수자</th>
+                            <th>배송 완료일</th>
+                            <th>클레임 요청일</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -64,13 +69,14 @@
                                 <span class="text-danger fw-bold">미검수</span>
                                 {% endif %}
                             </td>
-                            <td>{{ item.note|default:"N/A" }}</td>
+                            <td class="note-cell">{{ item.note|default:"N/A" }}</td>
                             <td class="collect-tracking">{{ item.collect_tracking_number|default:"N/A" }}</td>
+                            <td class="product-order-status-cell">{{ item.product_order_status|default:"N/A" }}</td>
+                            <td>{{ item.claim_type|default:"N/A" }}</td>
                             <td>{{ item.claim_reason|default:"N/A" }}</td>
                             <td>{{ item.customer_reason|default:"N/A" }}</td>
                             <td>{{ item.product_name|default:"N/A" }}</td>
                             <td>{{ item.option_name|default:"N/A" }}</td>
-                            <!-- 수량 셀에 .quantity-cell 클래스 추가 -->
                             <td class="quantity-cell">{{ item.quantity|default:"0" }}</td>
                             <td>{{ item.store_name|default:"N/A" }}</td>
                             <td>{{ item.recipient_name|default:"N/A" }}</td>
@@ -80,10 +86,12 @@
                             <td>{{ item.shipping_charge_payment_method|default:"N/A" }}</td>
                             <td class="order-number">{{ item.order_number }}</td>
                             <td>{{ item.inspector|default:"N/A" }}</td>
+                            <td>{{ item.delivered_date }}</td>
+                            <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="18" class="text-center">데이터가 없습니다.</td>
+                            <td colspan="19" class="text-center">데이터가 없습니다.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -227,6 +235,7 @@
     document.addEventListener('DOMContentLoaded', function () {
         const applyReasonBtn = document.getElementById('apply-reason');
         const deleteItemsBtn = document.getElementById('delete-items');
+        const updateStatusBtn = document.getElementById('update-product-order-status');
         const inputNote = document.getElementById('input-note');
         const reasonButtons = document.querySelectorAll('.reason-btn');
         const rows = document.querySelectorAll('#items-table tbody tr');
@@ -248,32 +257,30 @@
             }, duration);
         }
 
-        function getCheckedIds() {
+        function getCheckedRows() {
             const checkedRows = [];
             document.querySelectorAll('.row-checkbox:checked').forEach(chk => {
                 const tr = chk.closest('tr');
                 if (tr) {
-                    checkedRows.push(tr.getAttribute('data-item-id'));
+                    checkedRows.push(tr);
                 }
             });
             return checkedRows;
         }
 
+        function getCheckedIds() {
+            return getCheckedRows().map(tr => tr.getAttribute('data-item-id'));
+        }
+
         // 키 입력 이벤트 추가 (전역)
         document.addEventListener('keydown', function (e) {
             const checkedIds = getCheckedIds();
-
-            // 체크된 항목이 없고, 현재 focus가 inputNote(사유 입력창) 또는 다른 주요 인풋에 없을 때만 포커스 이동
-            // 예: 현재 포커스된 요소가 inputNote라면 바코드 스캔 포커스 이동을 생략
-            if (checkedIds.length === 0) {
-                const activeElem = document.activeElement;
-                // activeElem이 inputNote가 아니고, 수거송장번호 인풋도 아닌 경우에만 포커스
-                if (activeElem !== inputNote && activeElem !== collectTrackingFilter) {
-                    // 수거송장번호 인풋에 포커스
-                    collectTrackingFilter.focus();
-                }
+            const activeElem = document.activeElement;
+            if (checkedIds.length === 0 && activeElem !== inputNote && activeElem !== collectTrackingFilter) {
+                collectTrackingFilter.focus();
             }
         });
+
         // 필터 인풋 이벤트
         collectTrackingFilter.addEventListener('input', function () {
             const filterValue = this.value.trim().toLowerCase();
@@ -335,7 +342,6 @@
                     .then(data => {
                         if (data.success) {
                             showTemporaryMessage('검수 상태 업데이트 완료');
-                            // 오배송, 이상없음, 파손및불량, 보류는 업데이트 후 새로고침
                             setTimeout(() => {
                                 location.reload();
                             }, 1100);
@@ -370,8 +376,7 @@
                 .then(data => {
                     if (data.success) {
                         showTemporaryMessage('사유(특이사항) 업데이트 완료');
-                        // 사유 업데이트 시에는 새로고침 없이 부분 업데이트
-                        // data.updated = [{id: '...', note: '...'}, ...] 형태라고 가정
+                        // 부분 업데이트
                         if (data.updated && Array.isArray(data.updated)) {
                             data.updated.forEach(item => {
                                 const row = document.querySelector(`#items-table tbody tr[data-item-id="${item.id}"]`);
@@ -424,6 +429,26 @@
                         showTemporaryMessage('삭제 실패');
                     }
                 });
+        });
+
+        document.getElementById('update-product-order-status').addEventListener('click', function() {
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action: 'update_all_claim_status' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('현재 클레임 상태 업데이트 완료: ' + data.updated_count + '개 항목');
+                    location.reload();
+                } else {
+                    alert('현재 클레임 상태 업데이트 실패: ' + (data.message || '알 수 없는 오류'));
+                }
+            });
         });
 
         // 상세 정보 모달 열기

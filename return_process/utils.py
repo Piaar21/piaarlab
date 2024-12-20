@@ -2,6 +2,25 @@
 
 from .models import ReturnItem
 from datetime import datetime
+import logging
+from .api_clients import (
+    NAVER_ACCOUNTS,
+    COUPANG_ACCOUNTS,
+    fetch_naver_returns,
+    fetch_coupang_returns,
+    fetch_coupang_exchanges,
+    get_order_detail,
+    get_external_vendor_sku,
+    get_return_request_details,
+)
+from .maps import receipt_type_map, receipt_status_map, cancel_reason_category_map, status_code_mapping
+
+
+import json
+
+
+logger = logging.getLogger(__name__)
+
 
 def save_return_items(data, platform):
     for item in data:
@@ -24,12 +43,12 @@ def update_returns_logic():
     # 네이버 반품 및 교환 데이터 업데이트
     logger.info(f"네이버 계정 수: {len(NAVER_ACCOUNTS)}")
     for account in NAVER_ACCOUNTS:
-        logger.info(f"Processing Naver account: {account['name']}")
+        logger.info(f"Processing Naver account: {account['names'][0]}")
         naver_returns = fetch_naver_returns(account)
-        logger.info(f"{account['name']}에서 가져온 네이버 반품/교환 데이터 수: {len(naver_returns)}")
+        logger.info(f"{account['names'][0]}에서 가져온 네이버 반품/교환 데이터 수: {len(naver_returns)}")
 
         if not naver_returns:
-            logger.info(f"{account['name']}에서 가져온 데이터가 없습니다.")
+            logger.info(f"{account['names'][0]}에서 가져온 데이터가 없습니다.")
             continue
 
         for return_data in naver_returns:
@@ -67,7 +86,7 @@ def update_returns_logic():
                 collect_tracking_number = ""
                 collect_delivery_company = ""
 
-            store_name = account['name']
+            store_name = account['names'][0]
             recipient_name = product_order.get('shippingAddress', {}).get('name')
             recipient_contact = product_order.get('shippingAddress', {}).get('tel1', '')
             option_code = product_order.get('optionManageCode')
@@ -149,13 +168,13 @@ def update_returns_logic():
 
     # 쿠팡 반품 및 교환 데이터 업데이트
     for account in COUPANG_ACCOUNTS:
-        logger.info(f"Processing Coupang account: {account['name']}")
+        logger.info(f"Processing Coupang account: {account['names'][0]}")
         coupang_returns = fetch_coupang_returns(account)
-        logger.info(f"{account['name']}에서 가져온 쿠팡 반품 데이터 수: {len(coupang_returns)}")
+        logger.info(f"{account['names'][0]}에서 가져온 쿠팡 반품 데이터 수: {len(coupang_returns)}")
 
         for return_data in coupang_returns:
             order_id = return_data.get('orderId')
-            store_name = account['name']
+            store_name = account['names'][0]
             recipient_name = return_data.get('requesterName')
             product_name = return_data.get('returnItems', [{}])[0].get('vendorItemName')
             option_name = product_name
@@ -245,11 +264,11 @@ def update_returns_logic():
 
         # 쿠팡 교환 데이터 처리
         exchanges = fetch_coupang_exchanges(account)
-        logger.info(f"{account['name']}에서 가져온 쿠팡 교환 데이터 수: {len(exchanges)}")
+        logger.info(f"{account['names'][0]}에서 가져온 쿠팡 교환 데이터 수: {len(exchanges)}")
 
         for exchange_data in exchanges:
             order_id = exchange_data.get('orderId')
-            store_name = account['name']
+            store_name = account['names'][0]
             recipient_name = exchange_data.get('requesterName')
             product_name = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('vendorItemName')
             option_name = product_name

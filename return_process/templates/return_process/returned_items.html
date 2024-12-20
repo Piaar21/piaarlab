@@ -45,6 +45,8 @@
                             <tr>
                                 <th><input type="checkbox" id="select-all"></th>
                                 <th>검수 결과</th>
+                                <th>현재클레임상태</th>
+                                <th>클레임 종류</th>
                                 <th>클레임 사유</th>
                                 <th>고객 사유</th>
                                 <th>수거 배송비</th>
@@ -64,6 +66,8 @@
                             <tr>
                                 <td><input type="checkbox" name="item_ids" value="{{ item.id }}"></td>
                                 <td class="issue-cell">{{ item.product_issue|default:"미검수" }}</td>
+                                <td class="product-order-status-cell">{{ item.product_order_status|default:"N/A" }}</td>
+                                <td>{{ item.claim_type|default:"N/A" }}</td>
                                 <td class="reason-cell">{{ item.claim_reason|default:"N/A" }}</td>
                                 <td>{{ item.customer_reason|default:"N/A" }}</td>
                                 <td>{{ item.return_shipping_charge|default:"0" }}</td>
