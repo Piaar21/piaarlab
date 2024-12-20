@@ -5,7 +5,7 @@ from datetime import datetime
 from dateutil.parser import parse
 import logging
 from django.utils import timezone
-from .maps import receipt_type_map, receipt_status_map, cancel_reason_category_map, status_code_mappingLoginView
+from .maps import receipt_type_map, receipt_status_map, cancel_reason_category_map, status_code_mapping
 from .models import ReturnItem, NaverAccount, CoupangAccount
 from .api_clients import (
     NAVER_ACCOUNTS,
