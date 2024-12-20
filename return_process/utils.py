@@ -4,20 +4,26 @@ from .models import ReturnItem
 from datetime import datetime
 from dateutil.parser import parse
 import logging
+from django.utils import timezone
+from .maps import receipt_type_map, receipt_status_map, cancel_reason_category_map, status_code_mappingLoginView
+from .models import ReturnItem, NaverAccount, CoupangAccount
 from .api_clients import (
     NAVER_ACCOUNTS,
     COUPANG_ACCOUNTS,
     fetch_naver_returns,
     fetch_coupang_returns,
     fetch_coupang_exchanges,
+    get_seller_product_item_id,
     get_order_detail,
     get_external_vendor_sku,
     get_return_request_details,
+    approve_naver_return,
+    get_product_order_details,
 )
-from .maps import receipt_type_map, receipt_status_map, cancel_reason_category_map, status_code_mapping
-
-
 import json
+
+
+
 
 
 logger = logging.getLogger(__name__)
