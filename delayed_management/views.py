@@ -2,7 +2,7 @@ import openpyxl
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from .forms import DelayedOrderUploadForm, OptionStoreMappingUploadForm  
-from .models import DelayedOrder, ProductOptionMapping ,OptionStoreMapping, DelayedShipment
+from .models import DelayedOrder, ProductOptionMapping ,OptionStoreMapping, DelayedShipment,DelayedShipmentGroup
 from django.core.paginator import Paginator
 from .api_clients import get_exchangeable_options
 from .spreadsheet_utils import read_spreadsheet_data
@@ -22,10 +22,13 @@ from django.http import HttpResponse
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # 필요 시 레벨 지정
 
+# ==========================
+# 1) "업로드" + "리스트 업로드" 함수
+# ==========================
 def upload_delayed_orders(request):
     print("=== DEBUG: upload_delayed_orders 뷰 진입 ===")
 
-    # 1) 엑셀 업로드(임시 세션 저장)
+    # (A) 엑셀 업로드 (임시 세션 저장)
     if request.method == 'POST' and 'upload_excel' in request.POST:
         print("=== DEBUG: 엑셀 업로드 처리 시작 ===")
         form = DelayedOrderUploadForm(request.POST, request.FILES)
@@ -92,11 +95,12 @@ def upload_delayed_orders(request):
             messages.error(request, "파일 업로드에 실패했습니다.")
             return redirect('upload_delayed_orders')
 
-    # 2) 리스트 업로드(최종 DB 저장 + 자동 처리)
+    # (B) "리스트 업로드" (최종 DB 저장) + 자동처리(옵션추출/스토어매핑/재입고동기화)
     elif request.method == 'POST' and 'finalize' in request.POST:
         print("=== DEBUG: 리스트 업로드(최종 저장) 처리 시작 ===")
         temp_orders = request.session.get('delayed_orders_temp', [])
         print(f"=== DEBUG: 현재 temp_orders 개수: {len(temp_orders)} ===")
+
         if not temp_orders:
             print("=== DEBUG: temp_orders 비어있음 ===")
             messages.error(request, "저장할 데이터가 없습니다.")
@@ -104,8 +108,9 @@ def upload_delayed_orders(request):
 
         newly_created_codes = []
         row_count = 0
+        group_token = str(uuid.uuid4())
 
-        # DB 저장
+        # 1) 실제 DB 저장
         for od in temp_orders:
             print(f"=== DEBUG: DB 저장 중: {od} ===")
             shipment = DelayedShipment.objects.create(
@@ -120,15 +125,16 @@ def upload_delayed_orders(request):
                 order_number_1=od['order_number_1'],
                 order_number_2=od['order_number_2'],
                 store_name=od['store_name'],
+                token = group_token,   # 동일하게!
             )
             row_count += 1
             newly_created_codes.append(shipment.option_code)
 
-        # 세션 제거
+        # 2) 세션 제거
         request.session['delayed_orders_temp'] = []
         print(f"=== DEBUG: {row_count}건 DB 저장 완료 ===")
 
-        # 자동 처리
+        # 3) 추가 자동 처리 (옵션추출, 스토어매핑, 재입고 동기화)
         extract_options_for_codes(newly_created_codes)
         store_mapping_for_codes(newly_created_codes)
         update_restock_for_codes(newly_created_codes)
@@ -140,7 +146,7 @@ def upload_delayed_orders(request):
         )
         return redirect('delayed_shipment_list')
 
-    # 3) 임시 데이터 삭제
+    # (C) 임시 데이터(세션) 중 하나 삭제
     elif request.method == 'POST' and 'delete_item' in request.POST:
         print("=== DEBUG: 임시 데이터 삭제 요청 감지 ===")
         index_to_delete = request.POST.get('delete_index')
@@ -163,7 +169,7 @@ def upload_delayed_orders(request):
                 messages.error(request, "잘못된 요청입니다.")
         return redirect('upload_delayed_orders')
 
-    # GET
+    # (D) GET 요청 → 업로드 폼 페이지 + 임시 데이터 테이블
     else:
         print("=== DEBUG: GET 요청으로 폼 페이지 로드 ===")
         temp_orders = request.session.get('delayed_orders_temp', [])
@@ -173,94 +179,94 @@ def upload_delayed_orders(request):
             'form': DelayedOrderUploadForm(),
             'temp_orders': temp_orders,
         })
-    
 
+
+# ==========================
+# 2) 하위 처리 함수들
+# ==========================
 def extract_options_for_codes(option_codes):
-    """
-    "옵션추출" - 중복 레코드 모두 filter()하여 업데이트.
-    needed_qty는 shipment.quantity(정수 변환)로 가정
-    """
     for code in option_codes:
         qs = DelayedShipment.objects.filter(option_code=code)
         if not qs.exists():
             continue
 
-        # 첫 번째 레코드의 quantity를 needed_qty로 사용(예시)
-        first_shipment = qs.first()
-        try:
-            needed_qty = int(first_shipment.quantity) if first_shipment.quantity else 1
-        except ValueError:
-            needed_qty = 1
+        # 여러 건이 있을 수도 있으므로 (MultipleObjectsReturned 방지)
+        # 하나씩 처리 or values_list() 등을 사용
+        for shipment in qs:
+            needed_qty = 1  # 기본값
+            try:
+                needed_qty = int(shipment.quantity)
+            except (ValueError, TypeError):
+                needed_qty = 1
 
-        # 교환가능 옵션 조회 함수(시그니처: get_exchangeable_options(option_code, needed_qty))
-        exchangeable_list = get_exchangeable_options(code, needed_qty)
-        merged_options = ",".join(exchangeable_list) if exchangeable_list else "상담원 문의"
+            # 이제 needed_qty를 실제로 넘김
+            exchange_list = get_exchangeable_options(code, needed_qty=needed_qty)
+            exchange_str = ",".join(exchange_list) if exchange_list else "상담원 문의"
 
-        # qs 전부에 반영
-        for s in qs:
-            s.exchangeable_options = merged_options
-            s.save()
+            # shipment 한 건씩 갱신 or bulk update
+            shipment.exchangeable_options = exchange_str
+            shipment.save()
 
 
 def store_mapping_for_codes(option_codes):
     """
-    "스토어 매핑" - 중복 레코드도 모두 filter() 후 store_name 업데이트
+    방금 새로 생성된 DelayedShipment 레코드들에 대해 store_name 매핑
     """
+    for code in option_codes:
+        # 1) 해당 code의 DelayedShipment들
+        qs = DelayedShipment.objects.filter(option_code=code)
+        if not qs.exists():
+            continue
+
+        # 2) OptionStoreMapping 조회
+        try:
+            osm = OptionStoreMapping.objects.get(option_code=code)
+            store_name = osm.store_name
+        except OptionStoreMapping.DoesNotExist:
+            store_name = ""
+
+        # 3) update
+        qs.update(store_name=store_name)
+
+
+def update_restock_for_codes(option_codes):
+    """
+    스프레드시트 탭 or ETA_RANGES 등에 따라 expected_restock_date / status 업데이트
+    (MultipleObjectsReturned 방지: filter() 사용)
+    """
+    # 예: ETA_RANGES
+    ETA_RANGES = {
+        'purchase': (14, 21),
+        'shipping': (10, 14),
+        'arrived': (7, 10),
+        'document': (5, 7),
+        'loading': (1, 4),
+        'nopurchase': (0, 0),
+    }
+
+    today = date.today()
+
     for code in option_codes:
         qs = DelayedShipment.objects.filter(option_code=code)
         if not qs.exists():
             continue
 
-        # mapping 테이블에서 store_name 가져오기
-        try:
-            mapping = OptionStoreMapping.objects.get(option_code=code)
-            store_name = mapping.store_name
-        except OptionStoreMapping.DoesNotExist:
-            store_name = ""
+        # 단순히 status='purchase' 라고 가정:
+        # 실제로는 "sheet 탭" 로직 등을 참고해야 함
+        # 여기서는 nopurchase → purchase 로 바꾸고, expected_restock_date 세팅
+        for shipment in qs:
+            if shipment.status == 'nopurchase':
+                shipment.status = 'purchase'
+            min_d, _ = ETA_RANGES.get(shipment.status, (0, 0))
+            calc_date = today + timedelta(days=min_d) if min_d else None
 
-        for s in qs:
-            s.store_name = store_name
-            s.save()
+            # expected_restock_date 매번 갱신
+            shipment.expected_restock_date = calc_date
+            # restock_date가 None이면 최초 설정
+            if shipment.restock_date is None:
+                shipment.restock_date = calc_date
 
-
-def update_restock_for_codes(option_codes):
-    """
-    "재입고 동기화" - 스프레드시트 5개 탭 순회, option_code 매칭되면 ETA 등 업데이트
-    """
-    client = get_gspread_client(settings.SERVICE_ACCOUNT_FILE)
-    sh = client.open_by_key("1qQfo2Pp-odUuYwKmQXNPv1phzK6Gi2JtlJYaaz3T1F0")
-
-    tabs = ["구매된상품들", "배송중", "도착완료", "서류작성", "선적중"]
-    today = date.today()
-
-    for tab_name in tabs:
-        try:
-            worksheet = sh.worksheet(tab_name)
-        except WorksheetNotFound:
-            print(f"=== 시트 {tab_name} 없음, 건너뜁니다.")
-            continue
-
-        data = worksheet.get_all_values()
-        for row in data[1:]:
-            if not row or len(row) < 1:
-                continue
-            code = row[0].strip()
-            if code not in option_codes:
-                continue
-
-            status_code = map_status(tab_name)
-            min_days, max_days = ETA_RANGES.get(status_code, (0,0))
-            calc_date = today + timedelta(days=min_days) if min_days else None
-
-            # 중복 레코드 전부 업데이트
-            qs = DelayedShipment.objects.filter(option_code=code)
-            for s in qs:
-                s.expected_restock_date = calc_date
-                if s.restock_date is None:
-                    s.restock_date = calc_date
-                s.status = status_code
-                s.save()
-
+            shipment.save()
 
 
 def post_list_view(request):
@@ -513,43 +519,35 @@ def change_exchangeable_options(request):
             logger.debug("=== DEBUG: 문자 발송 로직 진입 ===")
 
             option_codes = request.POST.getlist('option_codes', [])
-            logger.debug(f"=== DEBUG: 수신한 option_codes={option_codes}")
-
             if not option_codes:
                 messages.error(request, "문자 발송할 항목이 선택되지 않았습니다.")
                 return redirect('delayed_shipment_list')
 
             shipments = DelayedShipment.objects.filter(option_code__in=option_codes)
-            logger.debug(f"=== DEBUG: DelayedShipment 쿼리셋 count={shipments.count()}")
-
             if not shipments.exists():
                 messages.error(request, "발송할 데이터가 없습니다.")
                 return redirect('delayed_shipment_list')
 
+            # (1) 모든 Shipment에 대해 동일 group_token을 새로 생성해서 덮어씌우는 경우
+            group_token = str(uuid.uuid4())
+            for s in shipments:
+                s.token = group_token
+                s.save()
 
-
-            # 실제 발송할 메시지들 생성
+            # (2) 메시지 생성
             messages_list = []
             for s in shipments:
-                logger.debug(f"=== DEBUG: 처리중 shipment id={s.id}, code={s.option_code}, store={s.store_name}")
-
                 # store_name → channel_name
                 channel_name = map_store_to_channel(s.store_name)
-
-                # pfId, templateId에 따라 “알림톡” 또는 “문자” 판단
                 pf_id = get_pfId_by_channel(channel_name)
                 template_id = get_templateId_by_channel(channel_name)
-
-                # 만약 pf_id가 있으면 알림톡, 없으면 문자
+                
+                # 예: 알림톡인지 문자(SMS)인지 구분
                 if pf_id:
                     s.send_type = 'KAKAO'
                 else:
                     s.send_type = 'SMS'
-                # 발송 전 상태
                 s.send_status = 'SENDING'
-                # 토큰 생성
-                new_token = uuid.uuid4()
-                s.token = new_token
                 s.save()
 
                 # url_thx, url_change 만들 때, 로그로 확인
@@ -848,6 +846,12 @@ def solapi_send_messages(messages_list):
     for s, msg_obj in messages_list:
         body["messages"].append(msg_obj)
 
+    # **(1) 메시지 유형 식별** - kakaoOptions가 있으면 KAKAO, 없으면 SMS로 가정
+        if "kakaoOptions" in msg_obj:
+            s.send_type = "KAKAO"  
+        else:
+            s.send_type = "SMS"
+
     # Solapi 인증 헤더
     now_iso = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
     salt = str(uuid.uuid4())
@@ -878,11 +882,78 @@ def solapi_send_messages(messages_list):
     else:
         # 전송 실패
         for s, msg_obj in messages_list:
+            # **(2) send_type=FAIL로 덮어쓰면, 어떤 발송수단 시도인지 알 수 없으니 
+            #        필요하다면 그대로 KAKAO/SMS 유지 + send_status='FAIL'만 표기도 가능**
+            s.send_type = 'FAIL'   
             s.send_status = 'FAIL'
             s.save()
             fail_list.append(s.option_code)
 
     return success_list, fail_list
+
+
+##########################################
+# 2) 그룹 단위로 카톡을 보내는 예시 함수
+##########################################
+def send_kakao_for_group(group_id):
+    """
+    DelayedShipmentGroup 하나의 id를 받아,
+    그 그룹 내에 포함된 DelayedShipment 여러 개를 한꺼번에 안내.
+    """
+    group = get_object_or_404(DelayedShipmentGroup, id=group_id)
+
+    # 만약 group.token 이 없으면 새로 발행
+    if not group.token:
+        group.token = str(uuid.uuid4())
+        group.save()
+
+    # 그룹 대표 연락처
+    contact = group.contact
+
+    # 그룹에 속한 주문
+    shipments = group.shipments.all()
+    # 실제론 여러 주문에 대해 안내문을 만들거나, 첫 번째 주문만 참조할 수도 있음
+    # 여기서는 첫 Shipment만 예시
+    first_s = shipments.first()
+
+    if not first_s:
+        raise ValueError("이 그룹에는 DelayedShipment가 하나도 없습니다.")
+
+    # store_name(혹은 brand)에 따라 pfId, templateId 매핑
+    store_name = first_s.store_name or "기본값"
+    pf_id = get_pfId_by_channel(store_name)        # 프로젝트에 맞게 구현
+    template_id = get_templateId_by_channel(store_name)
+
+    # URL: 그룹 단위로 “기다리기 / 옵션변경”을 처리할 엔드포인트
+    # 예: /delayed/customer-group-action?token=...
+    domain = getattr(settings, 'MY_SERVER_DOMAIN', 'https://example.com')
+    confirm_url = f"{domain}/delayed/customer-group-action?token={group.token}"
+
+    # 치환변수 구성
+    # 만약 여러 상품명을 한꺼번에 보여주려면
+    # product_summary = ", ".join([s.order_product_name for s in shipments])
+    product_summary = first_s.order_product_name or "(상품명)"
+
+    variables = {
+        "#{url}": confirm_url,
+        "#{상품명}": product_summary,
+        "#{고객명}": first_s.customer_name or "고객님"
+    }
+
+    msg = {
+        "to": contact,
+        "from": getattr(settings, 'SOLAPI_SENDER_NUMBER', ''),  # 발신번호
+        "kakaoOptions": {
+            "pfId": pf_id,
+            "templateId": template_id,
+            "variables": variables
+        }
+    }
+
+    # 전송
+    result = solapi_send_messages([msg])  # 여러 건이면 messages 배열
+    # 필요시 result를 반환 / DB 저장 처리
+    return result
 
 
 def make_solapi_signature(now_iso, salt, secret_key):
@@ -939,38 +1010,34 @@ def confirm_token_view(request):
     
 
 def customer_action_view(request):
-    """
-    카카오톡(문자)에서 두 가지 버튼:
-      1) ?action=wait&token=abc-... => "기다리기"
-      2) ?action=change&token=xyz-... => "옵션변경"
-    """
     action = request.GET.get('action', '')
     token = request.GET.get('token', '')
-
+    
     if not token:
         return HttpResponse("유효하지 않은 요청: token 없음", status=400)
-
-    # DB에서 토큰으로 해당 Shipment 조회 (일치하는 첫 번째 또는 여러 개면 first)
+    
     shipment = DelayedShipment.objects.filter(token=token).first()
     if not shipment:
         return HttpResponse("유효하지 않은 토큰", status=404)
 
     if action == 'wait':
-        # 1) "기다리기" 로직: 
-        #   예: waiting = True, confirmed = True 로 업데이트
+        # "기다리기" 버튼 클릭
+        # -> waiting = True, confirmed = True
         shipment.waiting = True
         shipment.confirmed = True
         shipment.save()
-        #   "감사합니다" 페이지로 이동(또는 렌더)
+
+        # 감사 페이지로 이동(또는 render)
         return redirect('thank_you_view')
 
     elif action == 'change':
-        # 2) "옵션변경" 로직:
-        #   -> /option-change/?token=... 페이지로 리다이렉트
+        # "옵션변경" 버튼 클릭
         return redirect(f"/delayed/option-change/?token={token}")
 
     else:
         return HttpResponse("잘못된 action", status=400)
+
+    
     
 def thank_you_view(request):
     """
@@ -980,55 +1047,81 @@ def thank_you_view(request):
     return render(request, 'delayed_management/thank_you.html')    
 
 def option_change_view(request):
-    """
-    '옵션변경' 버튼 클릭 시 이동하는 페이지.
-    토큰(token)으로 DelayedShipment 조회 후,
-    shipment.exchangeable_options 등에 따라 변경가능 옵션 목록 구성.
-    """
     token = request.GET.get('token', '')
-    if not token:
-        return HttpResponse("유효하지 않은 요청: token 없음", status=400)
-
-    shipment = DelayedShipment.objects.filter(token=token).first()
-    if not shipment:
+    shipments = DelayedShipment.objects.filter(token=token)
+    if not shipments.exists():
         return HttpResponse("유효하지 않은 토큰", status=404)
 
-    # 교환가능 옵션: DB에 저장된 것을 파싱(예: CSV 형태), 또는 다른 로직
-    # 예: shipment.exchangeable_options = "옵션A,옵션B,옵션C"
-    exchangeable_options = shipment.exchangeable_options.split(',') if shipment.exchangeable_options else []
+    # 각 품목별 실제 교환가능옵션을 구해 data 구성
+    shipments_data = []
+    for s in shipments:
+        try:
+            needed_qty = int(s.quantity or 1)
+        except:
+            needed_qty = 1
+        # 실제 API에서 가져오기
+        real_options = get_exchangeable_options(s.option_code, needed_qty=needed_qty)
+        shipments_data.append({
+            "shipment": s,
+            "exchangeable_options": real_options,
+        })
 
     return render(request, 'delayed_management/change_option.html', {
-        'token': token,
-        'exchangeable_options': exchangeable_options,
+        "shipments_data": shipments_data,
+        "token": token,
     })
 
 
 def option_change_process(request):
-    """
-    사용자가 새 옵션과 수량을 선택하여 POST 전송했을 때 실제 DB 업데이트 처리
-    """
-    if request.method == 'POST':
-        token = request.POST.get('token', '')
-        new_option = request.POST.get('newOption', '')
-        qty = request.POST.get('qty', '1')
-
-        if not token:
-            return HttpResponse("유효하지 않은 요청: token 없음", status=400)
-
-        shipment = DelayedShipment.objects.filter(token=token).first()
-        if not shipment:
-            return HttpResponse("유효하지 않은 토큰", status=404)
-
-        # DB 업데이트
-        shipment.changed_option = new_option
-        shipment.quantity = qty
-        # 예: waiting=False, confirmed=True 로 설정할 수도 있음
-        shipment.confirmed = True
-        shipment.save()
-
-        return redirect('option_change_done_view')  # 변경 완료 페이지
-    else:
+    if request.method != 'POST':
         return HttpResponse("잘못된 접근입니다.", status=405)
 
-def option_change_done_view(request):
+    token = request.POST.get('token', '')
+    shipments = DelayedShipment.objects.filter(token=token)
+    if not shipments.exists():
+        return HttpResponse("유효하지 않은 토큰", status=404)
+
+    # 각각 update
+    for s in shipments:
+        new_opt_key = f"new_option_for_{s.id}"
+        new_qty_key = f"new_qty_for_{s.id}"
+        
+        new_option = request.POST.get(new_opt_key, '')
+        new_qty_str = request.POST.get(new_qty_key, '')
+        try:
+            new_qty = int(new_qty_str)
+        except:
+            new_qty = 1
+        
+        # 제한 로직: new_qty <= s.quantity
+        if new_qty > int(s.quantity or 1):
+            # 어떤 식으로 에러 처리할지
+            pass
+        
+        # 실제 DB 업데이트
+        s.changed_option = new_option
+        s.quantity = new_qty  # 혹은 changed_qty 필드
+        s.confirmed = True
+        s.save()
+    
+    return redirect('option_change_done')  # 예: 완료 페이지
+ 
+def option_change_done(request):
     return render(request, 'delayed_management/option_change_done.html')
+
+def customer_group_action_view(request):
+    token = request.GET.get('token', '')
+    if not token:
+        return HttpResponse("token이 없습니다.", status=400)
+
+    group = DelayedShipmentGroup.objects.filter(token=token).first()
+    if not group:
+        return HttpResponse("유효하지 않은 token.", status=404)
+
+    # group 내 모든 Shipment
+    shipments = group.shipments.all()
+    # 템플릿에서 "옵션별로 기다리기 or 변경"을 표시하도록
+    return render(request, 'delayed_management/customer_group_action.html', {
+        'group': group,
+        'shipments': shipments
+    })
