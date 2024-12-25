@@ -86,7 +86,11 @@ def get_options_detail_by_codes(option_codes):
             return detail_map
     return {}
 
-def get_exchangeable_options(input_option_code):
+def get_exchangeable_options(input_option_code, needed_qty):
+    """
+    주어진 옵션코드로부터 동일 상품의 교환가능한 옵션(재고 stock_unit >= needed_qty, 동일 판매가)을 조회 후
+    옵션명 리스트를 반환한다.
+    """
     input_option_info = get_option_info_by_code(input_option_code)
     if not input_option_info or not input_option_info['productName']:
         return []
@@ -106,7 +110,10 @@ def get_exchangeable_options(input_option_code):
         detail = detail_map.get(code)
         if detail:
             stock_unit = inventory_map.get(code, 0)
-            if detail['salesPrice'] == base_sales_price and stock_unit >= 1:
+            # 교환가능 조건:
+            # 1) 판매가가 동일
+            # 2) 재고 stock_unit >= needed_qty
+            if detail['salesPrice'] == base_sales_price and stock_unit >= needed_qty:
                 results.append(detail['optionName'])
 
     return results

@@ -1,30 +1,16 @@
 {% extends 'delayed_management_base.html' %}
 {% block content %}
 <div class="container-fluid mt-4">
-    <h2 class="mb-4 text-primary">배송지연 목록</h2>
+    <h2 class="mb-4 text-primary">문자 발송 목록</h2>
 
-    <!-- 옵션추출 버튼과 폼 시작 -->
-    <form method="post" action="{% url 'change_exchangeable_options' %}">
+    <!-- 문자 발송 폼 시작 -->
+    <form method="post" action="{% url 'send_message_process' %}">
         {% csrf_token %}
 
         <div class="mb-3 d-flex gap-2">
-            <!-- 첫 번째 버튼: 옵션추출 (value="extract_options") -->
-            <button type="submit" name="action" value="extract_options" class="btn btn-warning btn-sm">
-                옵션추출
-            </button>
-
-            <!-- 두 번째 버튼: 스토어 매핑 (value="store_mapping") -->
-            <button type="submit" name="action" value="store_mapping" class="btn btn-info btn-sm">
-                스토어 매핑
-            </button>
-
-                    <!-- 세 번째 버튼: 선택 삭제 -->
-            <button type="submit" name="action" value="delete_multiple" class="btn btn-danger btn-sm">
-                선택 삭제
-            </button>
-
+            <!-- 문자발송 버튼 -->
             <button type="submit" name="action" value="send_sms" class="btn btn-success btn-sm">
-                문자 발송
+                문자발송
             </button>
         </div>
 
@@ -33,12 +19,10 @@
                 <table>
                     <thead>
                         <tr>
-                            <!-- 전체체크 박스 -->
-                            <th>
-                                <input type="checkbox" id="selectAll">
-                            </th>
+                            <!-- 전체선택 체크박스 -->
+                            <th><input type="checkbox" id="selectAll"></th>
                             <th>전송유형</th>
-                            <th>전송상태</th>
+                            <th>전송상태</th>                          
                             <th>확인여부</th>
                             <th>기다리기</th>
                             <th>변경된옵션</th>
@@ -49,7 +33,6 @@
                             <th>수량</th>
                             <th>변경가능옵션</th>
                             <th>재입고일자</th>
-                            <th>예상날짜</th>
                             <th>스토어</th>
                             <th>성함</th>
                             <th>연락처</th>
@@ -61,9 +44,9 @@
                     <tbody>
                         {% for s in shipments %}
                         <tr class="clickable-row">
-                            <!-- 각 행 체크박스 -->
+                            <!-- 체크박스 -->
                             <td>
-                                <input type="checkbox" name="option_codes" value="{{ s.option_code }}" class="option-checkbox">
+                                <input type="checkbox" name="shipment_ids" value="{{ s.id }}" class="option-checkbox">
                             </td>
                             <td>
                                 {% if s.send_type == "SMS" %}문자{% elif s.send_type == "KAKAO" %}알림톡{% else %}미전송{% endif %}
@@ -84,24 +67,7 @@
                             <td>{{ s.order_option_name }}</td>
                             <td>{{ s.quantity }}</td>
                             <td>{{ s.exchangeable_options }}</td>
-                            <!-- 안내날짜 (final, 변경 X) -->
-                            <td>
-                                {% if s.range_start and s.range_end %}
-                                <!-- 예: 2024.01.06 ~ 01.10 형태 -->
-                                {{ s.range_start|date:"Y.m.d" }} ~ {{ s.range_end|date:"m.d" }}
-                                {% else %}
-                                (미정)
-                                {% endif %}
-                            </td>
-
-                            <!-- 예상날짜 (동적, 매번 갱신) -->
-                            <td>
-                                {% if s.expected_start and s.expected_end %}
-                                {{ s.expected_start|date:"Y.m.d" }} ~ {{ s.expected_end|date:"m.d" }}
-                                {% else %}
-                                (미정)
-                                {% endif %}
-                            </td>
+                            <td>{% if s.restock_date %}{{ s.restock_date|date:"Y-m-d" }}{% endif %}</td>
                             <td>{{ s.store_name }}</td>
                             <td>{{ s.customer_name }}</td>
                             <td>{{ s.customer_contact }}</td>
@@ -111,7 +77,9 @@
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="18" class="text-center text-muted">데이터가 없습니다.</td>
+                            <td colspan="17" class="text-center text-muted">
+                                데이터가 없습니다.
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -119,7 +87,6 @@
             </div>
         </div>
     </form>
-
 </div>
 
 <style>
@@ -172,18 +139,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectAllCheckbox = document.getElementById('selectAll');
     const checkboxes = document.querySelectorAll('.option-checkbox');
 
-    // 전체 체크 / 해제 기능
     selectAllCheckbox.addEventListener('change', function() {
-        checkboxes.forEach(function(cb) {
-            cb.checked = selectAllCheckbox.checked;
-        });
+        checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
     });
 
-    // 각 행을 클릭하면 체크박스를 토글
+    // 행 클릭 시 체크박스 토글
     const rows = document.querySelectorAll('.clickable-row');
     rows.forEach(row => {
         row.addEventListener('click', function(e) {
-            // 이미 체크박스를 직접 클릭한 경우( input[type="checkbox"] 클릭 )는 기본 동작에 맡긴다.
             if (e.target.type !== 'checkbox') {
                 const checkbox = this.querySelector('.option-checkbox');
                 if (checkbox) {
@@ -192,37 +155,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-});
-document.addEventListener('DOMContentLoaded', function() {
-    const table = document.querySelector('table');
-    const ths = table.querySelectorAll('thead th');
-    let startX, startWidth, currentTh;
-
-    ths.forEach(th => {
-        const resizer = th.querySelector('.resizer');
-        if (!resizer) return;
-
-        resizer.addEventListener('mousedown', function(e) {
-            startX = e.pageX;
-            currentTh = th;
-            startWidth = currentTh.offsetWidth;
-            document.addEventListener('mousemove', mouseMoveHandler);
-            document.addEventListener('mouseup', mouseUpHandler);
-            e.preventDefault();
-        });
-    });
-
-    function mouseMoveHandler(e) {
-        if (!currentTh) return;
-        const newWidth = startWidth + (e.pageX - startX);
-        currentTh.style.width = newWidth + 'px';
-    }
-
-    function mouseUpHandler(e) {
-        document.removeEventListener('mousemove', mouseMoveHandler);
-        document.removeEventListener('mouseup', mouseUpHandler);
-        currentTh = null;
-    }
 });
 </script>
 {% endblock %}
