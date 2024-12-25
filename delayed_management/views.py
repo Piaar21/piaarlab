@@ -526,6 +526,8 @@ def change_exchangeable_options(request):
                 messages.error(request, "발송할 데이터가 없습니다.")
                 return redirect('delayed_shipment_list')
 
+
+
             # 실제 발송할 메시지들 생성
             messages_list = []
             for s in shipments:
@@ -550,6 +552,14 @@ def change_exchangeable_options(request):
                 s.token = new_token
                 s.save()
 
+                # url_thx, url_change 만들 때, 로그로 확인
+                url_thx = f"http://34.64.123.206/delayde/confirm?action=wait&token={s.token}"
+                url_change = f"http://34.64.123.206/delayde/confirm?action=change&token={s.token}"
+
+                # >>> 추가한 로그
+                logger.debug(f"=== DEBUG: url_thx={url_thx}")
+                logger.debug(f"=== DEBUG: url_change={url_change}")
+
                 if s.restock_date:
                     발송일자_str = s.restock_date.strftime('%Y-%m-%d')  # '2024-12-24' 형태
                 else:
@@ -564,8 +574,8 @@ def change_exchangeable_options(request):
                     '#{교환옵션명}': s.exchangeable_options or "",
                     '#{채널명}': s.store_name or "", 
                     '#{url}':f"example.com",
-                    '#{url_thx}': f"34.64.123.206/delayde/confirm??action=wait&token={s.token}",
-                    '#{url_change}': f"34.64.123.206/delayde/confirm??action=change&token={s.token}",
+                    '#{url_thx}': f"34.64.123.206/delayde/thank_you_view?action=wait&token={s.token}",
+                    '#{url_change}': f"34.64.123.206/delayde/option_change_done_view?action=change&token={s.token}",
                     # '#{상담하기}': talkLink,
                 }
 
