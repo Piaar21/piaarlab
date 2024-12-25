@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>옵션 변경</title>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: #f0f4f8;
+    }
+    .container {
+      max-width: 600px;
+      margin: 80px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      padding: 40px;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 30px;
+    }
+    .description {
+      font-size: 0.9rem;
+      color: #666;
+      line-height: 1.4;
+      margin-bottom: 25px;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    label {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    select, input[type="number"] {
+      font-size: 1rem;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .btn-area {
+      text-align: center;
+      margin-top: 20px;
+    }
+    button {
+      background-color: #6c5ce7;
+      color: #fff;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    button:hover {
+      background-color: #a29bfe;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>옵션 변경</h1>
+    <p class="description">
+      교환 가능한 옵션 중 원하는 항목과 수량을 선택해 주세요.<br>
+      선택 후 <strong>옵션 변경하기</strong> 버튼을 누르면 변경 사항이 반영됩니다.
+    </p>
+    <form method="post" action="{% url 'option_change_process' %}">
+      {% csrf_token %}
+      <!-- 토큰 (필수) -->
+      <input type="hidden" name="token" value="{{ token|default_if_none:'' }}">
+
+      <!-- 교환가능 옵션 선택 -->
+      <div>
+        <label for="newOption">변경 가능 옵션 목록</label>
+        <select id="newOption" name="newOption" required>
+          <option value="" disabled selected>옵션을 선택하세요</option>
+          {% for opt in exchangeable_options %}
+            <option value="{{ opt }}">{{ opt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- 수량 입력 -->
+      <div>
+        <label for="qty">수량</label>
+        <input type="number" id="qty" name="qty" min="1" max="99" value="1" required>
+      </div>
+
+      <div class="btn-area">
+        <button type="submit">옵션 변경하기</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>
