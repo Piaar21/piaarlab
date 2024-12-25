@@ -27,3 +27,6 @@ __pycache__/
 *.log
 .env
 apireturnprocess/
+
+# gcloud json
+trakingperformance-f9a2037d1b6b.json

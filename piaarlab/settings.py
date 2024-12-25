@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 from decouple import config
 
@@ -24,6 +25,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
+SERVICE_ACCOUNT_FILE = "/Users/aideny/Desktop/piaarlab/credentials/trakingperformance-f9a2037d1b6b.json"
 
 
 
@@ -171,6 +173,7 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'standard',
+            'level': 'DEBUG',  # 여기서 DEBUG로 설정
         },
         'file': {
             'class': 'logging.FileHandler',
@@ -181,8 +184,14 @@ LOGGING = {
     'loggers': {
         'return_process': {
             'handlers': ['console', 'file'],
-            'level': 'INFO',  # 디버그 레벨로 설정
+            'level': 'DEBUG',  # 디버그 레벨로 설정
             'propagate': False,
+        },
+               # ↓↓↓ [추가] delayed_management 로거 설정 ↓↓↓
+        'delayed_management': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
         },
     },
 }
