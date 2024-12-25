@@ -55,6 +55,21 @@ SEND_STATUS_CHOICES = [
     ('failed', '실패'),
 ]
 
+class DelayedShipmentGroup(models.Model):
+    """
+    같은 고객 / 같은 주문에 대해 하나의 그룹으로 묶기
+    """
+    token = models.CharField(max_length=100, unique=True, blank=True, null=True)
+    contact = models.CharField(max_length=100, blank=True)  # 고객 연락처
+    # 예: 아래 필드들은 필요 시 추가
+    # customer_name = models.CharField(max_length=100, blank=True)
+    # store_name = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    shipments = models.ManyToManyField('DelayedShipment', related_name='shipment_groups')
+
+    def __str__(self):
+        return f"Group {self.id} / token={self.token}"
+    
 class DelayedShipment(models.Model):
     # 공통 필드
     option_code = models.CharField(max_length=100)  # 필요에 따라 unique 제거 가능

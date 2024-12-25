@@ -1,101 +1,139 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>옵션 변경</title>
+  <meta charset="UTF-8" />
+  <title>옵션 변경 페이지</title>
   <style>
+    /* 전체 reset 비슷하게 */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    /* 배경, 폰트, 기본 레이아웃 */
     body {
-      margin: 0; padding: 0;
       font-family: 'Noto Sans KR', sans-serif;
       background-color: #f0f4f8;
+      min-height: 100vh; /* 화면 전체 높이를 차지하도록 */
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
+
+    /* 메인 컨테이너 */
     .container {
-      max-width: 600px;
-      margin: 80px auto;
-      background-color: #ffffff;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      padding: 40px;
+      width: 100%;
+      max-width: 28rem; /* 대략 448px (Tailwind의 max-w-md 정도) */
+      background-color: #fff;
+      border-radius: 0.5rem; /* 약 8px */
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 2rem;
+      margin: 1rem; /* 모바일에서도 여백 */
     }
+
     h1 {
       text-align: center;
       color: #2c3e50;
-      margin-bottom: 30px;
+      margin-bottom: 1.5rem;
+      font-size: 1.25rem; /* 약 20px */
+      font-weight: 600;
     }
-    .description {
-      font-size: 0.9rem;
-      color: #666;
-      line-height: 1.4;
-      margin-bottom: 25px;
-    }
+
+    /* 폼(세로 정렬, 적당한 간격) */
     form {
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 1.25rem; /* 20px 정도 */
     }
-    label {
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-    select, input[type="number"] {
-      font-size: 1rem;
-      padding: 8px 10px;
+
+    /* 개별 상품/옵션 블록 */
+    .shipment-item {
       border: 1px solid #ccc;
-      border-radius: 6px;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      background-color: #fafafa;
+      margin-bottom: 0.75rem;
+    }
+    .shipment-item p {
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem; /* 14px 근처 */
+      color: #555;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.3rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #333;
+    }
+
+    select {
       width: 100%;
-      box-sizing: border-box;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #ccc;
+      border-radius: 0.375rem;
+      font-size: 0.875rem;
+      color: #333;
     }
-    .btn-area {
-      text-align: center;
-      margin-top: 20px;
-    }
-    button {
+
+    /* 제출 버튼 */
+    .submit-button {
+      width: 100%;
+      padding: 0.75rem 1rem;
       background-color: #6c5ce7;
       color: #fff;
-      border: none;
-      padding: 12px 18px;
-      border-radius: 6px;
-      cursor: pointer;
       font-size: 1rem;
+      font-weight: 500;
+      border: none;
+      border-radius: 0.375rem;
+      cursor: pointer;
+      margin-top: 0.5rem;
     }
-    button:hover {
+    .submit-button:hover {
       background-color: #a29bfe;
+    }
+
+    /* 모바일 대응 예시 */
+    @media (max-width: 480px) {
+      .container {
+        margin: 1rem;
+        padding: 1.5rem; /* 조금 줄여줌 */
+      }
+      h1 {
+        font-size: 1.125rem; /* 약 18px */
+        margin-bottom: 1rem;
+      }
     }
   </style>
 </head>
 <body>
+
   <div class="container">
-    <h1>옵션 변경</h1>
-    <p class="description">
-      교환 가능한 옵션 중 원하는 항목과 수량을 선택해 주세요.<br>
-      선택 후 <strong>옵션 변경하기</strong> 버튼을 누르면 변경 사항이 반영됩니다.
-    </p>
+    <h1>옵션 변경 페이지</h1>
+
     <form method="post" action="{% url 'option_change_process' %}">
       {% csrf_token %}
-      <!-- 토큰 (필수) -->
-      <input type="hidden" name="token" value="{{ token|default_if_none:'' }}">
+      <input type="hidden" name="token" value="{{ token }}">
 
-      <!-- 교환가능 옵션 선택 -->
-      <div>
-        <label for="newOption">변경 가능 옵션 목록</label>
-        <select id="newOption" name="newOption" required>
-          <option value="" disabled selected>옵션을 선택하세요</option>
-          {% for opt in exchangeable_options %}
-            <option value="{{ opt }}">{{ opt }}</option>
-          {% endfor %}
-        </select>
-      </div>
+      {% for item in shipments_data %}
+        <div class="shipment-item">
+          <p>상품명: {{ item.shipment.order_product_name }}</p>
+          <p>현재 옵션: {{ item.shipment.order_option_name }} / 수량: {{ item.shipment.quantity }}</p>
+          
+          <label>새로운 옵션(교환가능):</label>
+          <select name="new_option_for_{{ item.shipment.id }}">
+            {% for opt in item.exchangeable_options %}
+              <option value="{{ opt }}">{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% endfor %}
 
-      <!-- 수량 입력 -->
-      <div>
-        <label for="qty">수량</label>
-        <input type="number" id="qty" name="qty" min="1" max="99" value="1" required>
-      </div>
-
-      <div class="btn-area">
-        <button type="submit">옵션 변경하기</button>
-      </div>
+      <button type="submit" class="submit-button">전체 옵션 변경하기</button>
     </form>
   </div>
+
 </body>
 </html>
