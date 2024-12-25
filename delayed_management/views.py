@@ -553,8 +553,8 @@ def change_exchangeable_options(request):
                 s.save()
 
                 # url_thx, url_change 만들 때, 로그로 확인
-                url_thx = f"http://34.64.123.206/delayed/thank_you_view?action=wait&token={s.token}"
-                url_change = f"http://34.64.123.206/delayed/option_change_view?action=change&token={s.token}"
+                url_thx = f"http://34.64.123.206/delayed/thank-you?action=wait&token={s.token}"
+                url_change = f"http://34.64.123.206/delayed/option-change?action=change&token={s.token}"
 
                 # >>> 추가한 로그
                 logger.debug(f"=== DEBUG: url_thx={url_thx}")
@@ -574,8 +574,8 @@ def change_exchangeable_options(request):
                     '#{교환옵션명}': s.exchangeable_options or "",
                     '#{채널명}': s.store_name or "", 
                     '#{url}':f"example.com",
-                    '#{url_thx}': f"34.64.123.206/delayed/thank_you_view?action=wait&token={s.token}",
-                    '#{url_change}': f"34.64.123.206/delayed/option_change_view?action=change&token={s.token}",
+                    '#{url_thx}': f"34.64.123.206/delayed/thank-you?action=wait&token={s.token}",
+                    '#{url_change}': f"34.64.123.206/delayed/option-change?action=change&token={s.token}",
                     # '#{상담하기}': talkLink,
                 }
 
