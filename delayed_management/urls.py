@@ -22,5 +22,6 @@ urlpatterns = [
     path('option-change/', views.option_change_view, name='option_change_view'),
     path('option-change-process/', views.option_change_process, name='option_change_process'),
     path('thank-you/', views.thank_you_view, name='thank_you_view'),
-    path('option-change-done/', views.option_change_done_view, name='option_change_done_view'),
+    path('option-change-done/', views.option_change_done, name='option_change_done'),
+
 ]
