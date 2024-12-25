@@ -25,7 +25,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
-SERVICE_ACCOUNT_FILE = "/Users/aideny/Desktop/piaarlab/credentials/trakingperformance-f9a2037d1b6b.json"
+SERVICE_ACCOUNT_FILE = config('SERVICE_ACCOUNT_FILE', default=None)
 
 
 
