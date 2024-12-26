@@ -26,20 +26,17 @@
                             <!-- 전체선택 체크박스 -->
                             <th><input type="checkbox" id="selectAll"></th>
                             <th>전송유형</th>
-                            <th>전송상태</th>                          
-                            <th>확인여부</th>
-                            <th>기다리기</th>
-                            <th>변경된옵션</th>
+                            <th>전송상태</th>
+                            <th>재입고일자</th>
+                            <th>스토어</th>
+                            <th>성함</th>
+                            <th>연락처</th>                          
                             <th>주문번호1</th>
                             <th>옵션코드</th>
                             <th>주문상품명</th>
                             <th>주문옵션명</th>
                             <th>수량</th>
                             <th>변경가능옵션</th>
-                            <th>재입고일자</th>
-                            <th>스토어</th>
-                            <th>성함</th>
-                            <th>연락처</th>
                             <th>셀러툴상품명</th>
                             <th>셀러툴옵션명</th>
                             <th>주문번호2</th>
@@ -62,19 +59,17 @@
                                 {% else %}대기
                                 {% endif %}
                             </td>
-                            <td>{% if s.confirmed %}확인됨{% else %}미확인{% endif %}</td>
-                            <td>{% if s.waiting %}기다리는 중{% else %}-{% endif %}</td>
-                            <td>{{ s.changed_option }}</td>
+                            <td>{% if s.restock_date %}{{ s.restock_date|date:"Y-m-d" }}{% endif %}</td>
+                            <td>{{ s.store_name }}</td>
+                            <td>{{ s.customer_name }}</td>
+                            <td>{{ s.customer_contact }}</td>
                             <td>{{ s.order_number_1 }}</td>
                             <td>{{ s.option_code }}</td>
                             <td>{{ s.order_product_name }}</td>
                             <td>{{ s.order_option_name }}</td>
                             <td>{{ s.quantity }}</td>
                             <td>{{ s.exchangeable_options }}</td>
-                            <td>{% if s.restock_date %}{{ s.restock_date|date:"Y-m-d" }}{% endif %}</td>
-                            <td>{{ s.store_name }}</td>
-                            <td>{{ s.customer_name }}</td>
-                            <td>{{ s.customer_contact }}</td>
+
                             <td>{{ s.seller_product_name }}</td>
                             <td>{{ s.seller_option_name }}</td>
                             <td>{{ s.order_number_2 }}</td>

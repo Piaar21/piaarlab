@@ -1,20 +1,63 @@
 {% extends 'delayed_management_base.html' %}
+
 {% block content %}
 <div class="container-fluid mt-4">
     <h2 class="mb-4 text-primary">고객확인완료 목록</h2>
 
-    <!-- "처리완료" 버튼으로 변경 -->
+    <!-- 필터 버튼들 -->
+    <div class="mb-2 btn-group" role="group" aria-label="Filter Buttons">
+        <!-- filter=all 버튼 -->
+        <a href="?filter=all"
+           class="btn btn-sm
+           {% if filter_val == 'all' %}
+               btn-primary text-white
+           {% else %}
+               btn-outline-primary
+           {% endif %}
+           ">
+            전체
+        </a>
+
+        <!-- filter=waiting 버튼 -->
+        <a href="?filter=waiting"
+           class="btn btn-sm
+           {% if filter_val == 'waiting' %}
+               btn-primary text-white
+           {% else %}
+               btn-outline-primary
+           {% endif %}
+           ">
+            기다리기
+        </a>
+
+        <!-- filter=changed 버튼 -->
+        <a href="?filter=changed"
+           class="btn btn-sm
+           {% if filter_val == 'changed' %}
+               btn-primary text-white
+           {% else %}
+               btn-outline-primary
+           {% endif %}
+           ">
+            옵션변경
+        </a>
+    </div>
+
+    <!-- 기존 폼(출고완료, 삭제, 복사 등) -->
     <form method="post" action="{% url 'process_confirmed_shipments' %}">
         {% csrf_token %}
-
         <div class="mb-3 d-flex gap-2">
-            <!-- 출고완료 버튼 -->
             <button type="submit" name="action" value="complete_process" class="btn btn-success btn-sm">
                 출고완료
             </button>
+
             <button type="submit" name="action" value="delete_multiple" class="btn btn-danger btn-sm">
                 선택 삭제
-            </button>            
+            </button>
+
+            <button type="button" id="copySelected" class="btn btn-secondary btn-sm">
+                주문번호 복사
+            </button>
         </div>
 
         <div class="card shadow-sm mb-4">
@@ -23,11 +66,12 @@
                     <thead>
                         <tr>
                             <th><input type="checkbox" id="selectAll"></th>
-                            <th>전송유형</th>
-                            <th>전송상태</th>                          
                             <th>확인여부</th>
                             <th>기다리기</th>
                             <th>변경된옵션</th>
+                            <th>변경된옵션코드</th>
+                            <th>성함</th>
+                            <th>연락처</th>
                             <th>주문번호1</th>
                             <th>옵션코드</th>
                             <th>주문상품명</th>
@@ -36,8 +80,7 @@
                             <th>변경가능옵션</th>
                             <th>재입고일자</th>
                             <th>스토어</th>
-                            <th>성함</th>
-                            <th>연락처</th>
+
                             <th>셀러툴상품명</th>
                             <th>셀러툴옵션명</th>
                             <th>주문번호2</th>
@@ -46,27 +89,15 @@
                     <tbody>
                         {% for s in shipments %}
                         <tr class="clickable-row">
-                            <!-- 체크박스 -->
                             <td>
                                 <input type="checkbox" name="shipment_ids" value="{{ s.id }}" class="option-checkbox">
                             </td>
-                            <td>
-                                {% if s.send_type == "SMS" %}문자
-                                {% elif s.send_type == "KAKAO" %}알림톡
-                                {% else %}미전송
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if s.send_status == "SENDING" %}전송중
-                                {% elif s.send_status == "SUCCESS" %}성공
-                                {% elif s.send_status == "FAIL" %}실패
-                                {% else %}대기
-                                {% endif %}
-                            </td>
-                            <!-- 확인 여부 확인됨인 것만 (가정) / 또는 필터링해서 confirmed=True 만 띄울 수도 있음 -->
                             <td>{% if s.confirmed %}확인됨{% else %}미확인{% endif %}</td>
                             <td>{% if s.waiting %}기다리는 중{% else %}-{% endif %}</td>
                             <td>{{ s.changed_option }}</td>
+                            <td>{{ s.changed_option_code }}</td>
+                            <td>{{ s.customer_name }}</td>
+                            <td>{{ s.customer_contact }}</td>
                             <td>{{ s.order_number_1 }}</td>
                             <td>{{ s.option_code }}</td>
                             <td>{{ s.order_product_name }}</td>
@@ -75,17 +106,14 @@
                             <td>{{ s.exchangeable_options }}</td>
                             <td>{% if s.restock_date %}{{ s.restock_date|date:"Y-m-d" }}{% endif %}</td>
                             <td>{{ s.store_name }}</td>
-                            <td>{{ s.customer_name }}</td>
-                            <td>{{ s.customer_contact }}</td>
+
                             <td>{{ s.seller_product_name }}</td>
                             <td>{{ s.seller_option_name }}</td>
                             <td>{{ s.order_number_2 }}</td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="19" class="text-center text-muted">
-                                데이터가 없습니다.
-                            </td>
+                            <td colspan="19" class="text-center text-muted">데이터가 없습니다.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -160,6 +188,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
+    });
+
+    // 주문번호 복사 로직
+    const copyBtn = document.getElementById('copySelected');
+    copyBtn.addEventListener('click', function() {
+        let orderNums = [];
+        checkboxes.forEach(cb => {
+            if (cb.checked) {
+                const row = cb.closest('tr');
+                if (row) {
+                    const orderNumCell = row.querySelector('td:nth-child(6)');
+                    if (orderNumCell) {
+                        const value = orderNumCell.textContent.trim();
+                        if (value) {
+                            orderNums.push(value);
+                        }
+                    }
+                }
+            }
+        });
+
+        if (orderNums.length === 0) {
+            alert("체크된 항목이 없습니다.");
+            return;
+        }
+
+        let textToCopy = orderNums.join(',\n');
+        navigator.clipboard.writeText(textToCopy)
+            .then(() => { alert("복사 완료:\n" + textToCopy); })
+            .catch(err => {
+                console.error("복사 실패:", err);
+                alert("복사에 실패했습니다.");
+            });
     });
 });
 </script>

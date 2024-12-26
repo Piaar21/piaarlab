@@ -37,11 +37,6 @@
                             <th>
                                 <input type="checkbox" id="selectAll">
                             </th>
-                            <th>전송유형</th>
-                            <th>전송상태</th>
-                            <th>확인여부</th>
-                            <th>기다리기</th>
-                            <th>변경된옵션</th>
                             <th>주문번호1</th>
                             <th>옵션코드</th>
                             <th>주문상품명</th>
@@ -63,21 +58,8 @@
                         <tr class="clickable-row">
                             <!-- 각 행 체크박스 -->
                             <td>
-                                <input type="checkbox" name="option_codes" value="{{ s.option_code }}" class="option-checkbox">
+                                <input type="checkbox" name="shipment_ids" value="{{ s.id }}" class="option-checkbox">
                             </td>
-                            <td>
-                                {% if s.send_type == "SMS" %}문자{% elif s.send_type == "KAKAO" %}알림톡{% else %}미전송{% endif %}
-                            </td>
-                            <td>
-                                {% if s.send_status == "SENDING" %}전송중
-                                {% elif s.send_status == "SUCCESS" %}성공
-                                {% elif s.send_status == "FAIL" %}실패
-                                {% else %}대기
-                                {% endif %}
-                            </td>
-                            <td>{% if s.confirmed %}확인됨{% else %}미확인{% endif %}</td>
-                            <td>{% if s.waiting %}기다리기{% else %}-{% endif %}</td>
-                            <td>{{ s.changed_option }}</td>
                             <td>{{ s.order_number_1 }}</td>
                             <td>{{ s.option_code }}</td>
                             <td>{{ s.order_product_name }}</td>
@@ -166,7 +148,25 @@
     }
 </style>
 
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+    {% if messages %}
+      let msgList = [];
+      {% for message in messages %}
+        msgList.push("{{ message|escapejs }}");  // escapejs로 JS문자열 안전 처리
+      {% endfor %}
+    
+      if (msgList.length > 0) {
+        let combined = msgList.join("\\n");
+    
+        // \n → 실제 줄바꿈으로 대체
+        combined = combined.replace(/\\n/g, "\n");
+        // <br> → 줄바꿈
+        combined = combined.replace(/<br\s*\/?>/gi, "\n");
+    
+        alert(combined);
+      }
+    {% endif %}
 document.addEventListener('DOMContentLoaded', function() {
     // 전체 선택 체크박스
     const selectAllCheckbox = document.getElementById('selectAll');

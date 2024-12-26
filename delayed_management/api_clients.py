@@ -88,32 +88,41 @@ def get_options_detail_by_codes(option_codes):
 
 def get_exchangeable_options(input_option_code, needed_qty):
     """
-    주어진 옵션코드로부터 동일 상품의 교환가능한 옵션(재고 stock_unit >= needed_qty, 동일 판매가)을 조회 후
-    옵션명 리스트를 반환한다.
+    주어진 옵션코드로부터 동일 상품의 교환가능 옵션을 조회 (재고 stock_unit >= needed_qty, 동일 판매가).
+    * 반환 데이터 예시: [ { 'optionName': '빨강_M', 'optionCode': 'abc123' }, ... ]
     """
+    # 1) 입력 옵션 코드의 기본 정보 (상품명, 판매가) 조회
     input_option_info = get_option_info_by_code(input_option_code)
     if not input_option_info or not input_option_info['productName']:
-        return []
+        return []  # 상품명 정보를 못 얻었으면 빈 리스트 반환
 
     product_name = input_option_info['productName']
     base_sales_price = input_option_info['salesPrice']
 
+    # 2) 동일 상품명(product_name)의 모든 옵션코드 가져오기
     all_option_codes = get_all_options_by_product_name(product_name)
     if not all_option_codes:
         return []
 
-    inventory_map = get_inventory_by_option_codes(all_option_codes)
-    detail_map = get_options_detail_by_codes(all_option_codes)
+    # 3) 옵션코드 목록의 재고/상세 정보 한꺼번에 불러오기
+    inventory_map = get_inventory_by_option_codes(all_option_codes)  # { 'abc123': 재고수, ...}
+    detail_map    = get_options_detail_by_codes(all_option_codes)    # { 'abc123': {'optionName':..., 'salesPrice':..., ...}, ...}
 
+    # 4) 조건(동일 판매가 & 재고 >= needed_qty)에 맞는 항목만 골라 옵션명/코드 반환
     results = []
     for code in all_option_codes:
         detail = detail_map.get(code)
-        if detail:
-            stock_unit = inventory_map.get(code, 0)
-            # 교환가능 조건:
-            # 1) 판매가가 동일
-            # 2) 재고 stock_unit >= needed_qty
-            if detail['salesPrice'] == base_sales_price and stock_unit >= needed_qty:
-                results.append(detail['optionName'])
+        if not detail:
+            continue  # 상세 정보가 없으면 스킵
+
+        stock_unit = inventory_map.get(code, 0)
+        # 교환가능 조건:
+        #  (1) 판매가가 같은지
+        #  (2) 재고 stock_unit >= needed_qty
+        if detail['salesPrice'] == base_sales_price and stock_unit >= needed_qty:
+            results.append({
+                "optionName": detail['optionName'],
+                "optionCode": code
+            })
 
     return results
