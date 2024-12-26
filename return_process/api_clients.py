@@ -394,6 +394,97 @@ def get_product_order_details(account_info, product_order_ids):
 
     return {'success': True, 'details': details_list}
 
+
+def dispatch_naver_exchange(
+    account_info,
+    product_order_id,
+    re_delivery_method="DELIVERY",
+    re_delivery_company=None,
+    re_delivery_tracking_number=None
+):
+    """
+    교환 재배송 처리 (Exchange Dispatch) API 호출 함수
+    POST /v1/pay-order/seller/product-orders/{productOrderId}/claim/exchange/dispatch
+    """
+    print("=== [DEBUG] dispatch_naver_exchange 함수 진입 ===")
+    print(f"[DEBUG] account_info: {account_info}")
+    print(f"[DEBUG] product_order_id: {product_order_id}")
+    print(f"[DEBUG] re_delivery_method: {re_delivery_method}")
+    print(f"[DEBUG] re_delivery_company: {re_delivery_company}")
+    print(f"[DEBUG] re_delivery_tracking_number: {re_delivery_tracking_number}")
+
+    if not account_info:
+        print("[DEBUG] account_info가 None 혹은 빈 상태입니다.")
+        return False, "account_info가 유효하지 않습니다."
+
+    # 플랫폼(계정) 및 주문번호 로그
+    account_names = account_info['names'] if 'names' in account_info else ["알 수 없음"]
+    print(f"[DEBUG] 플랫폼(계정) 후보: {account_names}, 실제 사용: {account_names[0] if account_names else '알 수 없음'} / 주문번호: {product_order_id}")
+
+    # 액세스 토큰 발급
+    access_token = fetch_naver_access_token(account_info)
+    if not access_token:
+        print("[DEBUG] 액세스 토큰 발급 실패")
+        return False, "토큰 발급 실패"
+
+    print("[DEBUG] 액세스 토큰 발급 성공:", access_token)
+
+    # API 요청 URL 및 헤더
+    url = f"https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/{product_order_id}/claim/exchange/dispatch"
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+
+    # Request Body 구성
+    payload = {
+        "reDeliveryMethod": re_delivery_method
+    }
+    if re_delivery_company:
+        payload["reDeliveryCompany"] = re_delivery_company
+    if re_delivery_tracking_number:
+        payload["reDeliveryTrackingNumber"] = re_delivery_tracking_number
+
+    print("[DEBUG] 교환 재배송 API 요청 URL:", url)
+    print("[DEBUG] 교환 재배송 API 요청 Headers:", headers)
+    print("[DEBUG] 교환 재배송 API 요청 Payload:", payload)
+
+    # API 호출
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+    except requests.RequestException as e:
+        print("[DEBUG] API 요청 중 예외 발생:", e)
+        return False, f"API 요청 실패 (RequestException): {e}"
+
+    print("[DEBUG] API 응답 코드:", response.status_code)
+    print("[DEBUG] API 응답 내용:", response.text)
+
+    # 상태코드에 따른 처리
+    if response.status_code == 200:
+        data = response.json()
+        print("[DEBUG] 응답 JSON 파싱 완료:", data)
+
+        # successProductOrderIds 와 failProductOrderInfos 구조는 approve_naver_return 참고
+        success_ids = data.get('data', {}).get('successProductOrderIds', [])
+        fail_info = data.get('data', {}).get('failProductOrderInfos', [])
+
+        print("[DEBUG] successProductOrderIds:", success_ids)
+        print("[DEBUG] failProductOrderInfos:", fail_info)
+
+        if product_order_id in success_ids:
+            print("[DEBUG] 교환 재배송 처리 성공!")
+            return True, "교환 재배송 처리 성공"
+        else:
+            print("[DEBUG] 교환 재배송 처리 실패 (failProductOrderInfos 존재 또는 successIds에 없음)")
+            return False, f"교환 재배송 처리 실패: {fail_info}"
+
+    else:
+        # 200 이외의 상태코드
+        msg = f"API 호출 실패: {response.status_code}, {response.text}"
+        print("[DEBUG]", msg)
+        return False, msg
+
+
 def generate_coupang_signature(method, url_path, query_params, secret_key):
     datetime_now = time.strftime('%y%m%dT%H%M%SZ', time.gmtime())
 
