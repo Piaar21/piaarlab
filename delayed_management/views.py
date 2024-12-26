@@ -1295,7 +1295,7 @@ def option_change_process(request):
     # 이미 waiting=True 또는 changed_option이 있으면 수정 불가
     any_already = shipments.filter(Q(waiting=True) | ~Q(changed_option='')).exists()
     if any_already:
-        return HttpResponse("이미 처리된 내역이 존재합니다.", status=400)
+        return HttpResponse("이미 처리된 내역이 존재합니다. 기다리기 혹은 다른 옵션으로 변경을 희망하실 경우 상담원에게 문의해주세요.", status=400)
 
     for s in shipments:
         new_opt_key  = f"new_option_for_{s.id}"
