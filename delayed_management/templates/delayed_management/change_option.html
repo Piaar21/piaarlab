@@ -100,7 +100,6 @@
 </head>
 
 <body>
-  <!-- 옵션 변경 컨테이너 -->
   <div class="option-change-container">
     <h1>옵션 변경 페이지</h1>
 
@@ -114,17 +113,47 @@
           <p>현재 옵션: {{ item.shipment.order_option_name }} / 수량: {{ item.shipment.quantity }}</p>
           
           <label>새로운 옵션(교환가능):</label>
-          <select name="new_option_for_{{ item.shipment.id }}">
+          <!-- 
+               ▼ select의 'data-code' 속성에 옵션코드를 저장 + 
+                 선택 시 자바스크립트로 hidden input에 값을 넣어 전송 
+          -->
+          <select name="new_option_for_{{ item.shipment.id }}"
+                  onchange="onOptionChange(this, '{{ item.shipment.id }}')">
+            <option value="">옵션을 선택하세요</option>
             {% for opt in item.exchangeable_options %}
-              <option value="{{ opt }}">{{ opt }}</option>
+              <!-- opt.optionName: 화면 표시/저장용
+                   opt.optionCode: data-code 속성으로 감춤 -->
+              <option value="{{ opt.optionName }}" data-code="{{ opt.optionCode }}">
+                {{ opt.optionName }}
+              </option>
             {% endfor %}
           </select>
+
+          <!-- 
+               ▼ 옵션코드를 넣을 hidden input 
+               new_option_code_for_{{ item.shipment.id }} 이름으로 
+               JS에서 select 변경 시 여기에 옵션코드가 들어갑니다 
+          -->
+          <input type="hidden" name="new_option_code_for_{{ item.shipment.id }}"
+                 id="new_option_code_for_{{ item.shipment.id }}">
         </div>
       {% endfor %}
 
       <button type="submit" class="submit-button">전체 옵션 변경하기</button>
     </form>
   </div>
+
+  <script>
+  // select onchange 이벤트에서, 선택된 <option>의 data-code를 hidden에 주입
+  function onOptionChange(sel, shipmentId) {
+      var selectedOption = sel.options[sel.selectedIndex];
+      var code = selectedOption.getAttribute("data-code") || "";
+      var hiddenInput = document.getElementById("new_option_code_for_"+shipmentId);
+      if (hiddenInput) {
+          hiddenInput.value = code;
+      }
+  }
+  </script>
 </body>
 </html>
 {% endblock %}
