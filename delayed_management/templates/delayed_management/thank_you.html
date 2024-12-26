@@ -1,48 +1,85 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
+    <!-- 모바일 화면 최적화 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>재입고 후 발송 안내</title>
     <style>
+        /* 페이지 전반 */
+        html, body {
+            margin: 0;
+            padding: 0;
+        }
         body {
             font-family: 'Noto Sans KR', sans-serif;
             background-color: #f0f4f8;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
-            padding: 20px;
+            min-height: 100vh; /* 화면 높이에 맞춤 */
             box-sizing: border-box;
-            font-size: 1.5em;
         }
+
+        /* 메인 컨테이너 */
         .message-container {
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            padding: 50px;
-            max-width: 600px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 600px; /* 큰 화면에서 600px 제한 */
+            box-sizing: border-box; /* 패딩 포함 계산 */
             text-align: center;
+            margin: 1rem; /* 모바일에서 양 옆에 여백 */
         }
+
+        /* 아이콘 */
+        .icon {
+            font-size: 4rem; /* 모바일에서는 약 64px */
+            margin-bottom: 2rem;
+        }
+
+        /* 제목 */
         h1 {
             color: #2c3e50;
-            font-size: 32px;
-            margin-bottom: 40px;
+            font-size: 1.75rem; 
+            margin-bottom: 1.5rem;
         }
+
+        /* 본문 텍스트 */
         p {
             color: #34495e;
-            font-size: 22px;
-            line-height: 2;
-            margin-bottom: 35px;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
         }
-        .icon {
-            font-size: 80px;
-            margin-bottom: 40px;
-        }
+
+        /* "감사합니다" 강조 텍스트 */
         .thank-you {
             font-weight: bold;
             color: #27ae60;
-            font-size: 24px;
+            font-size: 1.2rem;
+        }
+
+        /* 반응형: 큰 화면에서 좀 더 여유있게 */
+        @media (min-width: 768px) {
+            .message-container {
+                max-width: 480px; /* 태블릿/PC에서는 약간 줄여서 중앙에 */
+                margin: 2rem auto;
+            }
+            .icon {
+                font-size: 5rem;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+            p {
+                font-size: 1.25rem;
+            }
+            .thank-you {
+                font-size: 1.3rem;
+            }
         }
     </style>
 </head>

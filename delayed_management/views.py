@@ -17,6 +17,7 @@ import logging
 import requests
 import gspread
 from django.http import HttpResponse
+from django.db.models import Q
 
 
 logger = logging.getLogger(__name__)
@@ -414,10 +415,10 @@ def map_stores_for_shipments(request):
 
 
 def delayed_shipment_list(request):
-    shipments = DelayedShipment.objects.all().order_by('-created_at')
+    qs = DelayedShipment.objects.filter(flow_status='pre_send').order_by('-created_at')
 
-    today = date.today()  # from datetime import date, timedelta
-    for s in shipments:
+    today = date.today()
+    for s in qs:
         min_days, max_days = ETA_RANGES.get(s.status, (0,0))
 
         # 고정 안내날짜 range
@@ -437,7 +438,7 @@ def delayed_shipment_list(request):
             s.expected_end   = None
 
     return render(request, 'delayed_management/delayed_shipment_list.html', {
-        'shipments': shipments
+        'shipments': qs
     })
 
 
@@ -471,7 +472,7 @@ def change_exchangeable_options(request):
                 except DelayedShipment.DoesNotExist:
                     continue
                 # needed_qty 등 추가 인자가 필요하면 수정
-                exchangeable_list = get_exchangeable_options(code)  # 이미 구현됐다고 가정
+                exchangeable_list = get_exchangeable_options(code) 
                 shipment.exchangeable_options = ",".join(exchangeable_list) if exchangeable_list else "상담원 문의"
                 shipment.save()
                 updated += 1
@@ -551,8 +552,8 @@ def change_exchangeable_options(request):
                 s.save()
 
                 # url_thx, url_change 만들 때, 로그로 확인
-                url_thx = f"http://34.64.123.206/delayed/thank-you?action=wait&token={s.token}"
-                url_change = f"http://34.64.123.206/delayed/option-change?action=change&token={s.token}"
+                url_thx = f"34.64.123.206/delayed/thank-you?action=wait&token={s.token}"
+                url_change = f"34.64.123.206/delayed/option-change?action=change&token={s.token}"
 
                 # >>> 추가한 로그
                 logger.debug(f"=== DEBUG: url_thx={url_thx}")
@@ -603,15 +604,23 @@ def change_exchangeable_options(request):
 
             # 실제 solapi 발송
             try:
-                success_list, fail_list = solapi_send_messages(messages_list)  # 아래 함수에서 DB 상태 갱신
-                messages.success(request, f"문자/알림톡 {len(success_list)}건 발송 성공, 실패 {len(fail_list)}건")
+                success_list, fail_list = solapi_send_messages(messages_list)
+                
+                # 성공한 옵션코드들만 flow_status='sent'로 업데이트
+                DelayedShipment.objects.filter(option_code__in=success_list).update(flow_status='sent')
+
+                # (선택) 실패한 목록은 flow_status='pre_send'로 되돌리거나 유지
+                DelayedShipment.objects.filter(option_code__in=fail_list).update(flow_status='pre_send')
+
+                messages.success(
+                    request,
+                    f"문자/알림톡 {len(success_list)}건 발송 성공, 실패 {len(fail_list)}건"
+                )
             except Exception as e:
                 logger.exception("=== DEBUG: 문자 발송 오류 발생 ===")
                 messages.error(request, f"문자 발송 오류: {str(e)}")
 
             return redirect('delayed_shipment_list')
-
-    return redirect('delayed_shipment_list')
 
 
 def delete_delayed_shipment(request, shipment_id):
@@ -816,21 +825,118 @@ SOLAPI_SENDER_NUMBER = config('SOLAPI_SENDER_NUMBER', default='')  # 발신번�
 
 
 def send_message_list(request):
-    shipments = DelayedShipment.objects.all().order_by('-created_at')
+    qs = DelayedShipment.objects.filter(flow_status='sent').order_by('-created_at')
     return render(request, 'delayed_management/send_message_list.html', {
-        'shipments': shipments
+        'shipments': qs
     })
 
 def send_message_process(request):
     if request.method == 'POST':
+        action = request.POST.get('action', '')
         shipment_ids = request.POST.getlist('shipment_ids', [])
-        # 문자/카톡 발송 로직 실행
-        # 예: solapi_api.send_message(...) or DB 로그 기록 등
 
-        # 예) 발송완료 페이지로 이동
-        # return redirect('send_message_result')
+        # (A) 선택 삭제(delete_multiple)
+        if action == 'delete_multiple':
+            if not shipment_ids:
+                messages.error(request, "삭제할 항목이 선택되지 않았습니다.")
+                return redirect('send_message_list')
 
-    return redirect('send_message_list')  # GET등 잘못된 요청시 목록으로
+            qs = DelayedShipment.objects.filter(id__in=shipment_ids)
+            deleted_info = qs.delete()
+            total_deleted = deleted_info[0]  # (삭제된 객체 수, { 'app.Model': count })
+            messages.success(request, f"{total_deleted}건이 삭제되었습니다.")
+            return redirect('send_message_list')
+
+        # (B) 문자 발송(send_sms)
+        elif action == 'send_sms':
+            logger.debug("=== DEBUG: 문자 발송 로직 진입 ===")
+            if not shipment_ids:
+                messages.error(request, "문자 발송할 항목이 선택되지 않았습니다.")
+                return redirect('send_message_list')
+
+            shipments = DelayedShipment.objects.filter(id__in=shipment_ids)
+            if not shipments.exists():
+                messages.error(request, "발송할 데이터가 없습니다.")
+                return redirect('send_message_list')
+
+            # 그룹 토큰(같이 보내기 위해) 생성
+            group_token = str(uuid.uuid4())
+            for s in shipments:
+                s.token = group_token
+                s.save()
+
+            # 메시지 생성
+            messages_list = []
+            for s in shipments:
+                # store_name → channel_name
+                channel_name = map_store_to_channel(s.store_name)
+                pf_id = get_pfId_by_channel(channel_name)
+                template_id = get_templateId_by_channel(channel_name)
+
+                # 발송유형, 전송상태 설정
+                if pf_id:
+                    s.send_type = 'KAKAO'
+                else:
+                    s.send_type = 'SMS'
+                s.send_status = 'SENDING'
+                s.save()
+
+                # 예) URL
+                url_thx = f"34.64.123.206/delayed/thank-you?action=wait&token={s.token}"
+                url_change = f"34.64.123.206/delayed/option-change?action=change&token={s.token}"
+                logger.debug(f"=== DEBUG: url_thx={url_thx}")
+                logger.debug(f"=== DEBUG: url_change={url_change}")
+
+                발송일자_str = s.restock_date.strftime('%Y-%m-%d') if s.restock_date else ""
+
+                # 치환 변수 (Solapi 알림톡)
+                variables = {
+                    '#{고객명}': s.customer_name or "",
+                    '#{상품명}': s.order_product_name or "",
+                    '#{옵션명}': s.order_option_name or "",
+                    '#{발송일자}': 발송일자_str,
+                    '#{교환옵션명}': s.exchangeable_options or "",
+                    '#{채널명}': s.store_name or "",
+                    '#{url}': "example.com",
+                    '#{url_thx}': url_thx,
+                    '#{url_change}': url_change,
+                }
+
+                msg = {
+                    "to": s.customer_contact or "",
+                    "from": SOLAPI_SENDER_NUMBER,
+                }
+                if pf_id:
+                    # 알림톡
+                    msg["kakaoOptions"] = {
+                        "pfId": pf_id,
+                        "templateId": template_id,
+                        "variables": variables
+                    }
+                else:
+                    # 문자
+                    msg["text"] = f"[문자 테스트]\n안녕하세요 {s.customer_name or ''}님,\n{s.order_product_name or ''} 안내"
+
+                messages_list.append((s, msg))
+
+            if not messages_list:
+                messages.warning(request, "발송할 메시지가 없습니다.")
+                return redirect('send_message_list')
+
+            try:
+                success_list, fail_list = solapi_send_messages(messages_list)
+                DelayedShipment.objects.filter(id__in=success_list).update(flow_status='sent')
+                messages.success(request, f"문자/알림톡 {len(success_list)}건 발송 성공, 실패 {len(fail_list)}건")
+            except Exception as e:
+                logger.exception("=== DEBUG: 문자 발송 오류 발생 ===")
+                messages.error(request, f"문자 발송 오류: {str(e)}")
+
+            return redirect('send_message_list')
+
+    # 그 외(GET 등) 잘못된 요청이면 리스트 페이지로
+    return redirect('send_message_list')
+
+
 
 def solapi_send_messages(messages_list):
     """
@@ -926,7 +1032,7 @@ def send_kakao_for_group(group_id):
 
     # URL: 그룹 단위로 “기다리기 / 옵션변경”을 처리할 엔드포인트
     # 예: /delayed/customer-group-action?token=...
-    domain = getattr(settings, 'MY_SERVER_DOMAIN', 'https://example.com')
+    domain = getattr(settings, 'MY_SERVER_DOMAIN', 'https://34.64.123.206.com')
     confirm_url = f"{domain}/delayed/customer-group-action?token={group.token}"
 
     # 치환변수 구성
@@ -988,10 +1094,10 @@ def get_templateId_by_channel(channel_name):
     채널명 → templateId
     """
     tmpl_map = {
-        "니뜰리히": "KA01TP241114022011651rGODsHDVrTV",
-        "수비다": "KA01TP241114022011651rGODsHDVrTV",
-        "노는 개 최고양": "KA01TP241114022011651rGODsHDVrTV",
-        "아르빙": "KA01TP241114022011651rGODsHDVrTV",
+        "니뜰리히": "KA01TP2412240535576057F8eRaIgNOt",
+        "수비다": "KA01TP2412240535576057F8eRaIgNOt",
+        "노는 개 최고양": "KA01TP2412240535576057F8eRaIgNOt",
+        "아르빙": "KA01TP2412240535576057F8eRaIgNOt",
     }
     return tmpl_map.get(channel_name, "")
 
@@ -1012,26 +1118,28 @@ def confirm_token_view(request):
 def customer_action_view(request):
     action = request.GET.get('action', '')
     token = request.GET.get('token', '')
-    
+
     if not token:
         return HttpResponse("유효하지 않은 요청: token 없음", status=400)
-    
+
     shipment = DelayedShipment.objects.filter(token=token).first()
     if not shipment:
         return HttpResponse("유효하지 않은 토큰", status=404)
 
+    # 이미 waiting/changed_option 이 있다면 더 이상 변경 불가
+    if shipment.waiting or shipment.changed_option:
+        return HttpResponse("이미 처리된 내역이 존재합니다. 더 이상 변경할 수 없습니다.")
+
     if action == 'wait':
-        # "기다리기" 버튼 클릭
-        # -> waiting = True, confirmed = True
         shipment.waiting = True
         shipment.confirmed = True
+        # 발송흐름 상태도 '확인완료'로
+        shipment.flow_status = 'confirmed'
         shipment.save()
-
-        # 감사 페이지로 이동(또는 render)
         return redirect('thank_you_view')
 
     elif action == 'change':
-        # "옵션변경" 버튼 클릭
+        # TODO: flow_status='confirmed' 는 옵션변경 후 최종 저장(옵션변경 완료 시점)에 세팅
         return redirect(f"/delayed/option-change/?token={token}")
 
     else:
@@ -1081,31 +1189,44 @@ def option_change_process(request):
     if not shipments.exists():
         return HttpResponse("유효하지 않은 토큰", status=404)
 
-    # 각각 update
+    # 이미 기다리기(waiting=True) 또는 이미 changed_option이 설정되어 있으면 더 이상 수정 불가
+    any_already = shipments.filter(
+        Q(waiting=True) | ~Q(changed_option='')
+    ).exists()
+    if any_already:
+        return HttpResponse("이미 처리된 내역(기다리기 or 옵션변경)이 존재하여 수정할 수 없습니다.", status=400)
+
+    # 각 DelayedShipment에 대해 새 옵션/수량을 업데이트
     for s in shipments:
         new_opt_key = f"new_option_for_{s.id}"
         new_qty_key = f"new_qty_for_{s.id}"
-        
+
         new_option = request.POST.get(new_opt_key, '')
         new_qty_str = request.POST.get(new_qty_key, '')
+
         try:
             new_qty = int(new_qty_str)
-        except:
+        except ValueError:
             new_qty = 1
-        
-        # 제한 로직: new_qty <= s.quantity
+
+        # 제한 로직: new_qty <= 기존 수량
         if new_qty > int(s.quantity or 1):
-            # 어떤 식으로 에러 처리할지
-            pass
-        
-        # 실제 DB 업데이트
+            messages.error(request, f"수량 {new_qty}는 현재 {s.quantity}을 초과할 수 없습니다.")
+            return redirect(f"/delayed/option-change/?token={token}")
+
+        # DB 업데이트
         s.changed_option = new_option
-        s.quantity = new_qty  # 혹은 changed_qty 필드
-        s.confirmed = True
+        s.quantity = new_qty
+        s.confirmed = True     # 고객 확인 여부
+        s.waiting = False      # 혹시 모를 값 초기화
+        # ----> 새로 추가: 흐름 상태를 '확인완료'로 변경
+        s.flow_status = 'confirmed'
         s.save()
-    
-    return redirect('option_change_done')  # 예: 완료 페이지
- 
+
+    return redirect('option_change_done')
+
+
+
 def option_change_done(request):
     return render(request, 'delayed_management/option_change_done.html')
 
@@ -1125,3 +1246,92 @@ def customer_group_action_view(request):
         'group': group,
         'shipments': shipments
     })
+
+
+
+
+
+def process_confirmed_shipments(request):
+    """
+    confirmed_list 템플릿에서 POST로 전달된 shipment_ids 에 대해
+    - action = "complete_process" → 출고완료(flow_status='shipped' 등)
+    - action = "delete_multiple"  → 선택 삭제
+    """
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+        shipment_ids = request.POST.getlist('shipment_ids', [])
+
+        if not shipment_ids:
+            messages.warning(request, "선택된 항목이 없습니다.")
+            return redirect('confirmed_list')
+
+        qs = DelayedShipment.objects.filter(id__in=shipment_ids)
+
+        if action == 'complete_process':
+            # 출고완료 버튼을 눌렀을 때
+            count = qs.update(flow_status='shipped')  # 필요에 따라 send_status 등 다른 필드도 업데이트
+            messages.success(request, f"{count}건 출고완료로 변경했습니다.")
+            return redirect('confirmed_list')
+
+        elif action == 'delete_multiple':
+            # 선택 삭제 버튼을 눌렀을 때
+            deleted_info = qs.delete()
+            total_deleted = deleted_info[0]  # (삭제된 객체 수, { 'app.Model': count })
+            messages.success(request, f"{total_deleted}건이 삭제되었습니다.")
+            return redirect('confirmed_list')
+
+        else:
+            # 정의되지 않은 action일 경우
+            messages.error(request, "알 수 없는 요청입니다.")
+            return redirect('confirmed_list')
+
+    # GET 혹은 다른 메소드로 접근 시 목록 페이지로
+    return redirect('confirmed_list')
+
+
+
+def shipped_list_view(request):
+    """
+    flow_status='shipped' 인 데이터들만 보여주는 출고완료 페이지
+    """
+    shipments = DelayedShipment.objects.filter(flow_status='shipped').order_by('-created_at')
+    return render(request, 'delayed_management/shipped_list.html', {'shipments': shipments})
+
+
+def process_shipped_shipments(request):
+    """
+    출고완료 목록(shipped_list.html)에서:
+      - action="complete_shipment" → 출고완료( flow_status='shipped' )
+      - action="delete_multiple"   → 선택 삭제
+    """
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+        shipment_ids = request.POST.getlist('shipment_ids', [])
+
+        if not shipment_ids:
+            messages.warning(request, "선택된 항목이 없습니다.")
+            return redirect('shipped_list')  # 출고완료 목록 페이지 (혹은 다른 페이지)
+
+        qs = DelayedShipment.objects.filter(id__in=shipment_ids)
+
+        if action == 'delete_multiple':
+            deleted_info = qs.delete()
+            total_deleted = deleted_info[0]
+            messages.success(request, f"{total_deleted}건이 삭제되었습니다.")
+            return redirect('shipped_list')
+
+        elif action == 'complete_shipment':
+            count = qs.update(flow_status='shipped')
+            messages.success(request, f"{count}건 출고완료로 변경했습니다.")
+            return redirect('shipped_list')
+
+    # 그 외(GET 등) 잘못된 접근은 목록 페이지로
+    return redirect('shipped_list')
+
+def confirmed_list(request):
+    """ 'confirmed' 인 애들만 (고객확인 완료) """
+    qs = DelayedShipment.objects.filter(flow_status='confirmed').order_by('-created_at')
+    return render(request, 'delayed_management/confirmed_list.html', {'shipments': qs})
+
+
+

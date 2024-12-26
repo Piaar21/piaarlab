@@ -55,6 +55,13 @@ SEND_STATUS_CHOICES = [
     ('failed', '실패'),
 ]
 
+FLOW_STATUS_CHOICES = [
+    ('pre_send', '발송전'),
+    ('sent', '발송완료'),
+    ('confirmed', '확인완료'),
+    ('shipped', '출고완료'),
+]
+
 class DelayedShipmentGroup(models.Model):
     """
     같은 고객 / 같은 주문에 대해 하나의 그룹으로 묶기
@@ -98,7 +105,11 @@ class DelayedShipment(models.Model):
     waiting = models.BooleanField(default=False)  # 기다리기 여부
     confirmed = models.BooleanField(default=False)  # 확인 여부
     created_at = models.DateTimeField(auto_now_add=True)
-
+    flow_status = models.CharField(
+        max_length=20,
+        choices=FLOW_STATUS_CHOICES,
+        default='pre_send'  # 초깃값: 발송 전
+    )
     # 상태(구매된상품들, 배송중, 도착완료, 서류작성, 선적중 등)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='nopurchase')
     # ▼ 새로 추가
@@ -114,6 +125,7 @@ class DelayedShipment(models.Model):
         default='NONE',
         help_text="전송 상태(대기, 전송중, 성공, 실패)"
     )
+    
 
     # 추가: 문자/알림톡 발송 후 고객 확인용 토큰
     token = models.CharField(max_length=200, blank=True, null=True)
