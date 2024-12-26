@@ -28,6 +28,7 @@
                             <th>전송유형</th>
                             <th>전송상태</th>
                             <th>재입고일자</th>
+                            <th>예상날짜</th>
                             <th>스토어</th>
                             <th>성함</th>
                             <th>연락처</th>                          
@@ -59,7 +60,24 @@
                                 {% else %}대기
                                 {% endif %}
                             </td>
-                            <td>{% if s.restock_date %}{{ s.restock_date|date:"Y-m-d" }}{% endif %}</td>
+                            <!-- 안내날짜 (final, 변경 X) -->
+                            <td>
+                                {% if s.range_start and s.range_end %}
+                                <!-- 예: 2024.01.06 ~ 01.10 형태 -->
+                                {{ s.range_start|date:"Y.m.d" }} ~ {{ s.range_end|date:"m.d" }}
+                                {% else %}
+                                (미정)
+                                {% endif %}
+                            </td>
+
+                            <!-- 예상날짜 (동적, 매번 갱신) -->
+                            <td>
+                                {% if s.expected_start and s.expected_end %}
+                                {{ s.expected_start|date:"Y.m.d" }} ~ {{ s.expected_end|date:"m.d" }}
+                                {% else %}
+                                (미정)
+                                {% endif %}
+                            </td>
                             <td>{{ s.store_name }}</td>
                             <td>{{ s.customer_name }}</td>
                             <td>{{ s.customer_contact }}</td>

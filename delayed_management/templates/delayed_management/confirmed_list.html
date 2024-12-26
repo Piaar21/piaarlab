@@ -54,7 +54,9 @@
             <button type="submit" name="action" value="delete_multiple" class="btn btn-danger btn-sm">
                 선택 삭제
             </button>
-
+            <button type="submit" name="action" value="revert_waiting" class="btn btn-warning btn-sm">
+                기다리기로 변경
+            </button>
             <button type="button" id="copySelected" class="btn btn-secondary btn-sm">
                 주문번호 복사
             </button>
@@ -79,6 +81,7 @@
                             <th>수량</th>
                             <th>변경가능옵션</th>
                             <th>재입고일자</th>
+                            <th>예상날짜</th>
                             <th>스토어</th>
 
                             <th>셀러툴상품명</th>
@@ -104,7 +107,24 @@
                             <td>{{ s.order_option_name }}</td>
                             <td>{{ s.quantity }}</td>
                             <td>{{ s.exchangeable_options }}</td>
-                            <td>{% if s.restock_date %}{{ s.restock_date|date:"Y-m-d" }}{% endif %}</td>
+                            <!-- 안내날짜 (final, 변경 X) -->
+                            <td>
+                                {% if s.range_start and s.range_end %}
+                                <!-- 예: 2024.01.06 ~ 01.10 형태 -->
+                                {{ s.range_start|date:"Y.m.d" }} ~ {{ s.range_end|date:"m.d" }}
+                                {% else %}
+                                (미정)
+                                {% endif %}
+                            </td>
+
+                            <!-- 예상날짜 (동적, 매번 갱신) -->
+                            <td>
+                                {% if s.expected_start and s.expected_end %}
+                                {{ s.expected_start|date:"Y.m.d" }} ~ {{ s.expected_end|date:"m.d" }}
+                                {% else %}
+                                (미정)
+                                {% endif %}
+                            </td>
                             <td>{{ s.store_name }}</td>
 
                             <td>{{ s.seller_product_name }}</td>
