@@ -29,7 +29,7 @@ logger.setLevel(logging.DEBUG)  # 필요 시 레벨 지정
 def upload_delayed_orders(request):
     print("=== DEBUG: upload_delayed_orders 뷰 진입 ===")
 
-    # ───────── (A) 엑셀 업로드 ─────────
+    # (A) 엑셀 업로드 (임시 세션 저장)
     if request.method == 'POST' and 'upload_excel' in request.POST:
         form = DelayedOrderUploadForm(request.POST, request.FILES)
         if form.is_valid():
@@ -40,12 +40,10 @@ def upload_delayed_orders(request):
             temp_orders = []
             for idx, row in enumerate(ws.iter_rows(values_only=True)):
                 if idx == 0:
+                    # 첫 행(헤더) 스킵
                     continue
                 if not row or len(row) < 11:
-                    continue
-
-                option_code         = (row[0] or "").strip()
-                if not option_code:
+                    # 컬럼 부족 등 스킵
                     continue
 
                 option_code         = (row[0] or "").strip()
@@ -56,12 +54,16 @@ def upload_delayed_orders(request):
                 quantity            = (row[5] or "").strip()
                 seller_product_name = (row[6] or "").strip()
                 seller_option_name  = (row[7] or "").strip()
-                order_number_1      = (row[8] or "").strip()
+                order_number_1      = (row[8] or "").strip()  # 쓰지 않아도 되지만 일단 남김
                 order_number_2      = (row[9] or "").strip()
                 store_name_raw      = (row[10] or "").strip()
 
+                # 옵션코드 / 주문번호2가 반드시 있어야 한다고 가정
                 if not option_code:
                     print("=== DEBUG: 옵션코드 없음, 스킵 ===")
+                    continue
+                if not order_number_2:
+                    print("=== DEBUG: 주문번호2 없음, 스킵 ===")
                     continue
 
                 order_data = {
@@ -79,62 +81,60 @@ def upload_delayed_orders(request):
                 }
                 temp_orders.append(order_data)
 
-            # 세션에 저장
+            # 세션에 임시저장
             request.session['delayed_orders_temp'] = temp_orders
-            # 여기서는 단순히 "N건 임시 업로드" 정도만
+            messages.success(request, f"{len(temp_orders)}건이 임시로 업로드되었습니다.")
             return redirect('upload_delayed_orders')
-
         else:
             messages.error(request, "파일 업로드 실패.")
             return redirect('upload_delayed_orders')
 
-    # ───────── (B) 리스트 업로드(최종 DB 저장) ─────────
+    # (B) 최종 DB 저장 + 자동처리
     elif request.method == 'POST' and 'finalize' in request.POST:
         temp_orders = request.session.get('delayed_orders_temp', [])
         if not temp_orders:
             messages.error(request, "임시 데이터가 없습니다.")
             return redirect('upload_delayed_orders')
 
-        # 1) 이미 DB에 존재하는 order_number_1 목록을 집합으로 추출
+        # 1) 기존 DB에서 'order_number_2' 목록 추출 → 중복 체크용
         existing_orders = set(
-            DelayedShipment.objects
-            .values_list('order_number_1', flat=True)
+            DelayedShipment.objects.values_list('order_number_2', flat=True)
         )
-        print(f"=== DEBUG: 기존 DB에 있는 주문번호1 개수: {len(existing_orders)} ===")
+        print(f"=== DEBUG: DB 내 이미 존재하는 주문번호2 개수: {len(existing_orders)}")
 
-        # 2) 저장 성공/실패를 카운트
         success_count = 0
         fail_count = 0
-
-        # 3) 새로 저장한 DelayedShipment ID를 모아서 자동처리에 사용
         newly_created_ids = []
 
-        # 4) 업로드 실패(중복)인 항목은 다시 temp_orders 에 남길 예정이므로
-        #    새 temp_orders 배열을 따로 만든다.
+        # 업로드 실패 항목만 남길 임시배열
         remaining_temp_orders = []
 
-        # 5) 동일 고객(이름+연락처)끼리 같은 token으로 묶기 (선택사항)
         from collections import defaultdict
         group_token_map = defaultdict(lambda: str(uuid.uuid4()))
 
-        # 6) temp_orders를 순회하며 중복 여부 체크
+        # 2) temp_orders 순회, 중복 검사
         for od in temp_orders:
-            order_num_1 = od.get('order_number_1', '')
+            order_num_2 = od.get('order_number_2', '')
 
-            if not order_num_1:
-                # 주문번호가 비어있으면 fail 처리
+            if not order_num_2:
+                # 주문번호2 없으면 실패 처리
                 fail_count += 1
                 remaining_temp_orders.append(od)
                 continue
 
-            if order_num_1 in existing_orders:
-                # 이미 DB에 있음 → fail
+            if order_num_2 in existing_orders:
+                # 이미 DB에 존재하면 실패 처리
                 fail_count += 1
                 remaining_temp_orders.append(od)
                 continue
 
-            # 7) 중복 아니라면 DB 저장
-            group_key = (od['customer_name'], od['customer_contact'])
+            # 3) 중복 아니면 DB 저장
+            #    그룹핑 기준: (주문번호2 + customer_name + customer_contact)
+            group_key = (
+                od['order_number_2'].strip(),
+                od['customer_name'].strip(),
+                od['customer_contact'].strip()
+            )
             group_token = group_token_map[group_key]
 
             shipment = DelayedShipment.objects.create(
@@ -149,35 +149,38 @@ def upload_delayed_orders(request):
                 order_number_1      = od['order_number_1'],
                 order_number_2      = od['order_number_2'],
                 store_name          = od['store_name'],
-                token               = group_token,   # 동일인 그룹에 동일 토큰
+                token               = group_token,
             )
             newly_created_ids.append(shipment.id)
             success_count += 1
+            # 새로 등록된 order_number_2 추가
+            existing_orders.add(order_num_2)
 
-            # DB에 저장한 order_number_1 은 이제 중복되지 않도록
-            existing_orders.add(order_num_1)
-
-        # 8) 세션 업데이트
-        #    - 실패한 항목만 남긴다
+        # 4) 세션에는 실패 항목만 남긴다
         request.session['delayed_orders_temp'] = remaining_temp_orders
 
-        print(f"=== DEBUG: 최종 저장 성공 {success_count}건, 실패 {fail_count}건 ===")
+        print(f"=== DEBUG: 업로드 성공 {success_count}건 / 실패 {fail_count}건 ===")
 
-        # 자동 처리(옵션추출 / 스토어매핑 / 재입고동기화)는
-        # ID를 건너서 실제 Shipment 레코드들에 적용
+        # (자동 처리) 옵션추출 + 스토어매핑 + 재입고동기화
         if newly_created_ids:
             extract_options_for_ids(newly_created_ids)
             store_mapping_for_ids(newly_created_ids)
-            update_restock_for_ids(newly_created_ids)
+            update_restock_from_sheet(request)  # <= "스프레드시트 기반 상태/날짜 동기화"
 
-                # ───────── 핵심: redirect 대신 → render로 동일 템플릿 표출 ─────────
-        # (동일 요청 cycle에서 메시지를 즉시 표시)
+        # 5) 결과 메시지를 표시하고 템플릿을 다시 렌더
+        messages.success(
+            request,
+            (
+                f"총 {len(temp_orders)}건 중 저장 성공 {success_count}건, 실패 {fail_count}건\n"
+                "(실패 항목은 테이블에 남아있음)"
+            )
+        )
         return render(request, 'delayed_management/upload_delayed_orders.html', {
             'form': DelayedOrderUploadForm(),
-            'temp_orders': remaining_temp_orders,  # 실패한 애들만 남아있는 상태
+            'temp_orders': remaining_temp_orders,  # 실패한 항목이 남음
         })
 
-    # ───────── (C) 임시 데이터 개별 삭제 ─────────
+    # (C) 임시 데이터 중 하나 삭제
     elif request.method == 'POST' and 'delete_item' in request.POST:
         temp_orders = request.session.get('delayed_orders_temp', [])
         index_to_delete = request.POST.get('delete_index')
@@ -188,13 +191,14 @@ def upload_delayed_orders(request):
                     deleted_item = temp_orders[idx]
                     del temp_orders[idx]
                     request.session['delayed_orders_temp'] = temp_orders
+                    messages.success(request, f"{deleted_item['option_code']} 항목이 삭제되었습니다.")
                 else:
                     messages.error(request, "잘못된 인덱스입니다.")
             except ValueError:
-                messages.error(request, "잘못된 요청.")
+                messages.error(request, "잘못된 요청입니다.")
         return redirect('upload_delayed_orders')
 
-    # (D) GET
+    # (D) GET: 업로드 폼 표시
     else:
         temp_orders = request.session.get('delayed_orders_temp', [])
         return render(request, 'delayed_management/upload_delayed_orders.html', {
@@ -255,37 +259,61 @@ def store_mapping_for_ids(shipment_ids):
         shipment.save()
 
 
-def update_restock_for_ids(shipment_ids):
-    """
-    ID 목록 기반으로, 상태/status/재입고 예상일자 등을 갱신.
-    """
-    ETA_RANGES = {
-        'purchase': (14, 21),
-        'shipping': (10, 14),
-        'arrived': (7, 10),
-        'document': (5, 7),
-        'loading': (1, 4),
-        'nopurchase': (0, 0),
-    }
+def update_restock_from_sheet(request):
+    service_account_file = settings.SERVICE_ACCOUNT_FILE
+    spreadsheet_id = "xxxxxx..."
+    client = get_gspread_client(service_account_file)
+    sh = client.open_by_key(spreadsheet_id)
 
+    tabs = ["구매된상품들", "배송중", "도착완료", "서류작성", "선적중"]
     today = date.today()
+    total_updated = 0
 
-    qs = DelayedShipment.objects.filter(id__in=shipment_ids)
-    for shipment in qs:
-        # 예: nopurchase → purchase
-        if shipment.status == 'nopurchase':
-            shipment.status = 'purchase'
+    for tab_name in tabs:
+        try:
+            worksheet = sh.worksheet(tab_name)
+        except gspread.WorksheetNotFound:
+            print(f"=== 시트 '{tab_name}' 없음, 건너뜁니다.")
+            continue
 
-        min_d, _ = ETA_RANGES.get(shipment.status, (0, 0))
-        calc_date = today + timedelta(days=min_d) if min_d else None
+        data = worksheet.get_all_values()
+        for idx, row in enumerate(data[1:], start=2):
+            if not row or len(row) < 1:
+                continue
 
-        # expected_restock_date 매번 갱신
-        shipment.expected_restock_date = calc_date
-        # restock_date가 None이면 최초 설정
-        if shipment.restock_date is None:
-            shipment.restock_date = calc_date
+            option_code = (row[0] or "").strip()
+            if not option_code:
+                continue
 
-        shipment.save()
+            # 스프레드시트 탭 → DB status
+            status_code = map_status(tab_name)
+
+            # ETA 계산 (min_days만 사용)
+            min_days, max_days = ETA_RANGES.get(status_code, (0,0))
+            calc_date = today + timedelta(days=min_days) if min_days else None
+
+            # 기존처럼 get() → MultipleObjectsReturned 가능
+            # → filter()로 전부 반영
+            qs = DelayedShipment.objects.filter(option_code=option_code)
+            if not qs.exists():
+                continue
+
+            # 상태+expected_restock_date (bulk update)
+            qs.update(
+                status=status_code,
+                expected_restock_date=calc_date,
+            )
+
+            # restock_date가 None인 경우만 새로 설정
+            for ship in qs:
+                if ship.restock_date is None:
+                    ship.restock_date = calc_date
+                    ship.save()
+
+            total_updated += qs.count()
+
+    messages.success(request, f"{total_updated}건 동기화 완료")
+    return redirect('restock_management')
 
 
 def post_list_view(request):
@@ -549,11 +577,6 @@ def change_exchangeable_options(request):
                 messages.error(request, "발송할 데이터가 없습니다.")
                 return redirect('delayed_shipment_list')
 
-            # (1) 동일 group_token 발행 (필요하면 유지, 필요없으면 제거)
-            group_token = str(uuid.uuid4())
-            for s in shipments:
-                s.token = group_token
-                s.save()
 
             # (2) 메시지 생성
             messages_list = []
@@ -734,6 +757,7 @@ def restock_list(request):
 def restock_update(request):
     """
     상태/ETA 조정 폼에서 POST로 수신하는 예시
+    (option_code가 여러 레코드에 중복될 수 있으므로 filter(...)로 일괄 처리)
     """
     if request.method == 'POST':
         option_code = request.POST.get('option_code', '').strip()
@@ -741,55 +765,52 @@ def restock_update(request):
             messages.error(request, "옵션코드가 없습니다.")
             return redirect('restock_list')
 
-        shipment = get_object_or_404(DelayedShipment, option_code=option_code)
+        # 기존: shipment = get_object_or_404(DelayedShipment, option_code=option_code)
+        # 변경: 여러 레코드 filter
+        qs = DelayedShipment.objects.filter(option_code=option_code)
+        if not qs.exists():
+            messages.error(request, f"해당 옵션코드({option_code})를 가진 레코드가 없습니다.")
+            return redirect('restock_list')
 
-        new_status = request.POST.get('status')
-        new_eta = request.POST.get('eta')  # YYYY-MM-DD 형태 가정
+        new_status = request.POST.get('status', '').strip()
+        new_eta = request.POST.get('eta', '').strip()
 
+        # (A) 상태 업데이트
         if new_status:
-            shipment.status = new_status
+            qs.update(status=new_status)
 
+        # (B) ETA(날짜) 업데이트
         if new_eta:
-            # 날짜 변환
             try:
                 y, m, d = new_eta.split('-')
-                shipment.eta = date(int(y), int(m), int(d))
+                parsed_date = date(int(y), int(m), int(d))
             except ValueError:
-                messages.error(request, "유효한 날짜 형식이 아닙니다.")
+                messages.error(request, "유효한 날짜 형식(YYYY-MM-DD)이 아닙니다.")
                 return redirect('restock_list')
 
-        shipment.save()
-        messages.success(request, f"{option_code} 정보가 업데이트되었습니다.")
+            # 만약 eta 필드가 있다면 (존재한다면)
+            # qs.update(eta=parsed_date)
+            # restock_date도 마찬가지로 필요 시 bulk update 가능
+            #
+            # 혹은 개별 로직이 필요하다면:
+            for shipment in qs:
+                # 예: 기존에 eta가 비어있을 때만 넣겠다
+                if not shipment.eta:
+                    shipment.eta = parsed_date
+                shipment.save()
+
+        updated_count = qs.count()  # 실제 몇 건이 영향을 받았는지
+
+        messages.success(request, f"옵션코드 {option_code}의 {updated_count}건이 업데이트되었습니다.")
         return redirect('restock_list')
 
-    # GET이면 목록 페이지로
+    # GET 등 잘못된 접근은 목록 페이지로 이동
     return redirect('restock_list')
 
 
 tabs = ["구매된상품들", "배송중", "도착완료", "서류작성", "선적중"]
 
 
-
-
-def update_restock_from_sheet(request):
-
-
-    service_account_file = settings.SERVICE_ACCOUNT_FILE
-    spreadsheet_id = "1qQfo2Pp-odUuYwKmQXNPv1phzK6Gi2JtlJYaaz3T1F0"
-
-    client = get_gspread_client(service_account_file)
-    sh = client.open_by_key(spreadsheet_id)
-
-    tabs = ["구매된상품들", "배송중", "도착완료", "서류작성", "선적중"]
-
-    ETA_RANGES = {
-    'purchase':  (14, 21),
-    'shipping':  (10, 14),
-    'arrived':   (7, 10),
-    'document':  (5, 7),
-    'loading':   (1, 4),
-    'nopurchase': (0, 0),
-}
 
 def map_status(raw_status):
     if raw_status == "구매된상품들":
@@ -824,38 +845,50 @@ def update_restock_from_sheet(request):
 
         data = worksheet.get_all_values()
         for idx, row in enumerate(data[1:], start=2):
+            # row[0]에 option_code가 있다고 가정
             if not row or len(row) < 1:
                 continue
 
-            option_code = row[0].strip()
+            option_code = (row[0] or "").strip()
             if not option_code:
                 continue
 
-            # 스프레드시트 탭 → DB status
+            # 스프레드시트 탭 이름으로 상태 매핑
             status_code = map_status(tab_name)
 
             # ETA 계산 (min_days만 사용)
-            min_days, max_days = ETA_RANGES.get(status_code, (0,0))
+            min_days, max_days = ETA_RANGES.get(status_code, (0, 0))
             calc_date = today + timedelta(days=min_days) if min_days else None
 
-            try:
-                shipment = DelayedShipment.objects.get(option_code=option_code)
-                # 1) 매번 expected_restock_date 갱신
-                shipment.expected_restock_date = calc_date
+            # ▼ 변경 후 코드: filter(...) 사용 (get(...) 대신)
+            qs = DelayedShipment.objects.filter(option_code=option_code)
+            if not qs.exists():
+                # 해당 option_code가 없으면 스킵
+                continue
 
-                # 2) restock_date가 아직 None이면 (최초 설정 시점)만 넣고, 이미 있으면 변경하지 않음
-                if shipment.restock_date is None:
-                    shipment.restock_date = calc_date
+            # 1) status, expected_restock_date bulk update
+            qs.update(
+                status=status_code,
+                expected_restock_date=calc_date
+            )
 
-                # 3) 상태도 갱신
-                shipment.status = status_code
-                shipment.save()
-                total_updated += 1
-            except DelayedShipment.DoesNotExist:
-                pass
+            # 2) restock_date는 None인 경우에만 세팅
+            for ship in qs:
+                if ship.restock_date is None:
+                    ship.restock_date = calc_date
+                    ship.save()
 
-    messages.success(request, f"{total_updated}건 동기화 완료 (restock_date는 최초 1회만 설정, expected_restock_date는 매번 갱신).")
+            total_updated += qs.count()
+
+    messages.success(
+        request,
+        f"{total_updated}건 동기화 완료 (restock_date는 최초 1회만 설정, expected_restock_date는 매번 갱신)."
+    )
     return redirect('restock_management')
+
+
+
+
 
 
 # Solapi API 환경변수
@@ -866,6 +899,25 @@ SOLAPI_SENDER_NUMBER = config('SOLAPI_SENDER_NUMBER', default='')  # 발신번�
 
 def send_message_list(request):
     qs = DelayedShipment.objects.filter(flow_status='sent').order_by('-created_at')
+    today = date.today()
+    for s in qs:
+        min_days, max_days = ETA_RANGES.get(s.status, (0,0))
+
+        # 고정 안내날짜 range
+        if s.restock_date:
+            s.range_start = s.restock_date + timedelta(days=min_days)
+            s.range_end   = s.restock_date + timedelta(days=max_days)
+        else:
+            s.range_start = None
+            s.range_end   = None
+
+        # 동적 예상날짜 range
+        if s.expected_restock_date:
+            s.expected_start = s.expected_restock_date + timedelta(days=min_days)
+            s.expected_end   = s.expected_restock_date + timedelta(days=max_days)
+        else:
+            s.expected_start = None
+            s.expected_end   = None
     return render(request, 'delayed_management/send_message_list.html', {
         'shipments': qs
     })
@@ -897,12 +949,6 @@ def send_message_process(request):
             if not shipments.exists():
                 messages.error(request, "발송할 데이터가 없습니다.")
                 return redirect('send_message_list')
-
-            # 그룹 토큰(같이 보내기 위해) 생성
-            group_token = str(uuid.uuid4())
-            for s in shipments:
-                s.token = group_token
-                s.save()
 
             # 메시지 생성
             messages_list = []
@@ -1197,6 +1243,26 @@ def option_change_view(request):
     if not shipments.exists():
         return HttpResponse("유효하지 않은 토큰", status=404)
 
+    # ETA_RANGES는 상단에 정의되어 있다고 가정
+    for s in shipments:
+        min_days, max_days = ETA_RANGES.get(s.status, (0, 0))
+
+        # 고정 안내날짜
+        if s.restock_date:
+            s.range_start = s.restock_date + timedelta(days=min_days)
+            s.range_end   = s.restock_date + timedelta(days=max_days)
+        else:
+            s.range_start = None
+            s.range_end   = None
+
+        # 예상 안내날짜
+        if s.expected_restock_date:
+            s.expected_start = s.expected_restock_date + timedelta(days=min_days)
+            s.expected_end   = s.expected_restock_date + timedelta(days=max_days)
+        else:
+            s.expected_start = None
+            s.expected_end   = None
+
     # 각 품목별 실제 교환가능옵션을 구해 data 구성
     shipments_data = []
     for s in shipments:
@@ -1250,6 +1316,14 @@ def option_change_process(request):
             messages.error(request, "수량 오류...")
             return redirect(f"/delayed/option-change/?token={token}")
 
+        # **새로운 옵션이 빈 문자열인지, "옵션을 선택하세요" 같은 문구인지 체크**
+        stripped_option = new_option.strip()
+        # (만약 '상담원 문의'도 무시하고 싶다면 아래 조건에 추가)
+        if not stripped_option or stripped_option == "옵션을 선택하세요":
+            # 실제로는 안내문 등 원하는 문구로 대체
+            new_option = "변경 가능한 옵션이 없습니다. 상담원에게 문의해주세요."
+            # new_option_code도 ""으로 처리 가능
+
         # DB 저장
         s.changed_option = new_option
         s.changed_option_code = new_option_code
@@ -1260,6 +1334,7 @@ def option_change_process(request):
         s.save()
 
     return redirect('option_change_done')
+
 
 
 
@@ -1316,6 +1391,28 @@ def process_confirmed_shipments(request):
             total_deleted = deleted_info[0]  # (삭제된 객체 수, { 'app.Model': count })
             return redirect('confirmed_list')
 
+        elif action == 'revert_waiting':
+            """
+            '기다리기로 변경' 로직:
+            - 기존에 changed_option (옵션변경)이나 confirmed=True 였던 것을 다시 'waiting=True'로 돌림
+            - changed_option=''(초기화), changed_option_code=''(초기화)
+            - confirmed=False (다시 미확인 상태)
+            - waiting=True
+            - flow_status=... (선택: pre_send? confirmed? 여기서 '기다리는 중'을 어떤 flow_status로 둘지 결정)
+            """
+            count = 0
+            for s in qs:
+                s.changed_option = ""
+                s.changed_option_code = ""
+                s.waiting = True
+                s.confirmed = True
+                s.flow_status = 'confirmed'  # 또는 'pre_send' 등, 원하는 흐름상태
+                s.save()
+                count += 1
+
+            messages.success(request, f"{count}건 기다리기로 변경했습니다.")
+            return redirect('confirmed_list')
+        
         else:
             # 정의되지 않은 action일 경우
             messages.error(request, "알 수 없는 요청입니다.")
@@ -1379,6 +1476,27 @@ def confirmed_list(request):
         qs = qs.filter(~Q(changed_option=''))
 
     shipments = qs.order_by('-created_at')
+
+    # ▼ 안내날짜(range_start, range_end), 예상날짜(expected_start, expected_end) 계산
+    for s in shipments:
+        # status에 따른 min_days, max_days
+        min_days, max_days = ETA_RANGES.get(s.status, (0, 0))
+
+        # 1) 안내날짜(고정) range
+        if s.restock_date:
+            s.range_start = s.restock_date + timedelta(days=min_days)
+            s.range_end   = s.restock_date + timedelta(days=max_days)
+        else:
+            s.range_start = None
+            s.range_end   = None
+
+        # 2) 예상날짜(매번 갱신) range
+        if s.expected_restock_date:
+            s.expected_start = s.expected_restock_date + timedelta(days=min_days)
+            s.expected_end   = s.expected_restock_date + timedelta(days=max_days)
+        else:
+            s.expected_start = None
+            s.expected_end   = None
 
     return render(request, 'delayed_management/confirmed_list.html', {
         'shipments': shipments,
