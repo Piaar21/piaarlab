@@ -23,5 +23,13 @@ urlpatterns = [
     path('option-change-process/', views.option_change_process, name='option_change_process'),
     path('thank-you/', views.thank_you_view, name='thank_you_view'),
     path('option-change-done/', views.option_change_done, name='option_change_done'),
+    path('delayed/process-confirmed-shipments/', views.process_confirmed_shipments, name='process_confirmed_shipments'),
+        # 출고완료 목록 페이지
+    path('delayed/shipped-list/', views.shipped_list_view, name='shipped_list'),
+
+    # 출고완료 처리 POST 액션
+    path('delayed/process-shipped/', views.process_shipped_shipments, name='process_shipped_shipments'),
+    path('delayed/confirmed-list/', views.confirmed_list, name='confirmed_list'),
+
 
 ]

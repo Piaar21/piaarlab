@@ -1,81 +1,75 @@
+{% block content %}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>옵션 변경 페이지</title>
+  <!-- 모바일 화면을 1:1로 사용하기 위한 뷰포트 설정 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>옵션 변경</title>
   <style>
-    /* 전체 reset 비슷하게 */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    /* Bootstrap의 .container 등과 충돌 방지를 위해 별도 클래스 사용 */
+    .option-change-container {
+      /* 모바일에서 꽉 차게 - !important로 Bootstrap 기본 컨테이너를 덮어씁니다 */
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 1rem !important;
 
-    /* 배경, 폰트, 기본 레이아웃 */
-    body {
-      font-family: 'Noto Sans KR', sans-serif;
-      background-color: #f0f4f8;
-      min-height: 100vh; /* 화면 전체 높이를 차지하도록 */
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    /* 메인 컨테이너 */
-    .container {
-      width: 100%;
-      max-width: 28rem; /* 대략 448px (Tailwind의 max-w-md 정도) */
       background-color: #fff;
-      border-radius: 0.5rem; /* 약 8px */
+      border-radius: 8px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      padding: 2rem;
-      margin: 1rem; /* 모바일에서도 여백 */
     }
 
-    h1 {
+    /* 상단 타이틀 */
+    .option-change-container h1 {
       text-align: center;
       color: #2c3e50;
       margin-bottom: 1.5rem;
-      font-size: 1.25rem; /* 약 20px */
+      font-size: 1.25rem;
       font-weight: 600;
     }
 
-    /* 폼(세로 정렬, 적당한 간격) */
-    form {
+    /* 폼 전체 설정 */
+    .option-change-container form {
       display: flex;
       flex-direction: column;
-      gap: 1.25rem; /* 20px 정도 */
+      gap: 1rem;
+      margin: 0;
+      padding: 0;
     }
 
-    /* 개별 상품/옵션 블록 */
+    /* 개별 상품/옵션 블럭 */
     .shipment-item {
       border: 1px solid #ccc;
-      border-radius: 0.5rem;
+      border-radius: 6px;
       padding: 1rem;
-      background-color: #fafafa;
       margin-bottom: 0.75rem;
+      background-color: #fafafa;
     }
+
+    /* 블럭 내부 텍스트 */
     .shipment-item p {
-      margin-bottom: 0.5rem;
-      font-size: 0.875rem; /* 14px 근처 */
-      color: #555;
+      margin: 0.5rem 0;
+      font-size: 0.9rem;
+      color: #333;
     }
 
     label {
       display: block;
       margin-bottom: 0.3rem;
-      font-size: 0.875rem;
+      font-size: 0.9rem;
       font-weight: 500;
-      color: #333;
+      color: #444;
     }
 
     select {
       width: 100%;
       padding: 0.5rem 0.75rem;
       border: 1px solid #ccc;
-      border-radius: 0.375rem;
-      font-size: 0.875rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
       color: #333;
+      box-sizing: border-box;
     }
 
     /* 제출 버튼 */
@@ -87,7 +81,7 @@
       font-size: 1rem;
       font-weight: 500;
       border: none;
-      border-radius: 0.375rem;
+      border-radius: 6px;
       cursor: pointer;
       margin-top: 0.5rem;
     }
@@ -95,22 +89,19 @@
       background-color: #a29bfe;
     }
 
-    /* 모바일 대응 예시 */
-    @media (max-width: 480px) {
-      .container {
-        margin: 1rem;
-        padding: 1.5rem; /* 조금 줄여줌 */
-      }
-      h1 {
-        font-size: 1.125rem; /* 약 18px */
-        margin-bottom: 1rem;
+    /* (선택) 큰 화면에서 약간 중앙정렬 + 최대폭 제한 */
+    @media (min-width: 768px) {
+      .option-change-container {
+        max-width: 480px !important; /* 데스크톱에서 480px 정도로 중앙배치 */
+        margin: 2rem auto !important;
       }
     }
   </style>
 </head>
-<body>
 
-  <div class="container">
+<body>
+  <!-- 옵션 변경 컨테이너 -->
+  <div class="option-change-container">
     <h1>옵션 변경 페이지</h1>
 
     <form method="post" action="{% url 'option_change_process' %}">
@@ -134,6 +125,6 @@
       <button type="submit" class="submit-button">전체 옵션 변경하기</button>
     </form>
   </div>
-
 </body>
 </html>
+{% endblock %}

@@ -2,38 +2,84 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
+  <!-- 모바일 화면에 맞춰 초기 스케일 설정 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>옵션 변경 완료</title>
   <style>
+    /* 페이지 전반 리셋 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       font-family: 'Noto Sans KR', sans-serif;
       background-color: #f0f4f8;
+
+      /* 세로로 화면 전체 높이를 채우되, 스크롤이 있으면 아래서도 보이도록 min-height 사용 */
+      min-height: 100vh; 
+      
+      /* Flex로 수직/수평 중앙정렬 */
       display: flex;
-      justify-content: center;
       align-items: center;
-      height: 100vh;
-      margin: 0;
+      justify-content: center;
     }
+
+    /* 메인 컨테이너 */
     .container {
-      background-color: white;
+      background-color: #ffffff;
       border-radius: 8px;
       box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      padding: 40px;
-      max-width: 600px;
+      
+      /* 모바일에서 화면폭 100% 사용, 좌우 여백(마진) */
+      width: 100%;
+      margin: 1rem;
+      box-sizing: border-box;
+      
+      padding: 2rem;
       text-align: center;
+      
+      /* 큰 화면에서는 최대 폭 제한 */
+      max-width: 600px;
     }
+
+    .icon {
+      font-size: 4rem; /* 모바일(약 64px)에서 적당한 크기 */
+      margin-bottom: 1.5rem;
+    }
+
     h1 {
       color: #2c3e50;
-      margin-bottom: 20px;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
     }
+
     p {
       color: #34495e;
-      margin-bottom: 20px;
-      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      font-size: 1.1rem;
       line-height: 1.6;
     }
-    .icon {
-      font-size: 80px;
-      margin-bottom: 30px;
+
+    /* 큰 화면(태블릿/PC)에서 좀 더 여유 있게 */
+    @media (min-width: 768px) {
+      .container {
+        max-width: 480px; /* 최대 폭 480px 정도로 */
+        margin: 2rem auto; 
+      }
+
+      .icon {
+        font-size: 5rem;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      p {
+        font-size: 1.25rem;
+      }
     }
   </style>
 </head>
@@ -42,7 +88,7 @@
     <div class="icon">🔄</div>
     <h1>옵션 변경 완료</h1>
     <p>
-      요청하신 옵션 변경이 완료되었습니다.<br>
+      요청하신 옵션 변경이 완료되었습니다.<br/>
       변경된 옵션으로 처리되며, 빠른 시일 내 발송해 드리겠습니다.
     </p>
     <p>감사합니다.</p>
