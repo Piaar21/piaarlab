@@ -19,6 +19,7 @@ from .api_clients import (
     get_return_request_details,
     approve_naver_return,
     get_product_order_details,
+    dispatch_naver_exchange
 )
 from django.contrib.auth import login
 from django.contrib.auth.forms import UserCreationForm
@@ -1382,41 +1383,35 @@ def inspected_items(request):
 
     if request.method == 'POST':
         data = json.loads(request.body.decode('utf-8'))
-        action = data.get('action')
+        action = data.get('action', None)  # <-- 안전하게 선언
 
         if action == 'update_all_claim_status':
+            # --- 기존 코드 (수정 불가) ---
             if not items.exists():
                 return JsonResponse({'success': False, 'message': '검수완료 상태인 아이템이 없습니다.'}, status=400)
 
-            # 1. 아이템별로 (platform, store_name)을 기준으로 그룹화
             from collections import defaultdict
             grouped_by_account = defaultdict(list)
             for item in items:
                 platform = item.platform.lower()
                 store_name = item.store_name
-                # account_info를 결정하는 로직 필요
                 if platform == 'naver':
                     target_account = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
                     if not target_account:
-                        # 해당 아이템은 업데이트 불가
                         continue
                     account_key = (platform, store_name)
                     grouped_by_account[account_key].append(item.order_number)
                 else:
-                    # 지원하지 않는 플랫폼이면 skip 혹은 에러 처리
                     pass
 
             MAX_IDS = 50
             total_updated_count = 0
 
-            # 2. 그룹별로 API 호출
             for (platform, store_name), order_numbers in grouped_by_account.items():
-                # account_info 결정 (naver 계정 예시)
                 account_info = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
                 if not account_info:
                     continue
 
-                # 청크 단위로 API 호출
                 chunked_details = []
                 for i in range(0, len(order_numbers), MAX_IDS):
                     batch = order_numbers[i:i+MAX_IDS]
@@ -1425,7 +1420,6 @@ def inspected_items(request):
                         return JsonResponse({'success': False, 'message': batch_result.get('message')}, status=400)
                     chunked_details.extend(batch_result.get('details', []))
 
-                # 3. DB 업데이트
                 for detail in chunked_details:
                     order_id = detail.get('productOrderId')
                     status = detail.get('productOrderStatus', 'N/A')
@@ -1437,6 +1431,61 @@ def inspected_items(request):
 
             return JsonResponse({'success': True, 'updated_count': total_updated_count})
 
+        elif action == 'dispatch_exchange':
+            print("[DEBUG] dispatch_exchange action 호출됨.")
+            print(f"[DEBUG] request.POST or body data: {data}")
+
+            product_order_id = data.get('product_order_id')
+            re_delivery_method = data.get('re_delivery_method', 'DELIVERY')
+            re_delivery_company = data.get('re_delivery_company') or None
+            re_delivery_tracking_number = data.get('re_delivery_tracking_number') or None
+
+            print(f"[DEBUG] 전달받은 product_order_id={product_order_id}, "
+                  f"re_delivery_method={re_delivery_method}, "
+                  f"re_delivery_company={re_delivery_company}, "
+                  f"re_delivery_tracking_number={re_delivery_tracking_number}")
+
+            # 디버깅: DB에 어떤 레코드가 있는지 한번 출력해보기
+            count_all = ReturnItem.objects.filter(order_number=product_order_id).count()
+            count_in_inspected = ReturnItem.objects.filter(order_number=product_order_id, processing_status='검수완료').count()
+            print(f"[DEBUG] order_number={product_order_id} 전체 매칭 개수: {count_all}")
+            print(f"[DEBUG] order_number={product_order_id} + 검수완료 매칭 개수: {count_in_inspected}")
+
+            # item 조회
+            item = ReturnItem.objects.filter(order_number=product_order_id, processing_status='검수완료').first()
+            if not item:
+                print("[DEBUG] 400 반환: 해당 주문번호(검수완료) 아이템을 찾을 수 없습니다.")
+                return JsonResponse({'success': False, 'message': '해당 주문번호(검수완료) 아이템을 찾을 수 없습니다.'}, status=400)
+
+            # >>> 여기서 실제 DB에서 찾은 item의 order_number를 찍어볼 수 있음 <<<
+            print(f"[DEBUG] 찾은 item: ID={item.id}, order_number={item.order_number}")
+
+            platform = item.platform.lower()
+            print(f"[DEBUG] 찾은 item의 platform={platform}, store_name={item.store_name}")
+
+            if platform != 'naver':
+                print(f"[DEBUG] 400 반환: 네이버가 아닌 플랫폼({platform})")
+                return JsonResponse({'success': False, 'message': f'네이버 플랫폼이 아니므로 재배송 처리를 지원하지 않습니다. ({platform})'}, status=400)
+
+            store_name = item.store_name
+            account_info = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
+            if not account_info:
+                print("[DEBUG] 400 반환: NAVER 계정을 찾을 수 없음")
+                return JsonResponse({'success': False, 'message': 'NAVER 계정을 찾을 수 없음'}, status=400)
+
+            # 여기서 dispatch_naver_exchange 함수 콜
+            success, message = dispatch_naver_exchange(
+                account_info=account_info,
+                product_order_id=product_order_id,
+                re_delivery_method=re_delivery_method,
+                re_delivery_company=re_delivery_company,
+                re_delivery_tracking_number=re_delivery_tracking_number
+            )
+
+            print(f"[DEBUG] 교환 재배송 처리 결과: success={success}, message={message}")
+            return JsonResponse({'success': success, 'message': message})
+
+    # 기존 GET 로직 그대로
     return render(request, 'return_process/inspected_items.html', {'items': items})
 
 
