@@ -26,6 +26,7 @@
             <button type="submit" name="action" value="send_sms" class="btn btn-success btn-sm">
                 문자 발송
             </button>
+
         </div>
 
         <div class="card shadow-sm mb-4">
@@ -148,25 +149,9 @@
     }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 <script>
-    {% if messages %}
-      let msgList = [];
-      {% for message in messages %}
-        msgList.push("{{ message|escapejs }}");  // escapejs로 JS문자열 안전 처리
-      {% endfor %}
-    
-      if (msgList.length > 0) {
-        let combined = msgList.join("\\n");
-    
-        // \n → 실제 줄바꿈으로 대체
-        combined = combined.replace(/\\n/g, "\n");
-        // <br> → 줄바꿈
-        combined = combined.replace(/<br\s*\/?>/gi, "\n");
-    
-        alert(combined);
-      }
-    {% endif %}
+
 document.addEventListener('DOMContentLoaded', function() {
     // 전체 선택 체크박스
     const selectAllCheckbox = document.getElementById('selectAll');
