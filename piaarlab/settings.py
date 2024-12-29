@@ -210,7 +210,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 # 아래 항목들을 함께 설정해줍니다.
 
 # 2-1) HTTPS로 리다이렉트
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = False
 
 # 2-2) HSTS(HTTP Strict Transport Security) 설정 (선택)
 SECURE_HSTS_SECONDS = 31536000    # 1년(초 단위)
