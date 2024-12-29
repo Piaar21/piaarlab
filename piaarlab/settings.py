@@ -22,6 +22,10 @@ ALLOWED_HOSTS = [
     'localhost'
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://piaarlab.store",
+    "https://www.piaarlab.store",  # www도 사용 중이라면
+]
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
