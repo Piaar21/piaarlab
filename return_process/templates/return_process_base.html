@@ -64,7 +64,7 @@
                 <a class="nav-link" href="{% url '처리완료' %}">처리완료</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="http://34.64.123.206/delayed/upload-delayed-orders/">배송지연</a>
+                <a class="nav-link" href="{% url 'upload_delayed_orders' %}">배송지연</a>
             </li>
             {% if user.is_authenticated %}
             <li class="nav-item">
