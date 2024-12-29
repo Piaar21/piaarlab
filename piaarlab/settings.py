@@ -14,7 +14,13 @@ import os
 from pathlib import Path
 from decouple import config
 
-ALLOWED_HOSTS = ['34.64.123.206', '127.0.0.1', 'localhost']
+ALLOWED_HOSTS = [
+    'piaarlab.store', 
+    'www.piaarlab.store', 
+    '34.64.123.206', 
+    '127.0.0.1', 
+    'localhost'
+]
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -199,3 +205,18 @@ LOGGING = {
 
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
+
+# 이미 'django.middleware.security.SecurityMiddleware'가 설치되어 있다면,
+# 아래 항목들을 함께 설정해줍니다.
+
+# 2-1) HTTPS로 리다이렉트
+SECURE_SSL_REDIRECT = True
+
+# 2-2) HSTS(HTTP Strict Transport Security) 설정 (선택)
+SECURE_HSTS_SECONDS = 31536000    # 1년(초 단위)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+# 2-3) 쿠키 보안 설정
+SESSION_COOKIE_SECURE = True      # HTTPS를 통해서만 쿠키 전송
+CSRF_COOKIE_SECURE = True         # HTTPS를 통해서만 CSRF 쿠키 전송
