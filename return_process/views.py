@@ -6,7 +6,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView
 import requests
 from django.shortcuts import render, redirect
-from .models import ReturnItem, NaverAccount, CoupangAccount
+from .models import ReturnItem, ScanLog
 from .api_clients import (
     NAVER_ACCOUNTS,
     COUPANG_ACCOUNTS,
@@ -72,7 +72,7 @@ def return_list(request):
         '처리완료': '처리완료'
     }
 
-    return_items = ReturnItem.objects.all()
+    return_items = ReturnItem.objects.order_by('-last_update_date')
 
     # 총 반품건수
     total_count = return_items.count()
@@ -1037,22 +1037,22 @@ def upload_reason_excel(request):
 
 @login_required
 def scan(request):
-    scanned_numbers = request.session.get('scanned_numbers', [])
-    unmatched_numbers = request.session.get('unmatched_numbers', [])
+    # DB에서 로그인한 사용자(user=request.user)가 등록한 스캔 목록 읽어오기
+    scanned_qs = ScanLog.objects.filter(user=request.user, matched=True).order_by('created_at')
+    unmatched_qs = ScanLog.objects.filter(user=request.user, matched=False).order_by('created_at')
+
+    # 템플릿에 넘길 리스트
+    scanned_numbers = [obj.tracking_number for obj in scanned_qs]
+    unmatched_numbers = [obj.tracking_number for obj in unmatched_qs]
 
     if request.method == 'POST':
         remove_number = request.POST.get('remove_number')
         if remove_number:
-            # 스캔 리스트에서 삭제
-            if remove_number in scanned_numbers:
-                scanned_numbers.remove(remove_number)
-                request.session['scanned_numbers'] = scanned_numbers
+            # scanned
+            removed = ScanLog.objects.filter(user=request.user,
+                                             tracking_number=remove_number).delete()
+            if removed[0] > 0:
                 messages.success(request, f"{remove_number} 운송장번호를 제거했습니다.")
-            # 미일치 리스트에서 삭제
-            elif remove_number in unmatched_numbers:
-                unmatched_numbers.remove(remove_number)
-                request.session['unmatched_numbers'] = unmatched_numbers
-                messages.success(request, f"{remove_number} 일치하지 않는 운송장번호를 제거했습니다.")
             else:
                 messages.warning(request, f"{remove_number} 운송장번호를 찾을 수 없습니다.")
 
@@ -1060,6 +1060,7 @@ def scan(request):
         'scanned_numbers': scanned_numbers,
         'unmatched_numbers': unmatched_numbers,
     })
+
 
 @csrf_exempt
 def scan_submit(request):
@@ -1072,6 +1073,7 @@ def scan_submit(request):
         action = data.get('action', None)
         scanned_numbers = request.session.get('scanned_numbers', [])
         unmatched_numbers = request.session.get('unmatched_numbers', [])
+        user = request.user
 
         if not action:
             return JsonResponse({'success': False, 'error': 'action parameter is missing'})
@@ -1097,31 +1099,39 @@ def scan_submit(request):
         #             request.session['unmatched_numbers'] = unmatched_numbers
         #         return JsonResponse({'success': True, 'matched': False, 'number': number, 'action': 'check_number'})
 
-        elif action == 'approve_returns':
-            scanned_numbers = request.session.get('scanned_numbers', [])
-            unmatched_numbers = request.session.get('unmatched_numbers', [])
+        if action == 'approve_returns':
+            # 1) DB에서 user가 matched=True로 저장해둔 운송장번호 목록을 가져옴
+            matched_logs = ScanLog.objects.filter(user=user, matched=True)
+            scanned_numbers = [log.tracking_number for log in matched_logs]
 
-            # 디버깅용 출력
+            # 디버깅용
             print("DEBUG: scanned_numbers at approve_returns:", scanned_numbers)
 
             if scanned_numbers:
+                # 2) 실제 DB에 존재하는 ReturnItem만 필터
                 existing_items = ReturnItem.objects.filter(collect_tracking_number__in=scanned_numbers)
                 existing_numbers = list(existing_items.values_list('collect_tracking_number', flat=True))
-
                 print("DEBUG: existing_numbers found in DB:", existing_numbers)
 
+                # 3) new_unmatched: 스캔은 했지만 ReturnItem에 없는 번호
                 scanned_set = set(scanned_numbers)
                 existing_set = set(existing_numbers)
                 new_unmatched = list(scanned_set - existing_set)
 
+                # 4) 실제 존재하는 아이템은 수거완료 처리(원하면 '검수완료'로 변경)
                 ReturnItem.objects.filter(collect_tracking_number__in=existing_numbers).update(processing_status='수거완료')
 
-                request.session['scanned_numbers'] = []
-                old_unmatched = request.session.get('unmatched_numbers', [])
-                combined_unmatched = list(set(old_unmatched + new_unmatched))
-                request.session['unmatched_numbers'] = combined_unmatched
+                # 5) matched_logs 전부 삭제 (혹은 남겨두고 싶다면 다른 로직)
+                matched_logs.delete()
 
-                print("DEBUG: unmatched_numbers after process:", request.session['unmatched_numbers'])
+                # 6) new_unmatched를 DB에 저장(미일치)하거나 로그 업데이트
+                #    기존 미일치 로그로 만들기
+                for num in new_unmatched:
+                    # 이미 unmatched=True로 등록된게 없으면 생성
+                    obj, created = ScanLog.objects.get_or_create(user=user, tracking_number=num)
+                    if obj.matched:  # 만약 기존이 matched였다면
+                        obj.matched = False
+                        obj.save()
 
                 if new_unmatched:
                     return JsonResponse({
@@ -1135,23 +1145,23 @@ def scan_submit(request):
                 return JsonResponse({'success': False, 'message': '스캔한 운송장번호가 없습니다.'})
 
         elif action == 'recheck_unmatched':
-            # unmatched_numbers를 다시 DB에서 확인
+            # 1) DB에서 user가 matched=False인 운송장번호를 확인
+            unmatched_logs = ScanLog.objects.filter(user=user, matched=False)
+            unmatched_numbers = [log.tracking_number for log in unmatched_logs]
+
             if unmatched_numbers:
+                # 2) 실제 존재하는 ReturnItem
                 existing_items = ReturnItem.objects.filter(collect_tracking_number__in=unmatched_numbers)
-                existing_numbers = list(existing_items.values_list('collect_tracking_number', flat=True))
-                # 미일치 중에서 다시 확인한 뒤 일치하는 번호
-                re_matched = list(set(unmatched_numbers).intersection(existing_numbers))
+                existing_numbers = set(existing_items.values_list('collect_tracking_number', flat=True))
 
-                # re_matched를 scanned_numbers로 이동, unmatched_numbers에서 제거
+                re_matched = []
+                for log in unmatched_logs:
+                    if log.tracking_number in existing_numbers:
+                        log.matched = True
+                        log.save()
+                        re_matched.append(log.tracking_number)
+
                 if re_matched:
-                    # 일치한 번호를 unmatched에서 제거
-                    new_unmatched_list = [num for num in unmatched_numbers if num not in re_matched]
-                    request.session['unmatched_numbers'] = new_unmatched_list
-
-                    # scanned_numbers에 추가
-                    new_scanned_list = list(set(scanned_numbers + re_matched))
-                    request.session['scanned_numbers'] = new_scanned_list
-
                     return JsonResponse({
                         'success': True,
                         'message': f"일치하지 않던 {len(re_matched)}건의 송장이 다시 확인되어 일치하는 목록으로 이동했습니다."
@@ -1243,44 +1253,79 @@ def scan_submit(request):
     return JsonResponse({'success': False, 'error': 'Invalid request'})
 
 @csrf_exempt
+@login_required
 def check_number_submit(request):
+    """
+    스캔된 운송장번호 목록을 DB(ScanLog, ReturnItem)로 관리하는 예시.
+    스캔 시점에:
+      1) collect_tracking_number가 존재하면 ReturnItem의 상태를 '검수완료'(또는 '수거완료')로 변경
+      2) ScanLog에 matched=True로 등록
+    존재하지 않으면 matched=False로 등록
+    """
     if request.method == 'POST':
+        user = request.user
         data = json.loads(request.body.decode('utf-8'))
         numbers = data.get('numbers', [])
 
-        scanned_numbers = request.session.get('scanned_numbers', [])
-        unmatched_numbers = request.session.get('unmatched_numbers', [])
+        # 이미 DB에 저장된 스캔 정보 읽어오기
+        existing_scanned = set(
+            ScanLog.objects.filter(user=user, matched=True)
+                           .values_list('tracking_number', flat=True)
+        )
+        existing_unmatched = set(
+            ScanLog.objects.filter(user=user, matched=False)
+                           .values_list('tracking_number', flat=True)
+        )
 
         matched_list = []
         unmatched_list = []
 
         for num in numbers:
             number = num.strip()
-            # 공백이나 빈 문자열인 경우 continue로 넘어감
             if not number:
-                continue
+                continue  # 공백만 있는 경우 건너뜀
 
-            exists = ReturnItem.objects.filter(collect_tracking_number=number).exists()
+            # 실제로 ReturnItem(collect_tracking_number=number) 존재 여부 체크
+            item_qs = ReturnItem.objects.filter(collect_tracking_number=number)
+            exists = item_qs.exists()
             if exists:
-                if number not in scanned_numbers and number not in unmatched_numbers:
-                    scanned_numbers.append(number)
-                matched_list.append(number)
-            else:
-                if number not in unmatched_numbers and number not in scanned_numbers:
-                    unmatched_numbers.append(number)
-                unmatched_list.append(number)
+                # ====== 여기서 원하는 상태로 업데이트 ======
+                # 예: "수거완료"로 바꾸고 싶다면:
+                # item_qs.update(processing_status='수거완료')
+                # 또는 "검수완료"로 바꾸고 싶다면:
+                item_qs.update(processing_status='검수완료')
 
-        request.session['scanned_numbers'] = scanned_numbers
-        request.session['unmatched_numbers'] = unmatched_numbers
+                # ====== ScanLog 등록 (matched=True) ======
+                if number not in existing_scanned and number not in existing_unmatched:
+                    ScanLog.objects.create(
+                        user=user,
+                        tracking_number=number,
+                        matched=True
+                    )
+                    existing_scanned.add(number)
+
+                matched_list.append(number)
+
+            else:
+                # ====== DB에 없음 → 미일치 처리 ======
+                if number not in existing_scanned and number not in existing_unmatched:
+                    ScanLog.objects.create(
+                        user=user,
+                        tracking_number=number,
+                        matched=False
+                    )
+                    existing_unmatched.add(number)
+
+                unmatched_list.append(number)
 
         return JsonResponse({
             'success': True,
             'matched_list': matched_list,
             'unmatched_list': unmatched_list
         })
+
     else:
-        return JsonResponse({'success': False, 'message': 'Only POST allowed'})
-    
+        return JsonResponse({'success': False, 'message': 'Only POST allowed'}, status=405)   
             
 @login_required
 def download_unmatched(request):
@@ -1430,7 +1475,11 @@ def inspected_items(request):
                         total_updated_count += 1
 
             return JsonResponse({'success': True, 'updated_count': total_updated_count})
-
+        elif action == 'back_to_collected':
+            ids = data.get('ids', [])
+            ReturnItem.objects.filter(id__in=ids, processing_status='검수완료').update(processing_status='수거완료')
+            return JsonResponse({'success': True})
+        
         elif action == 'dispatch_exchange':
             print("[DEBUG] dispatch_exchange action 호출됨.")
             print(f"[DEBUG] request.POST or body data: {data}")
