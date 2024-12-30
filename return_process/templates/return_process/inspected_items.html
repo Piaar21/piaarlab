@@ -82,6 +82,7 @@
                                 <th>배송 완료일</th>
                                 <th>클레임 요청일</th>
 
+                                <th>업데이트날짜</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -121,6 +122,7 @@
                                 <td>{{ item.quantity|default:"0" }}</td>
                                 <td>{{ item.delivered_date }}</td>
                                 <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
+                                <td>{{ item.inspected_at|date:"Y년 m월 d일 A g:i" }}</td>
 
                             </tr>
                             {% empty %}
@@ -778,7 +780,7 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 200px;
+        max-width: 250px;
     }
 </style>
 {% endblock %}

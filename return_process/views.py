@@ -1119,8 +1119,11 @@ def scan_submit(request):
                 new_unmatched = list(scanned_set - existing_set)
 
                 # 4) 실제 존재하는 아이템은 수거완료 처리(원하면 '검수완료'로 변경)
-                ReturnItem.objects.filter(collect_tracking_number__in=existing_numbers).update(processing_status='수거완료')
+                items = ReturnItem.objects.filter(collect_tracking_number__in=existing_numbers)
 
+                for item in items:
+                    item.processing_status = '수거완료'
+                    item.save()  # 오버라이드된 save() 메서드 실행 -> collected_at 자동 기록
                 # 5) matched_logs 전부 삭제 (혹은 남겨두고 싶다면 다른 로직)
                 matched_logs.delete()
 
@@ -1175,13 +1178,27 @@ def scan_submit(request):
         elif action == 'update_issue':
             ids = data.get('ids', [])
             product_issue = data.get('product_issue', '').strip()
+
             if not ids:
                 return JsonResponse({'success': False, 'message': 'No item ids provided.'})
 
-            # 아이템 업데이트
-            updated_count = ReturnItem.objects.filter(id__in=ids).update(product_issue=product_issue, processing_status='검수완료')
+            # 1) 해당 아이템들 가져오기
+            items = ReturnItem.objects.filter(id__in=ids)
+
+            # 업데이트된 갯수를 세기 위해 변수 준비
+            #  - 방법 A) items를 순회하며 count += 1
+            #  - 방법 B) save() 끝난 뒤 len(items)를 그대로 사용
+            updated_count = len(items)
+
+            # 2) 개별 아이템에 대해 product_issue, processing_status 설정 + save()
+            for item in items:
+                item.product_issue = product_issue
+                item.processing_status = '검수완료'
+                item.save()
+
+            # 3) updated_count에 따라 응답
             if updated_count > 0:
-                return JsonResponse({'success': True})
+                return JsonResponse({'success': True, 'updated_count': updated_count})
             else:
                 return JsonResponse({'success': False, 'message': 'No items updated.'})
 
@@ -1289,10 +1306,7 @@ def check_number_submit(request):
             item_qs = ReturnItem.objects.filter(collect_tracking_number=number)
             exists = item_qs.exists()
             if exists:
-                # ====== 여기서 원하는 상태로 업데이트 ======
-                # 예: "수거완료"로 바꾸고 싶다면:
-                # item_qs.update(processing_status='수거완료')
-                # 또는 "검수완료"로 바꾸고 싶다면:
+
                 item_qs.update(processing_status='검수완료')
 
                 # ====== ScanLog 등록 (matched=True) ======
@@ -1660,7 +1674,7 @@ def process_return(request, item_id):
             message = "API 호출 없이 반품완료 처리"
 
         # 여기까지 왔다면 반품완료 처리 공통 로직
-        item.processing_status = 'returned'
+        item.processing_status = '반품완료'
         item.save()
 
         order_prefix = item.order_number[:10]
@@ -1673,14 +1687,14 @@ def process_return(request, item_id):
 
         print("연관 아이템들:", related_items)
         for ri in related_items:
-            ri.processing_status = 'returned'
+            ri.processing_status = '반품완료'
             ri.save()
 
         return True, "반품완료 처리 성공"
 
     elif item.platform.lower() == 'coupang':
         print("쿠팡 반품 승인 로직 시작")  # 디버깅용 로그
-        item.processing_status = 'returned'
+        item.processing_status = '반품완료'
         item.save()
         return True, "쿠팡 반품완료 처리 성공"
 
