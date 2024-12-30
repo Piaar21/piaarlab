@@ -12,11 +12,11 @@
     <div class="mb-3">
         <p>총 반품건수: {{ total_count }}건</p>
         <div class="status-container">
-            <ul class="status-list">
-                {% for status_count in status_counts %}
-                <li>{{ status_count.processing_status }}: {{ status_count.count }}건</li>
+            <ul>
+                {% for sc in status_counts %}
+                  <li>{{ sc.processing_status }}: {{ sc.count }}건</li>
                 {% endfor %}
-            </ul>
+                </ul>
         </div>
     </div>
 

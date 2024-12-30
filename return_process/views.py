@@ -1317,8 +1317,9 @@ def process_return(request, item_id):
     item = get_object_or_404(ReturnItem, id=item_id)
     print("플랫폼:", item.platform, "주문번호:", item.order_number)  # 디버깅용 로그
 
+    # 플랫폼이 네이버인지 검사
     if item.platform.lower() == 'naver':
-        # NAVER_ACCOUNTS에서 account_info 찾는 로직
+        # NAVER_ACCOUNTS에서 store_name 매칭 계정 찾기
         store_name = item.store_name
         target_account = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
         if not target_account:
@@ -1327,10 +1328,14 @@ def process_return(request, item_id):
 
         account_info = target_account
 
-        # 조건 체크
-        # claim_type가 RETURN 또는 N/A, 그리고 product_order_status가 DELIVERED, DELIVERING, PURCHASE_DECIDED 일 때만 API 호출
-        condition_call_api = (item.claim_type in ['RETURN', 'N/A','반품']) and (item.product_order_status in ['DELIVERED', 'DELIVERING', 'PURCHASE_DECIDED','배송 중','배송 완료','구매 확정'])
-    
+        # 네이버 반품 승인 API 호출 여부 결정
+        # claim_type가 RETURN, N/A, (또는 '반품') 중 하나이고,
+        # product_order_status가 DELIVERED, DELIVERING, PURCHASE_DECIDED (또는 '배송 중', '배송 완료', '구매 확정') 중 하나라면 API 호출
+        condition_call_api = (
+            item.claim_type in ['RETURN', 'N/A', '반품'] and 
+            item.product_order_status in ['DELIVERED', 'DELIVERING', 'PURCHASE_DECIDED', '배송 중', '배송 완료', '구매 확정']
+        )
+
         if condition_call_api:
             print("네이버 반품 승인 시작")  # 디버깅용 로그
             success, message = approve_naver_return(account_info, item.order_number)
@@ -1341,22 +1346,21 @@ def process_return(request, item_id):
                 return False, message
         else:
             # API 호출 없이 바로 반품완료 처리
-            print("API 호출 없이 바로 반품 완료 처리")
+            print("API 호출 없이 바로 반품완료 처리")
             message = "API 호출 없이 반품완료 처리"
 
-        # 여기까지 왔다면 반품완료 처리 공통 로직
-        item.processing_status = '반품완료'
-        item.save()
+        # 여기까지 오면 (API 성공이든, API 안 불렀든) '반품완료' 처리
+        # ---- 핵심 변경: 주문번호 앞 12자리 공통인 아이템도 전부 '반품완료' ----
+        order_prefix_12 = item.order_number[:12]
+        print(f"DEBUG: order_prefix_12 = {order_prefix_12}")
 
-        order_prefix = item.order_number[:10]
+        # 해당 prefix로 시작하는 아이템 전부 '반품완료'
         related_items = ReturnItem.objects.filter(
-            recipient_name=item.recipient_name,
-            recipient_contact=item.recipient_contact,
-            order_number__startswith=order_prefix,
-            processing_status='inspected'
-        ).exclude(id=item.id)
+            order_number__startswith=order_prefix_12
+        )
+        print("연관 아이템들(12자리 기준):", related_items)
 
-        print("연관 아이템들:", related_items)
+        # 이제 모든 related_items을 반품완료 처리
         for ri in related_items:
             ri.processing_status = '반품완료'
             ri.save()
@@ -1365,15 +1369,22 @@ def process_return(request, item_id):
 
     elif item.platform.lower() == 'coupang':
         print("쿠팡 반품 승인 로직 시작")  # 디버깅용 로그
+        # 여기는 즉시 '반품완료' 처리
         item.processing_status = '반품완료'
         item.save()
         return True, "쿠팡 반품완료 처리 성공"
 
     else:
+        print(f"지원되지 않는 플랫폼({item.platform})")
         return False, "지원되지 않는 플랫폼"
-    
+
+
 @login_required
 def process_return_bulk(request):
+    """
+    여러 아이템을 한꺼번에 '반품승인' 처리하는 뷰.
+    내부적으로 process_return()을 호출.
+    """
     if request.method == 'POST':
         item_ids = request.POST.getlist('item_ids')
         item_ids = [int(x) for x in item_ids if x.strip().isdigit()]
@@ -1389,13 +1400,12 @@ def process_return_bulk(request):
                 error_list.append((i_id, msg))
 
         if error_list:
-            # 하나라도 오류가 있다면 전체적으로 실패로 처리
+            # 하나라도 오류가 있다면 실패로 처리
             return JsonResponse({
                 'success': False,
                 'errors': [{'id': eid, 'message': emsg} for eid, emsg in error_list]
             })
         else:
-            # 모두 성공한 경우
             return JsonResponse({
                 'success': True,
                 'message': '모든 반품승인 처리가 성공적으로 완료되었습니다.'
