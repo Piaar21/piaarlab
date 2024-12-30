@@ -43,6 +43,7 @@ import datetime, uuid, hmac, hashlib, base64
 from decouple import config
 from django.conf import settings
 from .utils import update_returns_logic
+from django.db.models import Count
 
 
 
@@ -72,14 +73,31 @@ def return_list(request):
         '처리완료': '처리완료'
     }
 
+    # 최신 업데이트 기준으로 정렬된 아이템
     return_items = ReturnItem.objects.order_by('-last_update_date')
-
     # 총 반품건수
     total_count = return_items.count()
 
-    # 상태별 카운트
-    from django.db.models import Count
-    status_counts = return_items.values('processing_status').annotate(count=Count('id'))
+    # 상태별 카운트 (ORM 집계) - DB 상의 processing_status값 그대로 group by
+    raw_status_counts = (
+        return_items
+        .values('processing_status')
+        .annotate(count=Count('id'))
+        .order_by('processing_status')
+    )
+    # raw_status_counts = [{'processing_status': '반품완료', 'count': 10}, ...]
+
+    # 상태맵 사용해 사람이 읽기 좋은 상태명으로 교체
+    # 예: DB에 '반품완료' 그대로 저장되어 있으면 그냥 동일, 
+    #    만약 'returned' 같은 영어였다면 -> 한글 '반품완료'
+    status_counts = []
+    for sc in raw_status_counts:
+        original_status = sc['processing_status']
+        display_status = status_map.get(original_status, original_status)
+        status_counts.append({
+            'processing_status': display_status,
+            'count': sc['count'],
+        })
 
     return render(request, 'return_process/return_list.html', {
         'return_items': return_items,
