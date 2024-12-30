@@ -49,6 +49,7 @@
                             <th>검수자</th>
                             <th>배송완료일</th>
                             <th>클레임요청일</th>
+                            <th>업데이트날짜</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -88,6 +89,8 @@
                             <td>{{ item.inspector|default:"N/A" }}</td>
                             <td>{{ item.delivered_date }}</td>
                             <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
+                            <td>{{ item.collected_at|date:"Y년 m월 d일 A g:i" }}</td>
+
                         </tr>
                         {% empty %}
                         <tr>
@@ -222,7 +225,7 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 200px;
+        max-width: 250px;
     }
 
     #modal-item-details td {
@@ -344,18 +347,25 @@
                         product_issue: selectedIssue
                     })
                 })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.success) {
-                            showTemporaryMessage('검수 상태 업데이트 완료');
-                            setTimeout(() => {
-                                location.reload();
-                            }, 1100);
-                        } else {
-                            showTemporaryMessage('업데이트 실패');
-                        }
-                    });
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        // updated_count 받아와서 표시
+                        const count = data.updated_count || 0;
+                        showTemporaryMessage(`검수 상태 ${count}건 업데이트 완료`, 1500);
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1600);
+                    } else {
+                        showTemporaryMessage(data.message || '업데이트 실패');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    showTemporaryMessage('요청 오류 발생');
+                });
             });
+        
         });
 
         // 사유(특이사항) 일괄 적용

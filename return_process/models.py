@@ -3,6 +3,7 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -81,6 +82,36 @@ class ReturnItem(models.Model):
     recipient_contact = models.CharField(max_length=50, null=True, blank=True, default="")
     product_order_status = models.CharField(max_length=100, blank=True, null=True)
     last_update_date = models.DateTimeField(auto_now=True, null=True, blank=True)
+    collected_at = models.DateTimeField(null=True, blank=True)      # 수거완료 시점
+    inspected_at = models.DateTimeField(null=True, blank=True)      # 검수완료 시점
+    returned_at = models.DateTimeField(null=True, blank=True)       # 반품완료 시점
+    stock_updated_at = models.DateTimeField(null=True, blank=True)  # 재고반영 시점
+    completed_at = models.DateTimeField(null=True, blank=True)      # 처리완료 시점
+
+    def save(self, *args, **kwargs):
+        # pk가 있을 때만(이미 존재하는 레코드) 이전 상태를 조회
+        if self.pk:
+            old_item = ReturnItem.objects.filter(pk=self.pk).first()
+            if old_item:
+                old_status = old_item.processing_status
+                new_status = self.processing_status
+
+                if old_status != new_status:
+                    now = timezone.now()
+                    
+                    if new_status == '수거완료' and not self.collected_at:
+                        self.collected_at = now
+                    elif new_status == '검수완료' and not self.inspected_at:
+                        self.inspected_at = now
+                    elif new_status == '반품완료' and not self.returned_at:
+                        self.returned_at = now
+                    elif new_status == '재고반영' and not self.stock_updated_at:
+                        self.stock_updated_at = now
+                    elif new_status == '처리완료' and not self.completed_at:
+                        self.completed_at = now
+
+        # 나머지 원래 save 로직
+        super().save(*args, **kwargs)
 
     @property
     def display_status(self):
