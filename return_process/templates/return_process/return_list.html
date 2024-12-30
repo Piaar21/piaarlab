@@ -78,6 +78,7 @@
                             <th>제품 사유</th>
                             <th>배송 완료일</th>
                             <th>클레임 요청일</th>
+                            <th>업데이트날짜</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -129,10 +130,11 @@
                             <td>{{ item.product_issue|default:"N/A" }}</td>
                             <td>{{ item.delivered_date }}</td>
                             <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
+                            <td>{{ item.last_update_date }}</td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="24" class="text-center">데이터가 없습니다.</td>
+                            <td colspan="25" class="text-center">데이터가 없습니다.</td>
                         </tr>
                         {% endfor %}
                     </tbody>

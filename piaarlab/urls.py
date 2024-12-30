@@ -17,11 +17,18 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.shortcuts import redirect
+from django.conf import settings
+from django.conf.urls.static import static
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('return_process.urls')),  # 루트 URL에 return_process.urls 포함
     path('delayed/', include('delayed_management.urls')),  # /delayed/ 경로에 delayed_management.urls 포함
-
+    path('cs/', include('cs_management.urls')),    # /cs/ 경로에 cs_management.urls 포함
 
 ]
+
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
