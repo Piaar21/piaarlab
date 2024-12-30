@@ -14,18 +14,23 @@ import os
 from pathlib import Path
 from decouple import config
 
-ALLOWED_HOSTS = [
-    'piaarlab.store', 
-    'www.piaarlab.store', 
-    '34.64.123.206', 
-    '127.0.0.1', 
-    'localhost'
-]
+# ALLOWED_HOSTS = [
+#     'piaarlab.store', 
+#     'www.piaarlab.store', 
+#     '34.64.123.206', 
+#     '127.0.0.1', 
+#     'localhost'
+# ]
+
+ALLOWED_HOSTS = ['*']
 
 CSRF_TRUSTED_ORIGINS = [
     "https://piaarlab.store",
     "https://www.piaarlab.store",  # www도 사용 중이라면
+    'https://d607-211-243-19-247.ngrok-free.app',
+
 ]
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,7 +42,8 @@ STATICFILES_DIRS = [
 ]
 SERVICE_ACCOUNT_FILE = config('SERVICE_ACCOUNT_FILE', default=None)
 
-
+MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = '/media/'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -46,7 +52,7 @@ SERVICE_ACCOUNT_FILE = config('SERVICE_ACCOUNT_FILE', default=None)
 SECRET_KEY = 'django-insecure-n4(7c9kkttt1r%pq%aa=a!!+^w9)3^9z@8vc8=(n9o()*+27n3'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# DEBUG = True
 
 
 
@@ -62,6 +68,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django_crontab',
     'delayed_management',  # 새로 추가
+    'cs_management.apps.CsManagementConfig',  # 또는 'cs_management'
 
     
 
@@ -146,9 +153,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'ko-kr'
 TIME_ZONE = 'Asia/Seoul'
-
 USE_I18N = True
-
+USE_L10N = True
 USE_TZ = True
 
 

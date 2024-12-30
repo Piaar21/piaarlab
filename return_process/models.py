@@ -2,6 +2,7 @@
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.conf import settings
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -79,7 +80,8 @@ class ReturnItem(models.Model):
     seller_product_item_id = models.CharField(max_length=50, null=True, blank=True, default="")
     recipient_contact = models.CharField(max_length=50, null=True, blank=True, default="")
     product_order_status = models.CharField(max_length=100, blank=True, null=True)
-    
+    last_update_date = models.DateTimeField(auto_now=True, null=True, blank=True)
+
     @property
     def display_status(self):
         return self.status_mapping.get(self.processing_status, self.processing_status)
@@ -107,3 +109,16 @@ class CoupangAccount(models.Model):
     def __str__(self):
         return self.name
 
+class ScanLog(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,   # ← auth.User 대신 이걸로!
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True
+    )
+    tracking_number = models.CharField(max_length=50)
+    matched = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"ScanLog(user={self.user}, tracking_number={self.tracking_number}, matched={self.matched})"
