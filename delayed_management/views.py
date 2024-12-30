@@ -617,8 +617,8 @@ def change_exchangeable_options(request):
                     발송일자_str = "상담원문의"
 
                 # 치환 변수
-                url_thx    = f"34.64.123.206/delayed/thank-you?action=wait&token={s.token}"
-                url_change = f"34.64.123.206/delayed/option-change?action=change&token={s.token}"
+                url_thx    = f"piaarlab.store/delayed/thank-you?action=wait&token={s.token}"
+                url_change = f"piaarlab.store/delayed/option-change?action=change&token={s.token}"
 
                 variables = {
                     '#{고객명}': s.customer_name or "",
@@ -967,8 +967,8 @@ def send_message_process(request):
                 s.save()
 
                 # 예) URL
-                url_thx = f"34.64.123.206/delayed/thank-you?action=wait&token={s.token}"
-                url_change = f"34.64.123.206/delayed/option-change?action=change&token={s.token}"
+                url_thx = f"piaarlab.store/delayed/thank-you?action=wait&token={s.token}"
+                url_change = f"piaarlab.store/delayed/option-change?action=change&token={s.token}"
                 logger.debug(f"=== DEBUG: url_thx={url_thx}")
                 logger.debug(f"=== DEBUG: url_change={url_change}")
 
@@ -1115,7 +1115,7 @@ def send_kakao_for_group(group_id):
 
     # URL: 그룹 단위로 “기다리기 / 옵션변경”을 처리할 엔드포인트
     # 예: /delayed/customer-group-action?token=...
-    domain = getattr(settings, 'MY_SERVER_DOMAIN', 'https://34.64.123.206.com')
+    domain = getattr(settings, 'MY_SERVER_DOMAIN', 'https://34.64.123.206.com',"https://piaarlab.store/")
     confirm_url = f"{domain}/delayed/customer-group-action?token={group.token}"
 
     # 치환변수 구성
