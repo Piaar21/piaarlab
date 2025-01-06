@@ -645,7 +645,7 @@ def change_exchangeable_options(request):
                     }
                 else:
                     # 문자
-                    msg["text"] = f"[문자 테스트]\n안녕하세요 {s.customer_name or ''}님,\n{s.order_product_name or ''} 안내"
+                    msg["text"] = f"[문자 테스트]\n안녕하세요 {s.customer_name or ''}님,\n{s.order_product_name or ''} 제품이 품절되어 연락드렸습니다. 구매하신 스토어로 연락주시면 상품 변경 및 취소처리 빠르게 도와드릴 수 있도록 하겠습니다. 감사합니다."
 
                 # 발송 대상 리스트에 추가
                 messages_list.append((s, msg))
@@ -1167,7 +1167,9 @@ def get_pfId_by_channel(channel_name):
     pf_map = {
         "니뜰리히": "KA01PF241004055851440a91cCwGs47a",
         "수비다": "KA01PF241016104213982rcJgXgeHWd8",
+        "수비다 SUBIDA": "KA01PF241016104213982rcJgXgeHWd8",
         "노는 개 최고양": "KA01PF241016104250071z8FktOivA0r",
+        "노는개최고양": "KA01PF241016104250071z8FktOivA0r",
         "아르빙": "KA01PF241016104450781C2ssOn2lCCM",
     }
     return pf_map.get(channel_name, "")
@@ -1179,7 +1181,9 @@ def get_templateId_by_channel(channel_name):
     tmpl_map = {
         "니뜰리히": "KA01TP241230063811612F7QtAXfIYxu",
         "수비다": "KA01TP241230063811612F7QtAXfIYxu",
+        "수비다 SUBIDA": "KA01TP241230063811612F7QtAXfIYxu",
         "노는 개 최고양": "KA01TP241230063811612F7QtAXfIYxu",
+        "노는개최고양": "KA01TP241230063811612F7QtAXfIYxu",
         "아르빙": "KA01TP241230063811612F7QtAXfIYxu",
     }
     return tmpl_map.get(channel_name, "")
