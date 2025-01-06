@@ -1032,8 +1032,9 @@ def check_number_submit(request):
             
 @login_required
 def download_unmatched(request):
+    unmatched_logs = ScanLog.objects.filter(user=request.user, matched=False)
     # 미일치 리스트를 엑셀로 다운로드
-    unmatched_numbers = request.session.get('unmatched_numbers', [])
+    unmatched_numbers = [log.tracking_number for log in unmatched_logs]
 
     wb = Workbook()
     ws = wb.active
