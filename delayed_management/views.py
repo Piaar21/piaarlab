@@ -617,8 +617,9 @@ def change_exchangeable_options(request):
                     발송일자_str = "상담원문의"
 
                 # 치환 변수
-                url_thx    = f"piaarlab.store/delayed/thank-you?action=wait&token={s.token}"
+                url_thx = f"piaarlab.store/delayed/customer-action?action=wait&token={s.token}"
                 url_change = f"piaarlab.store/delayed/option-change?action=change&token={s.token}"
+
 
                 variables = {
                     '#{고객명}': s.customer_name or "",
@@ -967,7 +968,7 @@ def send_message_process(request):
                 s.save()
 
                 # 예) URL
-                url_thx = f"piaarlab.store/delayed/thank-you?action=wait&token={s.token}"
+                url_thx = f"piaarlab.store/delayed/customer-action?action=wait&token={s.token}"
                 url_change = f"piaarlab.store/delayed/option-change?action=change&token={s.token}"
                 logger.debug(f"=== DEBUG: url_thx={url_thx}")
                 logger.debug(f"=== DEBUG: url_change={url_change}")
@@ -1039,10 +1040,12 @@ def solapi_send_messages(messages_list):
 
     # **(1) 메시지 유형 식별** - kakaoOptions가 있으면 KAKAO, 없으면 SMS로 가정
         if "kakaoOptions" in msg_obj:
-            s.send_type = "KAKAO"  
+            s.send_type = 'KAKAO'
+            s.send_status = 'SENDING'
         else:
-            s.send_type = "SMS"
-
+            s.send_type = 'SMS'
+            s.send_status = 'SENDING'
+        s.save()
     # Solapi 인증 헤더
     now_iso = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
     salt = str(uuid.uuid4())
@@ -1205,22 +1208,26 @@ def confirm_token_view(request):
 def customer_action_view(request):
     action = request.GET.get('action', '')
     token = request.GET.get('token', '')
+    logger.debug(f"=== DEBUG: action={action}, token={token}")
 
     if not token:
         return HttpResponse("유효하지 않은 요청: token 없음", status=400)
 
     shipment = DelayedShipment.objects.filter(token=token).first()
+    logger.debug(f"=== DEBUG: found shipment={shipment} for token={token}")
     if not shipment:
         return HttpResponse("유효하지 않은 토큰", status=404)
 
     # 이미 waiting/changed_option 이 있다면 더 이상 변경 불가
     if shipment.waiting or shipment.changed_option:
+        logger.debug(f"=== DEBUG: shipment already waiting={shipment.waiting} or changed_option={shipment.changed_option}")
         return HttpResponse("이미 처리된 내역이 존재합니다. 더 이상 변경할 수 없습니다.")
 
     if action == 'wait':
         shipment.waiting = True
         shipment.confirmed = True
         # 발송흐름 상태도 '확인완료'로
+        logger.debug(f"=== DEBUG: Before: flow_status={shipment.flow_status}, waiting={shipment.waiting}")
         shipment.flow_status = 'confirmed'
         shipment.save()
         return redirect('thank_you_view')
