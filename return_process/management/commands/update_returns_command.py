@@ -1,6 +1,6 @@
 # myapp/management/commands/update_returns_command.py
 from django.core.management.base import BaseCommand
-from myapp.utils import update_returns_logic
+from return_process.utils import update_returns_logic  # ← 수정된 import 경로
 import logging
 
 logger = logging.getLogger(__name__)
