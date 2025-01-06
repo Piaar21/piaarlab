@@ -142,33 +142,33 @@ def naver_talk_callback(request):
     return HttpResponse(status=200)
 
 
-def request_profile_api(user_id, field="nickname"):
-    """
-    네이버 톡톡 'profile' 이벤트를 전송해서 
-    사용자 닉네임(or address, cellphone) 요청
-    """
-    talk_send_auth = config('TALK_SEND_API_KEY', default='')
-    url = "https://gw.talk.naver.com/chatbot/v1/event"
+# def request_profile_api(user_id, field="nickname"):
+#     """
+#     네이버 톡톡 'profile' 이벤트를 전송해서 
+#     사용자 닉네임(or address, cellphone) 요청
+#     """
+#     talk_send_auth = config('TALK_SEND_API_KEY', default='')
+#     url = "https://gw.talk.naver.com/chatbot/v1/event"
 
-    payload = {
-        "event": "profile",
-        "options": {
-            "field": field,
-            "agreements": ["cellphone", "address"]  # 동의 절차에 함께 요청할 수도 있음
-        },
-        "user": user_id
-    }
-    headers = {
-        "Content-Type": "application/json;charset=UTF-8",
-        "Authorization": talk_send_auth
-    }
+#     payload = {
+#         "event": "profile",
+#         "options": {
+#             "field": field,
+#             "agreements": ["cellphone", "address"]  # 동의 절차에 함께 요청할 수도 있음
+#         },
+#         "user": user_id
+#     }
+#     headers = {
+#         "Content-Type": "application/json;charset=UTF-8",
+#         "Authorization": talk_send_auth
+#     }
 
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        logger.info(f"[request_profile_api] Profile request sent: field={field}, user_id={user_id}")
-    else:
-        logger.warning(f"[request_profile_api] Failed: status={response.status_code}, text={response.text}")
-    return response.status_code
+#     response = requests.post(url, json=payload, headers=headers)
+#     if response.status_code == 200:
+#         logger.info(f"[request_profile_api] Profile request sent: field={field}, user_id={user_id}")
+#     else:
+#         logger.warning(f"[request_profile_api] Failed: status={response.status_code}, text={response.text}")
+#     return response.status_code
 
 
 def send_image_to_talk(user_id, image_url, width=600, height=400):
