@@ -1334,22 +1334,41 @@ def send_shipping_sms(request):
 def process_return(request, item_id):
     print("process_return 함수 호출됨")  # 디버깅용 로그
     item = get_object_or_404(ReturnItem, id=item_id)
-    print("플랫폼:", item.platform, "주문번호:", item.order_number)  # 디버깅용 로그
+    print("플랫폼:", item.platform, "스토어명:", item.store_name, "주문번호:", item.order_number)  # 디버깅용 로그
 
-    # 플랫폼이 네이버인지 검사
-    if item.platform.lower() == 'naver':
-        # NAVER_ACCOUNTS에서 store_name 매칭 계정 찾기
-        store_name = item.store_name
-        target_account = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
+    # 스토어명 매핑
+    store_name_map = {
+        "노는 개 최고양": "노는개최고양",
+        "수비다 SUBIDA": "수비다"
+        # 필요 시 추가
+    }
+
+    # 매핑 후 스토어명
+    mapped_name = store_name_map.get(item.store_name, item.store_name)
+
+    # 네이버 스토어 목록
+    naver_stores = ["니뜰리히", "노는개최고양", "아르빙", "수비다"]
+
+    # 쿠팡인 경우
+    if item.platform.lower() == 'coupang':
+        print("쿠팡 반품 승인 로직 시작")  # 디버깅용 로그
+        item.processing_status = '반품완료'
+        item.save()
+        return True, "쿠팡 반품완료 처리 성공"
+
+    # 네이버 스토어인지 체크 (매핑된 스토어명으로 확인)
+    elif mapped_name in naver_stores:
+        print("네이버 스토어로 인식됨:", mapped_name)
+
+        # NAVER_ACCOUNTS에서 매핑된 스토어명으로 계정 찾기
+        target_account = next((acc for acc in NAVER_ACCOUNTS if mapped_name in acc['names']), None)
         if not target_account:
             print("해당 이름의 NAVER 계정을 찾지 못했습니다.")
             return False, "NAVER 계정을 찾을 수 없음"
 
         account_info = target_account
 
-        # 네이버 반품 승인 API 호출 여부 결정
-        # claim_type가 RETURN, N/A, (또는 '반품') 중 하나이고,
-        # product_order_status가 DELIVERED, DELIVERING, PURCHASE_DECIDED (또는 '배송 중', '배송 완료', '구매 확정') 중 하나라면 API 호출
+        # 네이버 반품 승인 API 호출 여부 결정 (예시)
         condition_call_api = (
             item.claim_type in ['RETURN', 'N/A', '반품'] and 
             item.product_order_status in ['DELIVERED', 'DELIVERING', 'PURCHASE_DECIDED', '배송 중', '배송 완료', '구매 확정']
@@ -1364,38 +1383,30 @@ def process_return(request, item_id):
                 print("네이버 반품 승인 실패:", message)
                 return False, message
         else:
-            # API 호출 없이 바로 반품완료 처리
             print("API 호출 없이 바로 반품완료 처리")
             message = "API 호출 없이 반품완료 처리"
 
-        # 여기까지 오면 (API 성공이든, API 안 불렀든) '반품완료' 처리
-        # ---- 핵심 변경: 주문번호 앞 12자리 공통인 아이템도 전부 '반품완료' ----
+        # 여기까지 왔다면 (API 성공 or API 스킵) -> 반품완료 처리
         order_prefix_12 = item.order_number[:12]
         print(f"DEBUG: order_prefix_12 = {order_prefix_12}")
 
-        # 해당 prefix로 시작하는 아이템 전부 '반품완료'
-        related_items = ReturnItem.objects.filter(
-            order_number__startswith=order_prefix_12
-        )
+        related_items = ReturnItem.objects.filter(order_number__startswith=order_prefix_12)
         print("연관 아이템들(12자리 기준):", related_items)
 
-        # 이제 모든 related_items을 반품완료 처리
         for ri in related_items:
             ri.processing_status = '반품완료'
             ri.save()
 
         return True, "반품완료 처리 성공"
 
-    elif item.platform.lower() == 'coupang':
-        print("쿠팡 반품 승인 로직 시작")  # 디버깅용 로그
-        # 여기는 즉시 '반품완료' 처리
+    else:
+        # 그 외 스토어 (naver_stores 에도 없고, 쿠팡도 아님)
+        print(f"그 외 스토어 ({item.store_name} -> {mapped_name}), 직접 반품완료 처리")
         item.processing_status = '반품완료'
         item.save()
-        return True, "쿠팡 반품완료 처리 성공"
+        return True, f"{mapped_name} 반품완료 처리 성공"
 
-    else:
-        print(f"지원되지 않는 플랫폼({item.platform})")
-        return False, "지원되지 않는 플랫폼"
+
 
 
 @login_required
