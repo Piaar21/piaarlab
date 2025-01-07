@@ -31,5 +31,6 @@ urlpatterns = [
     path('send_shipping_sms/', views.send_shipping_sms, name='send_shipping_sms'),
     path('delete_return_item/', views.delete_return_item, name='delete_return_item'),
     path('scan/check_number/', views.check_number_submit, name='check_number_submit'),
+    path('returned/download/', views.download_returned_items, name='download_returned_items'),  # 추가
 
 ]

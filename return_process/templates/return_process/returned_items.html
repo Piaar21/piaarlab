@@ -8,7 +8,9 @@
                 <!-- 만약 "반품승인" 버튼을 반품완료 페이지에서도 사용하고자 한다면 유지,
                      아니라면 제거 가능합니다. -->
                 <button type="submit" class="btn btn-primary mb-3">재고반영</button>
-
+                <a href="{% url 'download_returned_items' %}" class="btn btn-success mb-3 ms-2">
+                    엑셀다운
+                </a>
                 <!-- 필터 영역 (검수완료 페이지와 동일한 필터) -->
                 <div class="d-flex mb-3 gap-3 align-items-center">
 
