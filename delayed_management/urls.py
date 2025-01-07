@@ -23,13 +23,18 @@ urlpatterns = [
     path('option-change-process/', views.option_change_process, name='option_change_process'),
     path('thank-you/', views.thank_you_view, name='thank_you_view'),
     path('option-change-done/', views.option_change_done, name='option_change_done'),
-    path('delayed/process-confirmed-shipments/', views.process_confirmed_shipments, name='process_confirmed_shipments'),
+    path('process-confirmed-shipments/', views.process_confirmed_shipments, name='process_confirmed_shipments'),
         # 출고완료 목록 페이지
-    path('delayed/shipped-list/', views.shipped_list_view, name='shipped_list'),
+    path('shipped-list/', views.shipped_list_view, name='shipped_list'),
 
     # 출고완료 처리 POST 액션
-    path('delayed/process-shipped/', views.process_shipped_shipments, name='process_shipped_shipments'),
-    path('delayed/confirmed-list/', views.confirmed_list, name='confirmed_list'),
+    path('process-shipped/', views.process_shipped_shipments, name='process_shipped_shipments'),
+    path('confirmed-list/', views.confirmed_list, name='confirmed_list'),
 
-
+    path('api/exchange-options/<int:shipment_id>/', views.get_exchange_options_api, name='get_exchange_options_api'),
+    path('exchange-options/<int:shipment_id>/remove/', views.remove_exchange_option_api, name='remove_exchange_option_api'),
+    path('exchange-options/<int:shipment_id>/add/', views.add_exchange_option_api, name='add_exchange_option_api'),
+    path('api/sellertool-options/<int:shipment_id>/', views.get_seller_tool_options_api, name='get_seller_tool_options_api'),
+    path('api/sellertool-options/<int:shipment_id>/', views.get_seller_tool_options_api, name='get_seller_tool_options_api'),
+    path('api/save-sellertool-options/<int:shipment_id>/', views.save_seller_tool_options_api, name='save_seller_tool_options_api'),
 ]

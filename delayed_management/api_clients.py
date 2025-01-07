@@ -5,6 +5,11 @@ import hashlib
 import json
 from urllib.parse import quote
 from decouple import config
+import logging
+
+
+logger = logging.getLogger(__name__)
+
 
 ST_API_KEY = config('ST_API_KEY', default=None)
 ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
@@ -58,15 +63,29 @@ def get_all_options_by_product_name(product_name):
     return []
 
 def get_inventory_by_option_codes(option_codes):
-    headers = get_headers()
-    body = {'optionCodes': option_codes}
-    resp = requests.post(REQUEST_URL_INVENTORY, headers=headers, data=json.dumps(body))
-    if resp.status_code == 200:
-        result = resp.json()
-        if result.get('content'):
-            stock_map = {item['code']: item['stockUnit'] for item in result['content']}
-            return stock_map
-    return {}
+    logger.debug(f"=== DEBUG: [get_inventory] request optionCodes={option_codes}")
+    
+    url = REQUEST_URL_INVENTORY  # 이미 상단에 정의된 상수
+    headers = get_headers()       # 셀러툴 API 인증 헤더
+    body = {
+        "optionCodes": option_codes
+    }
+
+    response = requests.post(url, headers=headers, data=json.dumps(body))
+    if response.status_code != 200:
+        logger.error(f"=== DEBUG: 재고 API 오류 code={response.status_code}, body={response.text}")
+        return {}
+
+    data = response.json()
+    logger.debug(f"=== DEBUG: [get_inventory] response data={data}")
+
+    stock_map = {}
+    for item in data.get('content', []):
+        code = item['code']
+        stock = item['stockUnit']
+        stock_map[code] = stock
+
+    return stock_map
 
 def get_options_detail_by_codes(option_codes):
     headers = get_headers()
@@ -86,43 +105,44 @@ def get_options_detail_by_codes(option_codes):
             return detail_map
     return {}
 
-def get_exchangeable_options(input_option_code, needed_qty):
-    """
-    주어진 옵션코드로부터 동일 상품의 교환가능 옵션을 조회 (재고 stock_unit >= needed_qty, 동일 판매가).
-    * 반환 데이터 예시: [ { 'optionName': '빨강_M', 'optionCode': 'abc123' }, ... ]
-    """
-    # 1) 입력 옵션 코드의 기본 정보 (상품명, 판매가) 조회
-    input_option_info = get_option_info_by_code(input_option_code)
-    if not input_option_info or not input_option_info['productName']:
-        return []  # 상품명 정보를 못 얻었으면 빈 리스트 반환
+import logging
 
-    product_name = input_option_info['productName']
-    base_sales_price = input_option_info['salesPrice']
+logger = logging.getLogger(__name__)
 
-    # 2) 동일 상품명(product_name)의 모든 옵션코드 가져오기
-    all_option_codes = get_all_options_by_product_name(product_name)
-    if not all_option_codes:
+def get_exchangeable_options(input_option_code, needed_qty=1):
+    """
+    재고 0인 항목은 결과에 포함되지 않도록 수정( stock_unit == 0 → 스킵 ).
+    """
+    input_info = get_option_info_by_code(input_option_code)
+    if not input_info or not input_info.get('productName'):
         return []
 
-    # 3) 옵션코드 목록의 재고/상세 정보 한꺼번에 불러오기
-    inventory_map = get_inventory_by_option_codes(all_option_codes)  # { 'abc123': 재고수, ...}
-    detail_map    = get_options_detail_by_codes(all_option_codes)    # { 'abc123': {'optionName':..., 'salesPrice':..., ...}, ...}
+    product_name     = input_info['productName']
+    base_sales_price = input_info['salesPrice']
 
-    # 4) 조건(동일 판매가 & 재고 >= needed_qty)에 맞는 항목만 골라 옵션명/코드 반환
+    all_codes = get_all_options_by_product_name(product_name)
+    if not all_codes:
+        return []
+
+    inventory_map = get_inventory_by_option_codes(all_codes)  # { code: stockUnit, ... }
+    detail_map    = get_options_detail_by_codes(all_codes)    # { code: {optionName, salesPrice, ...}, ... }
+
     results = []
-    for code in all_option_codes:
+    for code in all_codes:
         detail = detail_map.get(code)
         if not detail:
-            continue  # 상세 정보가 없으면 스킵
+            continue
 
         stock_unit = inventory_map.get(code, 0)
-        # 교환가능 조건:
-        #  (1) 판매가가 같은지
-        #  (2) 재고 stock_unit >= needed_qty
-        if detail['salesPrice'] == base_sales_price and stock_unit >= needed_qty:
+
+        # (1) 판매가가 동일해야 함
+        # (2) 재고 >= needed_qty
+        # (3) 재고 0은 제외
+        if detail['salesPrice'] == base_sales_price and stock_unit >= needed_qty and stock_unit > 0:
             results.append({
                 "optionName": detail['optionName'],
-                "optionCode": code
+                "optionCode": code,
+                "stock": stock_unit
             })
 
     return results

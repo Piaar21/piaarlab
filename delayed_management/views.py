@@ -4,7 +4,7 @@ from django.contrib import messages
 from .forms import DelayedOrderUploadForm, OptionStoreMappingUploadForm  
 from .models import DelayedOrder, ProductOptionMapping ,OptionStoreMapping, DelayedShipment,DelayedShipmentGroup
 from django.core.paginator import Paginator
-from .api_clients import get_exchangeable_options
+from .api_clients import get_exchangeable_options,get_option_info_by_code,get_all_options_by_product_name,get_options_detail_by_codes,get_inventory_by_option_codes
 from .spreadsheet_utils import read_spreadsheet_data
 from datetime import date, timedelta, timezone, datetime
 from django.conf import settings
@@ -18,7 +18,9 @@ import requests
 import gspread
 from django.http import HttpResponse
 from django.db.models import Q
-
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # 필요 시 레벨 지정
@@ -223,19 +225,22 @@ def extract_options_for_ids(shipment_ids):
         except ValueError:
             needed_qty = 1
 
-        # (2) 교환가능 옵션 조회 (결과값이 [{'optionName':..., 'optionCode':...}, ...] 형태)
+        # (2) get_exchangeable_options() → [{"optionName":..., "optionCode":..., "stock":...}, ...]
         exchange_list = get_exchangeable_options(shipment.option_code, needed_qty=needed_qty)
 
-        # (3) "optionName"만 추출해서 문자열로 합치기
-        if exchange_list:
-            # 예: ["빨강_M", "파랑_L", ...]
-            option_names = [item["optionName"] for item in exchange_list]
-            exchange_str = ",".join(option_names)
-        else:
-            exchange_str = "상담원 문의"
+        if not exchange_list:
+            # 결과가 아예 없으면 '상담원 문의'
+            shipment.exchangeable_options = "상담원 문의"
+            shipment.save()
+            continue
 
-        # (4) DB 반영
-        shipment.exchangeable_options = exchange_str
+        # (3) JSON 배열 → optionName 들만 뽑아서 콤마 문자열 생성
+        #     예: ['애쉬그레이(R)', '샌드카키(L)', ...]
+        name_list = [item["optionName"] for item in exchange_list]
+        final_str = ",".join(name_list)  # "애쉬그레이(R),샌드카키(L),..."
+
+        # (4) DB 저장
+        shipment.exchangeable_options = final_str
         shipment.save()
 
 
@@ -1254,11 +1259,11 @@ def option_change_view(request):
     if not shipments.exists():
         return HttpResponse("유효하지 않은 토큰", status=404)
 
-    # ETA_RANGES는 상단에 정의되어 있다고 가정
+    # 1) ETA_RANGES 등 상태별 날짜 계산
     for s in shipments:
         min_days, max_days = ETA_RANGES.get(s.status, (0, 0))
 
-        # 고정 안내날짜
+        # (1) 고정 안내날짜
         if s.restock_date:
             s.range_start = s.restock_date + timedelta(days=min_days)
             s.range_end   = s.restock_date + timedelta(days=max_days)
@@ -1266,7 +1271,7 @@ def option_change_view(request):
             s.range_start = None
             s.range_end   = None
 
-        # 예상 안내날짜
+        # (2) 동적 예상날짜
         if s.expected_restock_date:
             s.expected_start = s.expected_restock_date + timedelta(days=min_days)
             s.expected_end   = s.expected_restock_date + timedelta(days=max_days)
@@ -1274,18 +1279,39 @@ def option_change_view(request):
             s.expected_start = None
             s.expected_end   = None
 
-    # 각 품목별 실제 교환가능옵션을 구해 data 구성
     shipments_data = []
     for s in shipments:
+        # (A) DB에 있는 '교환옵션' 문자열 → splitted
+        #    예: "애쉬그레이(R),샌드카키(L),오트밀베이지(R)"
+        if s.exchangeable_options:
+            splitted = [opt.strip() for opt in s.exchangeable_options.split(',') if opt.strip()]
+        else:
+            splitted = []
+
+        # (B) 실제 API 통해 **optionCode** 포함한 전체 dict list 가져오기
         try:
             needed_qty = int(s.quantity or 1)
-        except:
+        except ValueError:
             needed_qty = 1
-        # 실제 API에서 가져오기
-        real_options = get_exchangeable_options(s.option_code, needed_qty=needed_qty)
+
+        # 예: [{optionName:'애쉬그레이(R)', optionCode:'4qom1...', stock:2}, ...] 
+        full_list = get_exchangeable_options(s.option_code, needed_qty)
+
+        # (C) splitted(=DB 저장된 옵션명 목록)와 일치하는 옵션만 선별
+        #     → 최종 real_options
+        real_options = []
+        for opt_info in full_list:  
+            # opt_info 예: {"optionName":"애쉬그레이(R)","optionCode":"..."}
+            if opt_info["optionName"] in splitted:
+                real_options.append(opt_info)
+
+        # (주의) 만약 splitted에 없는 **재고가능 옵션**도 다 보여주길 원한다면,
+        #       그냥 full_list 전체를 사용해도 좋습니다.
+        #       여기서는 "DB에 저장된 목록"만 제한적으로 뿌린다고 가정.
+
         shipments_data.append({
             "shipment": s,
-            "exchangeable_options": real_options,
+            "exchangeable_options": real_options,  # => 템플릿에선 opt.optionName / opt.optionCode 사용
         })
 
     return render(request, 'delayed_management/change_option.html', {
@@ -1303,47 +1329,48 @@ def option_change_process(request):
     if not shipments.exists():
         return HttpResponse("유효하지 않은 토큰", status=404)
 
-    # 이미 waiting=True 또는 changed_option이 있으면 수정 불가
+    # 이미 waiting=True or changed_option 이 있으면 수정 불가
     any_already = shipments.filter(Q(waiting=True) | ~Q(changed_option='')).exists()
+    logger.debug(f"=== DEBUG: [option_change_process] token={token}")
+    logger.debug(f"=== DEBUG: shipments.count={shipments.count()}")
+    logger.debug(f"=== DEBUG: any_already={any_already}")
     if any_already:
-        return HttpResponse("이미 처리된 내역이 존재합니다. 기다리기 혹은 다른 옵션으로 변경을 희망하실 경우 상담원에게 문의해주세요.", status=400)
+        return HttpResponse("이미 처리된 내역이 존재합니다.", status=400)
 
     for s in shipments:
         new_opt_key  = f"new_option_for_{s.id}"
         new_code_key = f"new_option_code_for_{s.id}"
-        new_qty_key  = f"new_qty_for_{s.id}"   # 만약 수량 변경도 처리한다면
+        new_qty_key  = f"new_qty_for_{s.id}"  # 수량 변경 고려 시
 
-        # 폼으로부터 전송된 값
-        new_option = request.POST.get(new_opt_key, '')
-        new_option_code = request.POST.get(new_code_key, '')
-        new_qty_str = request.POST.get(new_qty_key, '1')  # 없으면 기본값 1
+        new_option     = request.POST.get(new_opt_key, '')
+        new_option_code= request.POST.get(new_code_key, '')
+        new_qty_str    = request.POST.get(new_qty_key, '1')
+
         try:
             new_qty = int(new_qty_str)
         except ValueError:
             new_qty = 1
 
-        # 수량 제한
-        if new_qty > int(s.quantity or 1):
-            messages.error(request, "수량 오류...")
-            return redirect(f"/delayed/option-change/?token={token}")
+        logger.debug(f"=== DEBUG: shipment.id={s.id}, new_option={new_option}, new_option_code={new_option_code}, new_qty_str={new_qty_str}")
 
-        # **새로운 옵션이 빈 문자열인지, "옵션을 선택하세요" 같은 문구인지 체크**
+        # 선택된 옵션이 없거나 "옵션을 선택하세요" 그대로면 처리
         stripped_option = new_option.strip()
-        # (만약 '상담원 문의'도 무시하고 싶다면 아래 조건에 추가)
-        if not stripped_option or stripped_option == "옵션을 선택하세요":
-            # 실제로는 안내문 등 원하는 문구로 대체
+        if not stripped_option:
+            logger.debug("=== DEBUG: 선택된 옵션이 없거나 '옵션을 선택하세요' 그대로임")
             new_option = "변경 가능한 옵션이 없습니다. 상담원에게 문의해주세요."
-            # new_option_code도 ""으로 처리 가능
+            new_option_code = ""
 
-        # DB 저장
+        logger.debug(f"=== DEBUG: [SAVE] shipment.id={s.id} => changed_option={new_option}, changed_option_code={new_option_code}")
+
         s.changed_option = new_option
         s.changed_option_code = new_option_code
         s.quantity = new_qty
         s.confirmed = True
-        s.waiting = False
+        s.waiting   = False
         s.flow_status = 'confirmed'
         s.save()
 
+    logger.debug("=== DEBUG: 모든 shipment에 대해 옵션변경 완료 → option_change_done redirect")
     return redirect('option_change_done')
 
 
@@ -1480,7 +1507,6 @@ def confirmed_list(request):
     qs = DelayedShipment.objects.filter(flow_status='confirmed')
 
     filter_val = request.GET.get('filter', 'all')  # 디폴트 'all'
-
     if filter_val == 'waiting':
         qs = qs.filter(waiting=True)
     elif filter_val == 'changed':
@@ -1493,7 +1519,7 @@ def confirmed_list(request):
         # status에 따른 min_days, max_days
         min_days, max_days = ETA_RANGES.get(s.status, (0, 0))
 
-        # 1) 안내날짜(고정) range
+        # (1) 안내날짜(고정) range
         if s.restock_date:
             s.range_start = s.restock_date + timedelta(days=min_days)
             s.range_end   = s.restock_date + timedelta(days=max_days)
@@ -1501,7 +1527,7 @@ def confirmed_list(request):
             s.range_start = None
             s.range_end   = None
 
-        # 2) 예상날짜(매번 갱신) range
+        # (2) 예상날짜(매번 갱신) range
         if s.expected_restock_date:
             s.expected_start = s.expected_restock_date + timedelta(days=min_days)
             s.expected_end   = s.expected_restock_date + timedelta(days=max_days)
@@ -1509,8 +1535,202 @@ def confirmed_list(request):
             s.expected_start = None
             s.expected_end   = None
 
+        # (3) changed_option(문자열) 파싱 (한 개만 있는 상황 가정)
+        #     예: "애쉬그레이(R)|4qom1cc59a2c2f3e3i"
+        #          또는 "애쉬그레이(R)" (옵션코드 없는 경우)
+        parsed_option = {
+            "option_name": "",
+            "option_code": ""
+        }
+        if s.changed_option:
+            # 만약 실제로 ','가 들어있다면(여러 개로 구분) → 
+            # "한 개만"이라는 전제하에 제일 앞의 토큰만 처리 or 그대로 “,”가 없다고 가정
+            tk = s.changed_option.strip()
+
+            if '|' in tk:
+                nm, cd = tk.split('|', 1)
+                nm = nm.strip()
+                cd = cd.strip()
+                parsed_option["option_name"] = nm
+                parsed_option["option_code"] = cd
+            else:
+                # 옵션코드 없는 경우
+                parsed_option["option_name"] = tk
+
+        # 파싱 결과를 모델 인스턴스에 임시로 넣어두면, 템플릿에서 s.changed_option_parsed 로 접근 가능
+        s.changed_option_parsed = parsed_option
+
     return render(request, 'delayed_management/confirmed_list.html', {
         'shipments': shipments,
         'filter_val': filter_val,  # 템플릿에서 현재 필터값 체크용
     })
 
+
+def get_exchange_options_api(request, shipment_id):
+    """
+    GET /delayed/api/exchange-options/<shipment_id>/
+      → { status: "success", options: [...] }
+    """
+    try:
+        ship = DelayedShipment.objects.get(id=shipment_id)
+    except DelayedShipment.DoesNotExist:
+        return JsonResponse({"status":"error","message":"Shipment not found"}, status=404)
+
+    if not ship.exchangeable_options:
+        return JsonResponse({"status":"success","options":[]})
+    arr = [x.strip() for x in ship.exchangeable_options.split(',') if x.strip()]
+    return JsonResponse({"status":"success","options": arr})
+
+
+def get_seller_tool_options_api(request, shipment_id):
+    """
+    GET /delayed/api/sellertool-options/<shipment_id>/
+      → {
+          "status":"success",
+          "allOptions":[
+             {"optionName":"애쉬그레이(R)", "optionCode":"4qom1cc59a2c2f3e3i", "stock":2},
+             ...
+          ],
+          "current":["애쉬그레이(R)", "샌드카키(L)", ...]
+        }
+    """
+    try:
+        ship = DelayedShipment.objects.get(id=shipment_id)
+    except DelayedShipment.DoesNotExist:
+        return JsonResponse({"status": "error", "message": "Shipment not found"}, status=404)
+
+    # (A) DB에 저장된 교환옵션 → 리스트
+    if ship.exchangeable_options:
+        current_list = [x.strip() for x in ship.exchangeable_options.split(',') if x.strip()]
+    else:
+        current_list = []
+
+    # (B) 기존 API Clients
+    info = get_option_info_by_code(ship.option_code)
+    if not info or not info.get('productName'):
+        return JsonResponse({"status": "error", "message": "상품 정보가 없습니다."}, status=400)
+
+    product_name = info['productName']
+
+    # (C) 동일 상품의 모든 옵션 조회
+    codes = get_all_options_by_product_name(product_name)
+    inventory_map = get_inventory_by_option_codes(codes)  # { code: stockUnit, ...}
+    detail_map = get_options_detail_by_codes(codes)       # { code: {optionName, salesPrice, ...}, ...}
+
+    all_options = []
+    base_sales_price = info['salesPrice']
+
+    # (D) 전체 옵션 나열
+    for code in codes:
+        det = detail_map.get(code)
+        if not det:
+            continue
+        stock = inventory_map.get(code, 0)
+        # (선택) 만약 "판매가 동일 & 재고 >= 0" 조건만 표시 etc.
+        if det['salesPrice'] == base_sales_price:
+            all_options.append({
+                "optionName": det['optionName'],
+                "optionCode": code,
+                "stock": stock
+            })
+
+    return JsonResponse({
+        "status": "success",
+        "allOptions": all_options,   # [{optionName, optionCode, stock}, ...]
+        "current": current_list      # ["애쉬그레이(R)", "샌드카키(L)", ... ]
+    })
+
+@csrf_exempt
+def add_exchange_option_api(request, shipment_id):
+    """
+    POST /delayed/exchange-options/<shipment_id>/add/
+    FormData: option_code, option_name
+    """
+    if request.method != 'POST':
+        return JsonResponse({"status":"error","message":"POST only"}, status=405)
+
+    try:
+        ship = DelayedShipment.objects.get(id=shipment_id)
+    except DelayedShipment.DoesNotExist:
+        return JsonResponse({"status":"error","message":"Shipment not found"}, status=404)
+
+    opt_code = request.POST.get('option_code','').strip()
+    opt_name = request.POST.get('option_name','').strip()
+    if not opt_code or not opt_name:
+        return JsonResponse({"status":"error","message":"option_code/option_name required"}, status=400)
+
+    # 추가
+    old_str = ship.exchangeable_options or ""
+    arr = [x.strip() for x in old_str.split(',') if x.strip()]
+    if opt_name in arr:
+        return JsonResponse({"status":"error","message":"이미 존재하는 옵션명입니다."}, status=400)
+
+    arr.append(opt_name)
+    ship.exchangeable_options = ",".join(arr)
+    ship.save()
+    return JsonResponse({"status":"success"})
+
+@csrf_exempt
+def remove_exchange_option_api(request, shipment_id):
+    """
+    POST /delayed/exchange-options/<shipment_id>/remove/
+      FormData: option_name
+    """
+    if request.method != 'POST':
+        return JsonResponse({"status":"error","message":"POST only"}, status=405)
+
+    try:
+        ship = DelayedShipment.objects.get(id=shipment_id)
+    except DelayedShipment.DoesNotExist:
+        return JsonResponse({"status":"error","message":"Shipment not found"}, status=404)
+
+    opt_name = request.POST.get('option_name','').strip()
+    if not opt_name:
+        return JsonResponse({"status":"error","message":"option_name required"}, status=400)
+
+    if not ship.exchangeable_options:
+        return JsonResponse({"status":"error","message":"no exchangeable_options"}, status=400)
+
+    arr = [x.strip() for x in ship.exchangeable_options.split(',') if x.strip()]
+    if opt_name not in arr:
+        return JsonResponse({"status":"error","message":"해당 옵션이 없습니다."}, status=400)
+
+    arr.remove(opt_name)
+    ship.exchangeable_options = ",".join(arr)
+    ship.save()
+
+    return JsonResponse({"status":"success"})
+
+
+
+def save_seller_tool_options_api(request, shipment_id):
+    if request.method != 'POST':
+        return JsonResponse({"status": "error", "message": "POST only"}, status=405)
+
+    try:
+        ship = DelayedShipment.objects.get(id=shipment_id)
+    except DelayedShipment.DoesNotExist:
+        return JsonResponse({"status": "error", "message": "Shipment not found"}, status=404)
+
+    raw_json = request.POST.get('selected_options_json', '')
+    if not raw_json:
+        # 아무것도 없으면 => 빈 값으로 저장
+        ship.exchangeable_options = ""
+        ship.save()
+        return JsonResponse({"status": "success", "message": "Empty saved"})
+
+    import json
+    try:
+        arr = json.loads(raw_json)  # => ["빨강/M","파랑/L"]
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": f"JSON parse error: {str(e)}"}, status=400)
+
+    if not isinstance(arr, list):
+        return JsonResponse({"status": "error", "message": "parsed data is not a list"}, status=400)
+
+    # arr = ["빨강/M", "파랑/L", ...] 전부 'str' 이므로
+    final_str = ",".join(arr)
+    ship.exchangeable_options = final_str
+    ship.save()
+
+    return JsonResponse({"status": "success", "saved_options": final_str})

@@ -197,75 +197,84 @@
 </head>
 
 <body>
-<div class="option-change-container">
-  <h1>옵션 변경 페이지</h1>
+  <div class="option-change-container">
+    <h1>옵션 변경 페이지</h1>
 
-  <form method="post" action="{% url 'option_change_process' %}">
-    {% csrf_token %}
-    <input type="hidden" name="token" value="{{ token }}">
+    <form method="post" action="{% url 'option_change_process' %}">
+      {% csrf_token %}
+      <input type="hidden" name="token" value="{{ token }}">
 
-    {% for item in shipments_data %}
-      <div class="shipment-item">
-        <p>상품명: {{ item.shipment.order_product_name }}</p>
-        <p>현재 옵션: {{ item.shipment.order_option_name }} / 수량: {{ item.shipment.quantity }}</p>
+      {% for item in shipments_data %}
+        <div class="shipment-item">
+          <p>상품명: {{ item.shipment.order_product_name }}</p>
+          <p>현재 옵션: {{ item.shipment.order_option_name }} / 수량: {{ item.shipment.quantity }}</p>
 
-        <!-- 예: 안내날짜(고정) range -->
-        <p>
-          재입고 날짜:
-          {% if item.shipment.range_start and item.shipment.range_end %}
-            {{ item.shipment.range_start|date:"Y.m.d" }} ~ {{ item.shipment.range_end|date:"m.d" }}
-          {% else %}
-            (미정)
-          {% endif %}
-        </p>
-
-        <!-- 교환가능 옵션(없으면 붉은 안내 표시) -->
-        <label>변경가능 옵션:</label>
-        {% if item.exchangeable_options %}
-          <select 
-            name="new_option_for_{{ item.shipment.id }}"
-            onchange="onOptionChange(this, '{{ item.shipment.id }}')">
-            <option value="">옵션을 선택하세요</option>
-            {% for opt in item.exchangeable_options %}
-              <!-- opt['optionName'] 화면 표시, opt['optionCode']를 data 속성에 -->
-              <option 
-                value="{{ opt.optionName }}" 
-                data-code="{{ opt.optionCode }}">
-                {{ opt.optionName }}
-              </option>
-            {% endfor %}
-          </select>
-
-          <!-- 옵션코드를 숨겨서 함께 전송할 hidden input -->
-          <input type="hidden" 
-                 name="new_option_code_for_{{ item.shipment.id }}" 
-                 id="new_option_code_for_{{ item.shipment.id }}" />
-
-        {% else %}
-          <!-- 교환 옵션이 비어있으면 -->
-          <p style="color:red; font-weight:bold;">
-            변경 가능한 옵션이 없습니다. 상담원에게 문의해주세요.
+          <p>
+            재입고 날짜:
+            {% if item.shipment.range_start and item.shipment.range_end %}
+              {{ item.shipment.range_start|date:"Y.m.d" }} ~ {{ item.shipment.range_end|date:"m.d" }}
+            {% else %}
+              (미정)
+            {% endif %}
           </p>
-        {% endif %}
-      </div>
-    {% endfor %}
 
-    <button type="submit" class="submit-button">전체 옵션 변경하기</button>
-  </form>
-</div>
+          <label>변경가능 옵션:</label>
+          {% if item.exchangeable_options %}
+            <!-- 
+              ★ 주의: name="new_option_for_{{ item.shipment.id }}" 
+                       hidden input name="new_option_code_for_{{ item.shipment.id }}"
+            -->
+            <select name="new_option_for_{{ item.shipment.id }}"
+                    onchange="onOptionChange(this, '{{ item.shipment.id }}')">
+              <option value="">옵션을 선택하세요</option>
+              {% for opt in item.exchangeable_options %}
+                <option value="{{ opt.optionName }}"
+                        data-code="{{ opt.optionCode }}">
+                  {{ opt.optionName }}
+                </option>
+              {% endfor %}
+            </select>
 
-<script>
-// select 변경 시, 선택된 <option>의 data-code를 hidden input에 주입
-function onOptionChange(sel, shipmentId) {
-  const selectedOption = sel.options[sel.selectedIndex];
-  const code = selectedOption.getAttribute('data-code') || '';
-  const hiddenInput = document.getElementById(`new_option_code_for_${shipmentId}`);
-  if (hiddenInput) {
-    hiddenInput.value = code;
-  }
-}
-</script>
+            <!-- 선택된 optionCode를 넣을 hidden input -->
+            <input type="hidden" name="new_option_code_for_{{ item.shipment.id }}"
+                  id="new_option_code_for_{{ item.shipment.id }}" />
 
+          {% else %}
+            <!-- 교환가능옵션이 비어있으면 -->
+            <p style="color:red; font-weight:bold;">
+              변경 가능한 옵션이 없습니다. 상담원에게 문의해주세요.
+            </p>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      <button type="submit" class="submit-button">전체 옵션 변경하기</button>
+    </form>
+  </div>
+
+  <script>
+    /**
+     * select 태그에서 onChange 발생 시:
+     *  - data-code 속성을 읽어와서, hidden input에 넣는다.
+     */
+    function onOptionChange(sel, shipmentId) {
+      const selectedOption = sel.options[sel.selectedIndex];
+      const optionCode = selectedOption.getAttribute('data-code') || '';
+      const optionName = selectedOption.textContent || selectedOption.innerText;
+
+      console.log("[DEBUG] onOptionChange:", {
+        shipmentId: shipmentId,
+        optionName: optionName,
+        optionCode: optionCode
+      });
+
+      // hidden input에 optionCode 저장
+      const hiddenInput = document.getElementById(`new_option_code_for_${shipmentId}`);
+      if (hiddenInput) {
+        hiddenInput.value = optionCode;
+      }
+    }
+  </script>
 </body>
 </html>
 {% endblock %}
