@@ -3,30 +3,14 @@
 <div class="container-fluid mt-4">
     <h2 class="mb-4 text-primary">배송지연 목록</h2>
 
-    <!-- 옵션추출 버튼과 폼 시작 -->
     <form method="post" action="{% url 'change_exchangeable_options' %}">
         {% csrf_token %}
 
         <div class="mb-3 d-flex gap-2">
-            <!-- 첫 번째 버튼: 옵션추출 (value="extract_options") -->
-            <button type="submit" name="action" value="extract_options" class="btn btn-warning btn-sm">
-                옵션추출
-            </button>
-
-            <!-- 두 번째 버튼: 스토어 매핑 (value="store_mapping") -->
-            <button type="submit" name="action" value="store_mapping" class="btn btn-info btn-sm">
-                스토어 매핑
-            </button>
-
-                    <!-- 세 번째 버튼: 선택 삭제 -->
-            <button type="submit" name="action" value="delete_multiple" class="btn btn-danger btn-sm">
-                선택 삭제
-            </button>
-
-            <button type="submit" name="action" value="send_sms" class="btn btn-success btn-sm">
-                문자 발송
-            </button>
-
+            <button type="submit" name="action" value="extract_options" class="btn btn-warning btn-sm">옵션추출</button>
+            <button type="submit" name="action" value="store_mapping" class="btn btn-info btn-sm">스토어 매핑</button>
+            <button type="submit" name="action" value="delete_multiple" class="btn btn-danger btn-sm">선택 삭제</button>
+            <button type="submit" name="action" value="send_sms" class="btn btn-success btn-sm">문자 발송</button>
         </div>
 
         <div class="card shadow-sm mb-4">
@@ -34,10 +18,7 @@
                 <table>
                     <thead>
                         <tr>
-                            <!-- 전체체크 박스 -->
-                            <th>
-                                <input type="checkbox" id="selectAll">
-                            </th>
+                            <th><input type="checkbox" id="selectAll"></th>
                             <th>주문번호1</th>
                             <th>옵션코드</th>
                             <th>주문상품명</th>
@@ -57,7 +38,6 @@
                     <tbody>
                         {% for s in shipments %}
                         <tr class="clickable-row">
-                            <!-- 각 행 체크박스 -->
                             <td>
                                 <input type="checkbox" name="shipment_ids" value="{{ s.id }}" class="option-checkbox">
                             </td>
@@ -66,23 +46,24 @@
                             <td>{{ s.order_product_name }}</td>
                             <td>{{ s.order_option_name }}</td>
                             <td>{{ s.quantity }}</td>
-                            <td>{{ s.exchangeable_options }}</td>
-                            <!-- 안내날짜 (final, 변경 X) -->
+                            <!-- ▼ 여기: 'exchangeable-options-cell' 셀 클릭 시 모달 열기 -->
+                            <td class="exchangeable-options-cell" data-shipment-id="{{ s.id }}">
+                                {{ s.exchangeable_options }}
+                            </td>
+                            <!-- 안내날짜 -->
                             <td>
                                 {% if s.range_start and s.range_end %}
-                                <!-- 예: 2024.01.06 ~ 01.10 형태 -->
-                                {{ s.range_start|date:"Y.m.d" }} ~ {{ s.range_end|date:"m.d" }}
+                                    {{ s.range_start|date:"Y.m.d" }} ~ {{ s.range_end|date:"m.d" }}
                                 {% else %}
-                                (미정)
+                                    (미정)
                                 {% endif %}
                             </td>
-
-                            <!-- 예상날짜 (동적, 매번 갱신) -->
+                            <!-- 예상날짜 -->
                             <td>
                                 {% if s.expected_start and s.expected_end %}
-                                {{ s.expected_start|date:"Y.m.d" }} ~ {{ s.expected_end|date:"m.d" }}
+                                    {{ s.expected_start|date:"Y.m.d" }} ~ {{ s.expected_end|date:"m.d" }}
                                 {% else %}
-                                (미정)
+                                    (미정)
                                 {% endif %}
                             </td>
                             <td>{{ s.store_name }}</td>
@@ -94,7 +75,7 @@
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="18" class="text-center text-muted">데이터가 없습니다.</td>
+                            <td colspan="15" class="text-center text-muted">데이터가 없습니다.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -102,112 +83,275 @@
             </div>
         </div>
     </form>
+</div>
 
+<!-- 모달 (숨김 상태) -->
+<div id="exchangeModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <span id="closeModalBtn" class="close">&times;</span>
+      <h3>교환가능 옵션 편집</h3>
+      <p>Shipment ID: <span id="modalShipmentId"></span></p>
+
+      <div id="loadingSpinner" style="display: none; margin: 1rem 0; text-align: center;">
+        <img src="/static/images/spinner.gif" alt="Loading..." style="width: 40px; height: 40px;">
+        <p>불러오는 중...</p>
+      </div>
+
+      <!-- 전체 옵션 목록을 표시할 영역 -->
+      <div id="allOptionsArea" style="margin-bottom: 1rem;"></div>
+
+      <button id="saveBtn" class="btn btn-sm btn-primary">저장</button>
+    </div>
 </div>
 
 <style>
-    .container-fluid {
-        max-width: 1400px;
-    }
-    .card {
-        border: none;
-        border-radius: 15px;
-        background-color: #ffffff;
-        color: #2d3436;
-        padding: 20px;
-    }
-    table {
-        border-collapse: separate;
-        border-spacing: 0;
-        background-color: #ffffff;
-        color: #2d3436;
-        width: 100%;
-    }
-    thead th {
-        background-color: #6c5ce7;
-        color: white;
-        padding: 15px;
-        white-space: nowrap;
-        user-select: none;
-        border-bottom: 2px solid #dfe6e9;
-        position: relative;
-    }
-    tbody tr:nth-child(even) {
-        background-color: rgba(108, 92, 231, 0.1);
-    }
-    tbody tr:hover {
-        background-color: rgba(108, 92, 231, 0.2);
-    }
-    td, th {
-        padding: 12px;
-        vertical-align: middle;
-        border-top: 1px solid #dfe6e9;
-        border-bottom: 1px solid #dfe6e9;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-        overflow: hidden;
-    }
+.container-fluid {
+    max-width: 1400px;
+}
+.card {
+    border: none;
+    border-radius: 15px;
+    background-color: #ffffff;
+    color: #2d3436;
+    padding: 20px;
+}
+table {
+    border-collapse: separate;
+    border-spacing: 0;
+    background-color: #ffffff;
+    color: #2d3436;
+    width: 100%;
+}
+thead th {
+    background-color: #6c5ce7;
+    color: white;
+    padding: 15px;
+    white-space: nowrap;
+    user-select: none;
+    border-bottom: 2px solid #dfe6e9;
+    position: relative;
+}
+tbody tr:nth-child(even) {
+    background-color: rgba(108, 92, 231, 0.1);
+}
+tbody tr:hover {
+    background-color: rgba(108, 92, 231, 0.2);
+}
+td, th {
+    padding: 12px;
+    vertical-align: middle;
+    border-top: 1px solid #dfe6e9;
+    border-bottom: 1px solid #dfe6e9;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+/* 모달 배경 */
+.modal {
+    position: fixed;
+    z-index: 9999;
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.4);
+}
+/* 모달 내용 */
+.modal-content {
+    background-color: #fff;
+    margin: 10% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 400px;
+    position: relative;
+}
+/* 닫기 버튼 (x 아이콘) */
+.close {
+    position: absolute;
+    top: 10px; right: 10px;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
 </style>
 
-
 <script>
-
-document.addEventListener('DOMContentLoaded', function() {
-    // 전체 선택 체크박스
-    const selectAllCheckbox = document.getElementById('selectAll');
-    const checkboxes = document.querySelectorAll('.option-checkbox');
-
-    // 전체 체크 / 해제 기능
-    selectAllCheckbox.addEventListener('change', function() {
-        checkboxes.forEach(function(cb) {
-            cb.checked = selectAllCheckbox.checked;
+    document.addEventListener('DOMContentLoaded', function() {
+      // 1) 전체 선택 체크박스
+      const selectAllCheckbox = document.getElementById('selectAll');
+      const checkboxes = document.querySelectorAll('.option-checkbox');
+      if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+          checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
         });
-    });
-
-    // 각 행을 클릭하면 체크박스를 토글
-    const rows = document.querySelectorAll('.clickable-row');
-    rows.forEach(row => {
+      }
+    
+      // 2) 행 클릭 시 체크박스 토글
+      const rows = document.querySelectorAll('.clickable-row');
+      rows.forEach(row => {
         row.addEventListener('click', function(e) {
-            // 이미 체크박스를 직접 클릭한 경우( input[type="checkbox"] 클릭 )는 기본 동작에 맡긴다.
-            if (e.target.type !== 'checkbox') {
-                const checkbox = this.querySelector('.option-checkbox');
-                if (checkbox) {
-                    checkbox.checked = !checkbox.checked;
-                }
+          // 교환옵션 셀(.exchangeable-options-cell) 클릭 시 모달 열기이므로 제외
+          if (e.target.type !== 'checkbox' && 
+              !e.target.classList.contains('exchangeable-options-cell')) {
+            const checkbox = this.querySelector('.option-checkbox');
+            if (checkbox) {
+              checkbox.checked = !checkbox.checked;
             }
+          }
         });
-    });
-});
-document.addEventListener('DOMContentLoaded', function() {
-    const table = document.querySelector('table');
-    const ths = table.querySelectorAll('thead th');
-    let startX, startWidth, currentTh;
-
-    ths.forEach(th => {
-        const resizer = th.querySelector('.resizer');
-        if (!resizer) return;
-
-        resizer.addEventListener('mousedown', function(e) {
-            startX = e.pageX;
-            currentTh = th;
-            startWidth = currentTh.offsetWidth;
-            document.addEventListener('mousemove', mouseMoveHandler);
-            document.addEventListener('mouseup', mouseUpHandler);
-            e.preventDefault();
+      });
+    
+      // 3) "교환옵션" 셀을 클릭하면 모달 열기
+      const optionCells = document.querySelectorAll('.exchangeable-options-cell');
+      optionCells.forEach(cell => {
+        cell.addEventListener('click', function(e) {
+          const shipmentId = this.getAttribute('data-shipment-id');
+          openExchangeModal(shipmentId);
+          e.stopPropagation();  // 상위 tr 클릭 이벤트 중단
         });
+      });
+    
+      // 4) 모달 닫기 버튼
+      const closeBtn = document.getElementById('closeModalBtn');
+      if (closeBtn) {
+        closeBtn.onclick = function() {
+          document.getElementById('exchangeModal').style.display = 'none';
+        };
+      }
+    
+      // 5) "저장" 버튼 클릭 시
+      const saveBtn = document.getElementById('saveBtn');
+      if (saveBtn) {
+        saveBtn.onclick = saveExchangeOptions;
+      }
     });
-
-    function mouseMoveHandler(e) {
-        if (!currentTh) return;
-        const newWidth = startWidth + (e.pageX - startX);
-        currentTh.style.width = newWidth + 'px';
+    
+    // 전역 변수
+    let currentShipmentId = null;
+    let selectedOptionSet = new Set();
+    
+    /**
+     * 모달 열기
+     */
+    function openExchangeModal(shipmentId) {
+      currentShipmentId = shipmentId;
+      document.getElementById('modalShipmentId').textContent = shipmentId;
+    
+      // 모달 열기
+      const modal = document.getElementById('exchangeModal');
+      modal.style.display = 'block';
+    
+      // 로딩 스피너 표시
+      const loadingSpinner = document.getElementById('loadingSpinner');
+      loadingSpinner.style.display = 'block';
+    
+      // 영역 초기화
+      const allOptionsArea = document.getElementById('allOptionsArea');
+      allOptionsArea.innerHTML = '';
+      selectedOptionSet.clear();
+    
+      // ❶ 서버에서 "전체 옵션" + "현재 선택된 옵션" 가져오기
+      fetch(`/delayed/api/sellertool-options/${shipmentId}/`)
+        .then(res => {
+          if (!res.ok) {
+            throw new Error("Response not OK");
+          }
+          return res.json();
+        })
+        .then(data => {
+          loadingSpinner.style.display = 'none';
+    
+          if (data.status !== 'success') {
+            alert("옵션 불러오기 실패: " + data.message);
+            return;
+          }
+    
+          // allOptions: [{ optionName, optionCode, stock }, ...]
+          const allOptions = data.allOptions || [];
+          // current: ["빨강_M", "파랑_L", ...]
+          const curOps = data.current || [];
+    
+          // 이미 선택된 옵션들
+          curOps.forEach(optName => selectedOptionSet.add(optName));
+    
+          // ❷ 버튼 생성
+          allOptions.forEach(op => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.style.margin = '4px';
+            btn.className = 'btn btn-sm';  // 부트스트랩 등 사용 시
+    
+            // 라벨: "옵션명 (재고:NN)"
+            btn.textContent = `${op.optionName} (재고:${op.stock})`;
+    
+            if (op.stock === 0) {
+              // 재고 0 → 선택 불가
+              btn.disabled = true;
+              btn.style.cursor = 'not-allowed';
+              btn.classList.add('btn-danger'); // 시각적 강조
+            } else {
+              // 재고가 있는 경우 → 선택 토글 처리
+              if (selectedOptionSet.has(op.optionName)) {
+                // 이미 선택된 옵션
+                btn.classList.add('btn-primary');
+              } else {
+                btn.classList.add('btn-outline-secondary');
+              }
+    
+              // 클릭 시 토글
+              btn.onclick = () => {
+                if (selectedOptionSet.has(op.optionName)) {
+                  selectedOptionSet.delete(op.optionName);
+                  btn.classList.remove('btn-primary');
+                  btn.classList.add('btn-outline-secondary');
+                } else {
+                  selectedOptionSet.add(op.optionName);
+                  btn.classList.remove('btn-outline-secondary');
+                  btn.classList.add('btn-primary');
+                }
+              };
+            }
+    
+            allOptionsArea.appendChild(btn);
+          });
+        })
+        .catch(err => {
+          loadingSpinner.style.display = 'none';
+          console.error(err);
+          alert("에러 발생: " + err);
+        });
     }
-
-    function mouseUpHandler(e) {
-        document.removeEventListener('mousemove', mouseMoveHandler);
-        document.removeEventListener('mouseup', mouseUpHandler);
-        currentTh = null;
+    
+    /**
+     * 저장하기
+     */
+    function saveExchangeOptions() {
+      if (!currentShipmentId) return;
+    
+      const selectedArr = Array.from(selectedOptionSet);  // ["빨강_M", "파랑_L", ...]
+      const formData = new FormData();
+      formData.append('selected_options_json', JSON.stringify(selectedArr));
+    
+      fetch(`/delayed/api/save-sellertool-options/${currentShipmentId}/`, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: formData
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            alert("저장되었습니다.");
+            document.getElementById('exchangeModal').style.display = 'none';
+            // 필요시 새로고침
+            window.location.reload();
+          } else {
+            alert("저장 실패: " + data.message);
+          }
+        })
+        .catch(err => {
+          console.error(err);
+          alert("Error: " + err);
+        });
     }
-});
-</script>
+    </script>
 {% endblock %}

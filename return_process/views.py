@@ -9,28 +9,16 @@ from django.shortcuts import render, redirect
 from .models import ReturnItem, ScanLog
 from .api_clients import (
     NAVER_ACCOUNTS,
-    COUPANG_ACCOUNTS,
-    fetch_naver_returns,
-    fetch_coupang_returns,
-    fetch_coupang_exchanges,
-    get_seller_product_item_id,
-    get_order_detail,
-    get_external_vendor_sku,
-    get_return_request_details,
     approve_naver_return,
     get_product_order_details,
     dispatch_naver_exchange
 )
 from django.contrib.auth import login
-from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.decorators import login_required
-from .forms import CustomUserCreationForm, ReturnItemForm  # 커스텀 유저 생성 폼
-from .utils import save_return_items
+from .forms import CustomUserCreationForm  # 커스텀 유저 생성 폼
 import logging
 from django.http import JsonResponse
 from django.contrib import messages
-from dateutil.parser import parse
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 import json
 from django.shortcuts import get_object_or_404
@@ -38,12 +26,12 @@ from django.http import JsonResponse, HttpResponse
 import openpyxl
 from openpyxl import Workbook
 import warnings
-from django.db import transaction  # 이 부분을 추가
-import datetime, uuid, hmac, hashlib, base64
-from decouple import config
+import datetime, uuid, hmac, hashlib
 from django.conf import settings
 from .utils import update_returns_logic
 from django.db.models import Count
+from openpyxl.utils import get_column_letter
+
 
 
 
@@ -1515,3 +1503,75 @@ def home(request):
         return redirect('반품목록')  # 로그인된 사용자는 반품목록으로 이동
     else:
         return redirect('login')  # 로그인되지 않은 사용자는 로그인 페이지로 이동
+
+
+@login_required
+def download_returned_items(request):
+    """
+    반품완료 목록 테이블 데이터를 엑셀 파일로 다운로드
+    """
+    # 반품완료 목록에 표시되는 동일한 QuerySet
+    # (실제 코드와 동일하게 불러오거나, request.user 필터 등을 걸어서 필요한 데이터만 가져오세요.)
+    items = ReturnItem.objects.filter(processing_status='반품완료')
+    
+    # 1) 새로운 Workbook 생성
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "반품완료목록"
+
+    # 2) 헤더 작성 (원하시는 순서와 컬럼명을 넣어주세요)
+    headers = [
+        "검수 결과",
+        "현재클레임상태",
+        "클레임 종류",
+        "클레임 사유",
+        "고객 사유",
+        "수거 배송비",
+        "배송비 지급 방식",
+        "주문번호",
+        "스토어명",
+        "수취인명",
+        "연락처",
+        "옵션코드",
+        "상품명",
+        "옵션명",
+        "수량",
+    ]
+    for col_num, header in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_num, value=header)
+        # 굵게 표시 등 스타일 적용을 원하시면 아래와 같이 하실 수도 있습니다.
+        cell.font = openpyxl.styles.Font(bold=True)
+
+    # 3) 테이블 내용 작성
+    for row_num, item in enumerate(items, start=2):
+        # 여기서 item은 DB에서 가져온 ReturnedItem 모델의 인스턴스입니다.
+        # 실제 필드명에 맞추어 적절히 대응해 넣어 주세요.
+        ws.cell(row=row_num, column=1, value=item.product_issue or "미검수")
+        ws.cell(row=row_num, column=2, value=item.product_order_status or "N/A")
+        ws.cell(row=row_num, column=3, value=item.claim_type or "N/A")
+        ws.cell(row=row_num, column=4, value=item.claim_reason or "N/A")
+        ws.cell(row=row_num, column=5, value=item.customer_reason or "N/A")
+        ws.cell(row=row_num, column=6, value=item.return_shipping_charge or "0")
+        ws.cell(row=row_num, column=7, value=item.shipping_charge_payment_method or "N/A")
+        ws.cell(row=row_num, column=8, value=item.order_number)
+        ws.cell(row=row_num, column=9, value=item.store_name or "N/A")
+        ws.cell(row=row_num, column=10, value=item.recipient_name or "N/A")
+        ws.cell(row=row_num, column=11, value=item.recipient_contact or "N/A")
+        ws.cell(row=row_num, column=12, value=item.option_code or "N/A")
+        ws.cell(row=row_num, column=13, value=item.product_name or "N/A")
+        ws.cell(row=row_num, column=14, value=item.option_name or "N/A")
+        ws.cell(row=row_num, column=15, value=item.quantity or 0)
+
+    # 4) 열 너비 자동 조절(선택사항)
+    for col_num in range(1, len(headers) + 1):
+        column_letter = get_column_letter(col_num)
+        ws.column_dimensions[column_letter].auto_size = True  # 일부 엑셀뷰어에선 동작 안 할 수도 있습니다.
+
+    # 5) HttpResponse로 엑셀 파일 전송
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="returned_items.xlsx"'
+
+    wb.save(response)
+    return response
