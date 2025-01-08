@@ -1438,6 +1438,30 @@ def returned_items(request):
     return render(request, 'return_process/returned_items.html', {'items': items})
 
 @login_required
+def update_stock_bulk(request):
+    """
+    체크박스 선택 후 '재고반영' 버튼을 누르면,
+    선택된 ReturnItem들의 processing_status를 '재고반영'으로 업데이트하고
+    '재고반영완료' 페이지로 이동
+    """
+    if request.method == 'POST':
+        # 1) 체크된 아이템 id 리스트 가져오기
+        item_ids = request.POST.getlist('item_ids', [])
+
+        # 2) 이 예시에서는 별다른 로직 없이 그냥 status만 재고반영으로 업데이트
+        ReturnItem.objects.filter(id__in=item_ids).update(processing_status='재고반영')
+
+        # 3) 메시지 띄우고 싶다면:
+        messages.success(request, f"총 {len(item_ids)}건의 아이템이 재고반영 되었습니다.")
+
+        # 4) 재고반영완료 페이지로 이동
+        return redirect('재고반영완료')
+    else:
+        # GET으로 접근했을 경우 (직접 URL 치고 들어오는 등)은
+        # 적절히 다른 페이지로 보내거나 처리
+        return redirect('returned_items')  
+
+@login_required
 def update_stock(request, item_id):
     item = get_object_or_404(ReturnItem, id=item_id)
     # 셀러툴 API 호출 로직
@@ -1459,14 +1483,40 @@ def update_stock(request, item_id):
     messages.success(request, f"재고가 성공적으로 반영되었습니다: {item.order_number}")
     return redirect('stock_updated_items')
 
-@login_required
-def stock_updated_items(request):
-    items = ReturnItem.objects.filter(processing_status='재고반영')
-    return render(request, 'return_process/stock_updated_items.html', {'items': items})
 
 @login_required
+def stock_updated_items(request):
+    # DB에서 처리상태가 '재고반영'인 항목만 가져옴
+    items = ReturnItem.objects.filter(processing_status='재고반영')
+    return render(request, 'return_process/stock_updated_items.html', {'items': items})
+@login_required
+def update_complete_bulk(request):
+    """
+    체크박스 선택 후 '처리완료' 버튼을 누르면,
+    선택된 ReturnItem들의 processing_status를 '처리완료'로 업데이트하고
+    처리완료 목록 페이지로 이동
+    """
+    if request.method == 'POST':
+        # 1) POST로 넘어온 체크박스 선택 아이템들 ID 목록
+        item_ids = request.POST.getlist('item_ids', [])
+        
+        # 2) 한 번에 상태 업데이트
+        ReturnItem.objects.filter(id__in=item_ids).update(processing_status='처리완료')
+
+        # 3) 메시지 띄우기 (선택)
+        messages.success(request, f"총 {len(item_ids)}건의 아이템이 처리완료 되었습니다.")
+        
+        # 4) 처리완료 목록 페이지로 이동
+        return redirect('처리완료')  
+        # ↑ urls.py에서 name='처리완료' 로 등록된 페이지로 이동
+
+    else:
+        # GET으로 접근하면 그냥 다른 페이지로 돌려보냄 (취향에 맞게)
+        return redirect('stock_updated_items')  
+    
+@login_required
 def completed_items(request):
-    items = ReturnItem.objects.filter(status='completed')
+    items = ReturnItem.objects.filter(processing_status='처리완료')
     return render(request, 'return_process/completed_items.html', {'items': items})
 
 @login_required
@@ -1513,7 +1563,7 @@ def download_returned_items(request):
     # 반품완료 목록에 표시되는 동일한 QuerySet
     # (실제 코드와 동일하게 불러오거나, request.user 필터 등을 걸어서 필요한 데이터만 가져오세요.)
     items = ReturnItem.objects.filter(processing_status='반품완료')
-    
+
     # 1) 새로운 Workbook 생성
     wb = openpyxl.Workbook()
     ws = wb.active
