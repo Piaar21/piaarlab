@@ -51,6 +51,7 @@
                                 <th>클레임 종류</th>
                                 <th>클레임 사유</th>
                                 <th>고객 사유</th>
+                                <th>사유</th>
                                 <th>수거 배송비</th>
                                 <th>배송비 지급 방식</th>
                                 <th>주문번호</th>
@@ -72,6 +73,7 @@
                                 <td>{{ item.claim_type|default:"N/A" }}</td>
                                 <td class="reason-cell">{{ item.claim_reason|default:"N/A" }}</td>
                                 <td>{{ item.customer_reason|default:"N/A" }}</td>
+                                <td>{{ item.note|default:" " }}</td>
                                 <td>{{ item.return_shipping_charge|default:"0" }}</td>
                                 <td>{{ item.shipping_charge_payment_method|default:"N/A" }}</td>
                                 <td>{{ item.order_number }}</td>

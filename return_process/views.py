@@ -1576,6 +1576,7 @@ def download_returned_items(request):
         "클레임 종류",
         "클레임 사유",
         "고객 사유",
+        "사유",
         "수거 배송비",
         "배송비 지급 방식",
         "주문번호",
@@ -1601,16 +1602,18 @@ def download_returned_items(request):
         ws.cell(row=row_num, column=3, value=item.claim_type or "N/A")
         ws.cell(row=row_num, column=4, value=item.claim_reason or "N/A")
         ws.cell(row=row_num, column=5, value=item.customer_reason or "N/A")
-        ws.cell(row=row_num, column=6, value=item.return_shipping_charge or "0")
-        ws.cell(row=row_num, column=7, value=item.shipping_charge_payment_method or "N/A")
-        ws.cell(row=row_num, column=8, value=item.order_number)
-        ws.cell(row=row_num, column=9, value=item.store_name or "N/A")
-        ws.cell(row=row_num, column=10, value=item.recipient_name or "N/A")
-        ws.cell(row=row_num, column=11, value=item.recipient_contact or "N/A")
-        ws.cell(row=row_num, column=12, value=item.option_code or "N/A")
-        ws.cell(row=row_num, column=13, value=item.product_name or "N/A")
-        ws.cell(row=row_num, column=14, value=item.option_name or "N/A")
-        ws.cell(row=row_num, column=15, value=item.quantity or 0)
+        ws.cell(row=row_num, column=6, value=item.note or "")
+        ws.cell(row=row_num, column=7, value=item.return_shipping_charge or "0")
+        ws.cell(row=row_num, column=8, value=item.shipping_charge_payment_method or "N/A")
+        ws.cell(row=row_num, column=9, value=item.order_number)
+        ws.cell(row=row_num, column=10, value=item.store_name or "N/A")
+        ws.cell(row=row_num, column=11, value=item.recipient_name or "N/A")
+        ws.cell(row=row_num, column=12, value=item.recipient_contact or "N/A")
+        ws.cell(row=row_num, column=13, value=item.option_code or "N/A")
+        ws.cell(row=row_num, column=14, value=item.product_name or "N/A")
+        ws.cell(row=row_num, column=15, value=item.option_name or "N/A")
+        ws.cell(row=row_num, column=16, value=item.quantity or 0)
+
 
     # 4) 열 너비 자동 조절(선택사항)
     for col_num in range(1, len(headers) + 1):
