@@ -1,15 +1,15 @@
 {% extends 'return_process_base.html' %}
 {% block content %}
 <div class="container-fluid mt-4">
-    <h2 class="mb-4 text-primary">재고반영</h2>
+    <h2 class="mb-4 text-primary">처리완료</h2>
     <div class="card shadow-sm">
         <div class="card-body">
             <!-- 필요하다면 재고반영 완료 후 추가 동작을 위한 폼과 버튼을 유지하거나 제거 가능 -->
             <!-- 여기서는 반품완료 페이지의 UI를 동일하게 유지하는 예시 -->
-            <form method="post" action="{% url '처리완료_bulk' %}">
+            <form method="post" action="">
                 {% csrf_token %}
                 <!-- 재고반영 완료 페이지에서는 별도 액션이 필요 없다면 버튼 제거 가능 -->
-                <button type="submit" class="btn btn-primary mb-3">처리완료</button>
+                <!-- <button type="submit" class="btn btn-primary mb-3">처리완료</button> -->
 
                 <!-- 필터 영역 (반품완료 페이지와 동일한 필터 예시) -->
                 <div class="d-flex mb-3 gap-3 align-items-center">

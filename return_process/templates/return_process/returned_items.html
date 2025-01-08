@@ -3,7 +3,7 @@
     <h2 class="mb-4 text-primary">반품완료 목록</h2>
     <div class="card shadow-sm">
         <div class="card-body">
-            <form method="post" action="{% url '반품처리_bulk' %}">
+            <form method="post" action="{% url '재고반영_bulk' %}">
                 {% csrf_token %}
                 <!-- 만약 "반품승인" 버튼을 반품완료 페이지에서도 사용하고자 한다면 유지,
                      아니라면 제거 가능합니다. -->
