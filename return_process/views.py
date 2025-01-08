@@ -35,7 +35,10 @@ from django.db.models import Count
 from openpyxl.utils import get_column_letter
 import pandas as pd
 from django.db.models import Sum
-from django.db.models.functions import TruncDate
+from django.db.models.functions import Coalesce, TruncDate
+from django.db.models import Count, F
+from .models import ReturnItem
+from django.db.models import DateTimeField
 
 
 
@@ -1639,28 +1642,30 @@ def download_returned_items(request):
 @login_required
 def return_dashboard(request):
     """
-    1) 사용자가 시작/종료일을 달력으로 선택 + 옵션코드를 입력 (POST)
-    2) 기간별 판매(orders) vs 반품(returns)을 조회 (일자별)
-    3) 일자별 목록과 기간 합계, 반품률을 템플릿에 표시
+    - 판매량(기간) : get_hourly_sales_for_period()
+    - 반품(기간)   : ReturnItem (기준일= COALESCE(claim_request_date, last_update_date))
+    - 반품률       : (반품수량 ÷ 판매수량) × 100
+    - 클레임 사유 (일자별)
+    - 클레임 사유 (전체기간 총합)
     """
     if request.method == 'POST':
-        # (1) 폼 데이터
+        # 1) 폼 입력
         start_date_str = request.POST.get('start_date', '')
         end_date_str   = request.POST.get('end_date', '')
         codes_str      = request.POST.get('option_codes', '')
 
-        # 옵션코드 목록 (콤마로 분리)
         option_codes = [c.strip() for c in codes_str.split(',') if c.strip()]
 
-        # (2) 날짜 변환
+        # 2) 날짜 변환
         try:
             start_dt = pd.to_datetime(start_date_str)
             end_dt   = pd.to_datetime(end_date_str)
         except:
             context = {
                 'daily_data': [],
-                'total_sales_qty': 0,
-                'total_return_qty': 0,
+                'daily_claims': [],
+                'overall_reasons': [],
+                'total_claims': 0,
                 'return_rate': 0,
                 'start_date': start_date_str,
                 'end_date': end_date_str,
@@ -1668,79 +1673,162 @@ def return_dashboard(request):
             }
             return render(request, 'return_process/return_dashboard.html', context)
 
-        # 안전장치: start_dt > end_dt인 경우 스왑
+        # start_dt > end_dt 시 swap
         if start_dt > end_dt:
             start_dt, end_dt = end_dt, start_dt
 
-        # ─────────────────────────────────────────────────────
-        # (3-A) 기간별 [판매량] 조회
-        # ─────────────────────────────────────────────────────
-        # get_hourly_sales_for_period() → 일자별 totalUnits 합계
-        # 예) [
-        #   {"date": "2025-01-01", "daily_total_units": 10, "detail": [...]},
-        #   ...
-        # ]
+        # ─────────────────────────────────────────────
+        # (A) 기간별 "판매량" 구하기
+        # ─────────────────────────────────────────────
         sales_data = get_hourly_sales_for_period(
-            option_codes=option_codes, 
+            option_codes=option_codes,
             start_date=start_dt,
             end_date=end_dt
         )
+        # sales_data 예시:
+        # [
+        #   {"date":"2025-01-05", "daily_total_units":10, "detail":[...]},
+        #   ...
+        # ]
 
-        # ─────────────────────────────────────────────────────
-        # (3-B) 기간별 [반품량] 조회
-        # ─────────────────────────────────────────────────────
-        # ReturnItem에서 delivered_date 범위 + option_code 필터 → 일자별 Sum(quantity)
-        qs = ReturnItem.objects.filter(
-            option_code__in=option_codes,
-            delivered_date__range=[start_dt, end_dt]
-        ).annotate(date_only=TruncDate('delivered_date')) \
-         .values('date_only') \
-         .annotate(daily_return_qty=Sum('quantity')) \
+        # ─────────────────────────────────────────────
+        # (B) 기간별 "반품(클레임)" 조회 (ReturnItem)
+        # ─────────────────────────────────────────────
+        # 1) effective_date = COALESCE(claim_request_date, last_update_date)
+        # 2) 기간 필터 : [start_dt, end_dt]
+        # 3) 옵션코드 필터 (있다면)
+        qs = ReturnItem.objects.annotate(
+            effective_date=Coalesce('claim_request_date', 'last_update_date', output_field=DateTimeField())
+        ).filter(
+            effective_date__range=[start_dt, end_dt]
+        )
+        if option_codes:
+            qs = qs.filter(option_code__in=option_codes)
+
+        # (B-1) 일자별 반품 수량
+        grouped_return = qs.annotate(
+            date_only=TruncDate('effective_date')
+        ).values('date_only') \
+         .annotate(daily_qty=Sum('quantity')) \
          .order_by('date_only')
 
-        # date_only(날짜) → daily_return_qty(반품 수량) 맵
-        return_map = {}
-        for row in qs:
-            d = row['date_only']   # date 객체
-            qty = row['daily_return_qty'] or 0
-            date_str2 = d.strftime('%Y-%m-%d')
-            return_map[date_str2] = qty
+        daily_return_map = {}
+        for row in grouped_return:
+            d = row['date_only']   # date obj
+            qty = row['daily_qty'] or 0
+            d_str = d.strftime('%Y-%m-%d')
+            daily_return_map[d_str] = qty
 
-        # ─────────────────────────────────────────────────────
-        # (4) 두 데이터를 [날짜] 기준으로 합쳐서 daily_data 구성
-        # ─────────────────────────────────────────────────────
+        # (B-2) 일자별 "클레임 사유" count (id 기준)
+        from collections import defaultdict
+        grouped_reason = qs.annotate(
+            date_only=TruncDate('effective_date')
+        ).values('date_only', 'claim_reason') \
+         .annotate(count=Count('id')) \
+         .order_by('date_only', 'claim_reason')
+
+        daily_claim_map = defaultdict(lambda: defaultdict(int))
+        date_list_claim = set()
+
+        for row in grouped_reason:
+            d = row['date_only']
+            reason = row['claim_reason'] or '기타/미입력'
+            cnt = row['count']
+            d_str = d.strftime('%Y-%m-%d')
+            daily_claim_map[d_str][reason] += cnt
+            date_list_claim.add(d_str)
+
+        date_list_claim = sorted(list(date_list_claim))
+
+        # ─────────────────────────────────────────────
+        # (C) 판매 vs 반품 (일자별)
+        # ─────────────────────────────────────────────
         daily_data = []
         total_sales_qty  = 0
         total_return_qty = 0
 
         for item in sales_data:
-            d_str     = item['date']  # 'YYYY-MM-DD'
-            sales_qty = item['daily_total_units']  # 그 날짜의 판매수량
-            return_qty = return_map.get(d_str, 0)  # 그 날짜의 반품수량 (없으면 0)
+            d_str = item['date']
+            s_qty = item['daily_total_units']
+            r_qty = daily_return_map.get(d_str, 0)
 
             daily_data.append({
                 'date': d_str,
-                'sales_qty': sales_qty,
-                'return_qty': return_qty
+                'sales_qty': s_qty,
+                'return_qty': r_qty
             })
+            total_sales_qty  += s_qty
+            total_return_qty += r_qty
 
-            total_sales_qty  += sales_qty
-            total_return_qty += return_qty
-
-        # (5) 반품률 계산 (단, 전체 합계 기준)
-        #   - return_rate(%) = (반품 건수 / 전체 주문 건수) × 100
-        #   - 여기서는 "주문 건수"를 "판매수량"으로 가정
+        # 전체 반품률(%) = (total_return_qty ÷ total_sales_qty) × 100
         if total_sales_qty > 0:
             return_rate = (total_return_qty / total_sales_qty) * 100
         else:
             return_rate = 0
 
-        # (6) 템플릿 전달
+        # ─────────────────────────────────────────────
+        # (D) 일자별 클레임 사유 비중
+        # ─────────────────────────────────────────────
+        daily_claims = []
+        for d_str in date_list_claim:
+            reason_map = daily_claim_map[d_str]  # { reason: count, ...}
+            total_cnt = sum(reason_map.values())
+
+            reason_list = []
+            if total_cnt > 0:
+                for rr, cnt in reason_map.items():
+                    ratio = (cnt / total_cnt) * 100
+                    reason_list.append({
+                        'reason': rr,
+                        'count': cnt,
+                        'ratio': ratio
+                    })
+
+            daily_claims.append({
+                'date': d_str,
+                'total': total_cnt,
+                'reasons': reason_list
+            })
+
+        # ─────────────────────────────────────────────
+        # (E) "전체 기간" 클레임 사유 총합
+        # ─────────────────────────────────────────────
+        #   ex) [ {'claim_reason':'색상 변경', 'count':1}, ... ]
+        overall_reason_qs = qs.values('claim_reason') \
+                              .annotate(count=Count('id')) \
+                              .order_by('claim_reason')
+        total_claims = sum(row['count'] for row in overall_reason_qs)
+
+        overall_reasons = []
+        if total_claims > 0:
+            for row in overall_reason_qs:
+                rr = row['claim_reason'] or '기타/미입력'
+                cnt = row['count']
+                ratio = (cnt / total_claims) * 100
+                overall_reasons.append({
+                    'reason': rr,
+                    'count': cnt,
+                    'ratio': ratio
+                })
+
+        # ─────────────────────────────────────────────
+        # (F) 템플릿 컨텍스트
+        # ─────────────────────────────────────────────
         context = {
+            # 판매 vs 반품
             'daily_data': daily_data,
             'total_sales_qty': total_sales_qty,
             'total_return_qty': total_return_qty,
             'return_rate': return_rate,
+
+            # 일자별 클레임 사유
+            'daily_claims': daily_claims,
+
+            # 전체 기간 클레임 사유
+            'overall_reasons': overall_reasons,
+            'total_claims': total_claims,
+
+            # 폼 입력
             'start_date': start_date_str,
             'end_date': end_date_str,
             'option_codes': codes_str
@@ -1748,5 +1836,5 @@ def return_dashboard(request):
         return render(request, 'return_process/return_dashboard.html', context)
 
     else:
-        # GET → 폼만 보여주기
+        # GET
         return render(request, 'return_process/return_dashboard.html')
