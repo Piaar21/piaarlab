@@ -823,3 +823,141 @@ def fetch_all_data():
 # 필요한 경우 main 함수 또는 뷰에서 fetch_all_data()를 호출하여 데이터 수집 시작
 
 
+ST_API_KEY = config('ST_API_KEY', default=None)
+ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
+
+REQUEST_URL_INVENTORY = 'https://sellertool-api-server-function.azurewebsites.net/api/inventories/search/stocks-by-optionCodes'
+REQUEST_URL_OPTION_BY_CODE = 'https://sellertool-api-server-function.azurewebsites.net/api/product-options/search/by-optionCodes'
+REQUEST_URL_OPTIONS = 'https://sellertool-api-server-function.azurewebsites.net/api/product-options'
+REQUEST_URL_HOURLY_SALES = 'https://sellertool-api-server-function.azurewebsites.net/api/analytics/hourlySales'  # ★ 추가
+
+def generate_signature(api_key, secret_key, timestamp):
+    data = (api_key + timestamp).encode('utf-8')
+    secret_key_bytes = secret_key.encode('utf-8')
+    signature = hmac.new(secret_key_bytes, data, hashlib.sha256).hexdigest()
+    return signature
+
+def get_headers():
+    timestamp = str(int(time.time() * 1000))
+    signature = generate_signature(ST_API_KEY, ST_SECRET_KEY, timestamp)
+    return {
+        'x-sellertool-apiKey': ST_API_KEY,
+        'x-sellertool-timestamp': timestamp,
+        'x-sellertool-signiture': signature,
+        'Content-Type': 'application/json'
+    }
+
+def get_hourly_sales(option_codes, date_str, date_condition='CHANNEL_ORDER_DATE', diff_hours=9):
+    """
+    hourlySales API를 호출하여 시간대별 판매 정보를 가져온다.
+    :param option_codes: list 형태의 옵션코드 배열
+    :param date_str: 조회 날짜 (예: '2025-01-08')
+    :param date_condition: 조회 기준 (기본값: 'CHANNEL_ORDER_DATE')
+    :param diff_hours: UTC 기준 차이 (기본값: 9 → 한국)
+    :return: 성공 시 list 형태 (시간대별 데이터), 실패 시 []
+    """
+    headers = get_headers()
+    body = {
+        "optionCodes": option_codes,
+        "date": date_str, 
+        "dateCondition": date_condition,
+        "diffHours": diff_hours
+    }
+    try:
+        response = requests.post(REQUEST_URL_HOURLY_SALES, headers=headers, data=json.dumps(body))
+
+        logger.debug(f"hourlySales API status_code={response.status_code}")
+        logger.debug(f"hourlySales API response text={response.text}")
+        if response.status_code == 200:
+            return response.json()  # 보통 list 반환 (예상)
+        else:
+            logger.error(f"hourlySales API Error: {response.status_code}, {response.text}")
+    except Exception as e:
+        logger.error(f"Exception on hourlySales API: {e}")
+    return []
+    pass
+
+def get_hourly_sales_for_period(option_codes, start_date, end_date):
+    """
+    [핵심] start_date ~ end_date 사이의 모든 날짜를 루프 돌며
+    매일 get_hourly_sales() API를 호출하여, '일자별 판매량'을 모은다.
+
+    :param option_codes: list, 옵션코드 배열
+    :param start_date: datetime.date or datetime, 기간 시작일
+    :param end_date: datetime.date or datetime, 기간 종료일
+    :return: list 형태 (예시):
+      [
+        {
+          "date": "2025-01-01",
+          "daily_total_units": 10,
+          "detail": [   # 옵션코드별/시간대별 상세 등 원하면 추가
+            {
+              "optionCode": "...",
+              "hourlySalesData": [
+                {"hour": 0, "totalUnits": 0, ...},
+                ...
+              ]
+            },
+            ...
+          ]
+        },
+        ...
+      ]
+    """
+    if isinstance(start_date, datetime):
+        current_dt = start_date
+    else:
+        # 만약 start_date가 string 이라면 변환이 필요
+        # 여기서는 datetime 객체라고 가정
+        current_dt = datetime(start_date.year, start_date.month, start_date.day)
+
+    if isinstance(end_date, datetime):
+        end_dt = end_date
+    else:
+        end_dt = datetime(end_date.year, end_date.month, end_date.day)
+
+    # 최종적으로 return할 리스트
+    all_data = []
+
+    while current_dt <= end_dt:
+        # YYYY-MM-DD 형태
+        date_str = current_dt.strftime('%Y-%m-%d')
+
+        # (1) 하루치 판매량 API 호출
+        result_data = get_hourly_sales(option_codes, date_str)
+
+        # (2) 파싱 & 해당 일자의 totalUnits 합산
+        daily_total_units = 0
+        detail_list = []   # 상세 구조를 저장할 리스트 (optionCode별 등)
+        
+        if result_data and isinstance(result_data, dict):
+            content_list = result_data.get('content', [])
+            for content_item in content_list:
+                option_code = content_item.get('optionCode', '')
+                hourly_sales_list = content_item.get('hourlySalesData', [])
+
+                # 시간대별로 totalUnits 합계
+                sub_total_units = 0
+                for row in hourly_sales_list:
+                    sub_total_units += row.get('totalUnits', 0)
+
+                daily_total_units += sub_total_units
+
+                # detail_list에 저장 (필요 없으면 생략 가능)
+                detail_list.append({
+                    "optionCode": option_code,
+                    "hourlySalesData": hourly_sales_list,
+                    "option_daily_units": sub_total_units
+                })
+
+        # (3) 오늘 일자 정보를 all_data에 append
+        all_data.append({
+            "date": date_str,
+            "daily_total_units": daily_total_units,
+            "detail": detail_list
+        })
+
+        # (4) 다음 날짜로 이동 (하루씩 증가)
+        current_dt += timedelta(days=1)
+
+    return all_data

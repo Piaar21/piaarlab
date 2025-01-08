@@ -11,7 +11,9 @@ from .api_clients import (
     NAVER_ACCOUNTS,
     approve_naver_return,
     get_product_order_details,
-    dispatch_naver_exchange
+    dispatch_naver_exchange,
+    get_hourly_sales,
+    get_hourly_sales_for_period
 )
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
@@ -31,7 +33,9 @@ from django.conf import settings
 from .utils import update_returns_logic
 from django.db.models import Count
 from openpyxl.utils import get_column_letter
-
+import pandas as pd
+from django.db.models import Sum
+from django.db.models.functions import TruncDate
 
 
 
@@ -1628,3 +1632,121 @@ def download_returned_items(request):
 
     wb.save(response)
     return response
+
+
+
+# 대시보드
+@login_required
+def return_dashboard(request):
+    """
+    1) 사용자가 시작/종료일을 달력으로 선택 + 옵션코드를 입력 (POST)
+    2) 기간별 판매(orders) vs 반품(returns)을 조회 (일자별)
+    3) 일자별 목록과 기간 합계, 반품률을 템플릿에 표시
+    """
+    if request.method == 'POST':
+        # (1) 폼 데이터
+        start_date_str = request.POST.get('start_date', '')
+        end_date_str   = request.POST.get('end_date', '')
+        codes_str      = request.POST.get('option_codes', '')
+
+        # 옵션코드 목록 (콤마로 분리)
+        option_codes = [c.strip() for c in codes_str.split(',') if c.strip()]
+
+        # (2) 날짜 변환
+        try:
+            start_dt = pd.to_datetime(start_date_str)
+            end_dt   = pd.to_datetime(end_date_str)
+        except:
+            context = {
+                'daily_data': [],
+                'total_sales_qty': 0,
+                'total_return_qty': 0,
+                'return_rate': 0,
+                'start_date': start_date_str,
+                'end_date': end_date_str,
+                'option_codes': codes_str
+            }
+            return render(request, 'return_process/return_dashboard.html', context)
+
+        # 안전장치: start_dt > end_dt인 경우 스왑
+        if start_dt > end_dt:
+            start_dt, end_dt = end_dt, start_dt
+
+        # ─────────────────────────────────────────────────────
+        # (3-A) 기간별 [판매량] 조회
+        # ─────────────────────────────────────────────────────
+        # get_hourly_sales_for_period() → 일자별 totalUnits 합계
+        # 예) [
+        #   {"date": "2025-01-01", "daily_total_units": 10, "detail": [...]},
+        #   ...
+        # ]
+        sales_data = get_hourly_sales_for_period(
+            option_codes=option_codes, 
+            start_date=start_dt,
+            end_date=end_dt
+        )
+
+        # ─────────────────────────────────────────────────────
+        # (3-B) 기간별 [반품량] 조회
+        # ─────────────────────────────────────────────────────
+        # ReturnItem에서 delivered_date 범위 + option_code 필터 → 일자별 Sum(quantity)
+        qs = ReturnItem.objects.filter(
+            option_code__in=option_codes,
+            delivered_date__range=[start_dt, end_dt]
+        ).annotate(date_only=TruncDate('delivered_date')) \
+         .values('date_only') \
+         .annotate(daily_return_qty=Sum('quantity')) \
+         .order_by('date_only')
+
+        # date_only(날짜) → daily_return_qty(반품 수량) 맵
+        return_map = {}
+        for row in qs:
+            d = row['date_only']   # date 객체
+            qty = row['daily_return_qty'] or 0
+            date_str2 = d.strftime('%Y-%m-%d')
+            return_map[date_str2] = qty
+
+        # ─────────────────────────────────────────────────────
+        # (4) 두 데이터를 [날짜] 기준으로 합쳐서 daily_data 구성
+        # ─────────────────────────────────────────────────────
+        daily_data = []
+        total_sales_qty  = 0
+        total_return_qty = 0
+
+        for item in sales_data:
+            d_str     = item['date']  # 'YYYY-MM-DD'
+            sales_qty = item['daily_total_units']  # 그 날짜의 판매수량
+            return_qty = return_map.get(d_str, 0)  # 그 날짜의 반품수량 (없으면 0)
+
+            daily_data.append({
+                'date': d_str,
+                'sales_qty': sales_qty,
+                'return_qty': return_qty
+            })
+
+            total_sales_qty  += sales_qty
+            total_return_qty += return_qty
+
+        # (5) 반품률 계산 (단, 전체 합계 기준)
+        #   - return_rate(%) = (반품 건수 / 전체 주문 건수) × 100
+        #   - 여기서는 "주문 건수"를 "판매수량"으로 가정
+        if total_sales_qty > 0:
+            return_rate = (total_return_qty / total_sales_qty) * 100
+        else:
+            return_rate = 0
+
+        # (6) 템플릿 전달
+        context = {
+            'daily_data': daily_data,
+            'total_sales_qty': total_sales_qty,
+            'total_return_qty': total_return_qty,
+            'return_rate': return_rate,
+            'start_date': start_date_str,
+            'end_date': end_date_str,
+            'option_codes': codes_str
+        }
+        return render(request, 'return_process/return_dashboard.html', context)
+
+    else:
+        # GET → 폼만 보여주기
+        return render(request, 'return_process/return_dashboard.html')
