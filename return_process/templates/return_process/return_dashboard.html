@@ -1,0 +1,88 @@
+{% extends 'return_process_base.html' %}
+{% block content %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>반품 대시보드</title>
+
+  <!-- jQuery UI CSS (CDN 예시) -->
+  <link rel="stylesheet" 
+    href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+</head>
+<body>
+  <h1>반품 대시보드 (반품률 포함)</h1>
+
+  <!-- 조회 폼 -->
+  <form method="POST" action="">
+    {% csrf_token %}
+    <label for="start_date">시작 날짜:</label>
+    <input type="text" id="start_date" name="start_date" 
+           value="{{ start_date|default:'' }}" placeholder="YYYY-MM-DD" />
+
+    &nbsp; ~ &nbsp;
+
+    <label for="end_date">종료 날짜:</label>
+    <input type="text" id="end_date" name="end_date" 
+           value="{{ end_date|default:'' }}" placeholder="YYYY-MM-DD" />
+
+    <br><br>
+
+    <label for="option_codes">옵션코드(콤마구분): </label>
+    <input type="text" name="option_codes" 
+           value="{{ option_codes|default:'' }}" placeholder="CODE123, CODE456" />
+
+    <br><br>
+    <button type="submit">조회하기</button>
+  </form>
+
+  <hr>
+  <p><strong>판매량 합계:</strong> {{ total_sales_qty }}</p>
+  <p><strong>반품량 합계:</strong> {{ total_return_qty }}</p>
+  <p><strong>반품률:</strong> {{ return_rate|floatformat:2 }}%</p>
+  
+  {% if daily_data %}
+    <h2>일자별 판매량 & 반품량</h2>
+    <table border="1" cellpadding="5" cellspacing="0">
+      <thead>
+        <tr>
+          <th>날짜</th>
+          <th>판매량</th>
+          <th>반품량</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in daily_data %}
+        <tr>
+          <td>{{ row.date }}</td>
+          <td>{{ row.sales_qty }}</td>
+          <td>{{ row.return_qty }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+
+  {% else %}
+    <p>조회 결과가 없습니다.</p>
+  {% endif %}
+
+  <!-- jQuery + jQuery UI JS (CDN 예시) -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
+  <script>
+    $(function() {
+      // jQuery UI datepicker 기본 옵션
+      $("#start_date").datepicker({
+        dateFormat: "yy-mm-dd"  // YYYY-MM-DD 형식
+      });
+      $("#end_date").datepicker({
+        dateFormat: "yy-mm-dd"
+      });
+    });
+  </script>
+
+</body>
+</html>
+{% endblock %}
