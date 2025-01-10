@@ -35,5 +35,6 @@ urlpatterns = [
     path('scan/check_number/', views.check_number_submit, name='check_number_submit'),
     path('returned/download/', views.download_returned_items, name='download_returned_items'),  # 추가
     path('return_dashboard/', views.return_dashboard, name='return_dashboard'),
+    path('update-claim-type/', views.update_claim_type_bulk, name='update_claim_type'),
 
 ]

@@ -26,6 +26,7 @@ urlpatterns = [
     path('process-confirmed-shipments/', views.process_confirmed_shipments, name='process_confirmed_shipments'),
         # 출고완료 목록 페이지
     path('shipped-list/', views.shipped_list_view, name='shipped_list'),
+    path('shipped/process/', views.process_shipped_shipments, name='process_shipped_shipments'),
 
     # 출고완료 처리 POST 액션
     path('process-shipped/', views.process_shipped_shipments, name='process_shipped_shipments'),
