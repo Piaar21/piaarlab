@@ -1366,7 +1366,7 @@ def process_return(request, item_id):
         # 네이버 반품 승인 API 호출 여부 결정 (예시)
         condition_call_api = (
             item.claim_type in ['RETURN', 'N/A', '반품'] and 
-            item.product_order_status in ['DELIVERED', 'DELIVERING', 'PURCHASE_DECIDED', '배송 중', '배송 완료', '구매 확정']
+            item.product_order_status in ['DELIVERED', 'DELIVERING', 'PURCHASE_DECIDED', '배송 중', '배송 완료', '구매 확정', 'N/A']
         )
 
         if condition_call_api:
