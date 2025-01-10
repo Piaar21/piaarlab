@@ -31,14 +31,11 @@ import warnings
 import datetime, uuid, hmac, hashlib
 from django.conf import settings
 from .utils import update_returns_logic
-from django.db.models import Count
 from openpyxl.utils import get_column_letter
 import pandas as pd
-from django.db.models import Sum
 from django.db.models.functions import Coalesce, TruncDate
-from django.db.models import Count, F
 from .models import ReturnItem
-from django.db.models import DateTimeField
+from django.db.models import DateTimeField,Count, Q,Sum,Count
 
 
 
@@ -1443,6 +1440,47 @@ def returned_items(request):
     # 반품 완료된 상품 목록 표시
     items = ReturnItem.objects.filter(processing_status='반품완료')
     return render(request, 'return_process/returned_items.html', {'items': items})
+
+
+@csrf_exempt
+def update_claim_type_bulk(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+        except Exception as e:
+            return JsonResponse({"success": False, "message": f"JSON parse error: {e}"}, status=400)
+
+        action = data.get('action', '')
+        if action != 'update_claim_type':
+            return JsonResponse({"success": False, "message": "Invalid action"}, status=400)
+
+        claim_type = data.get('claim_type', '').strip()
+        ids = data.get('ids', [])
+
+        if not ids:
+            return JsonResponse({"success": False, "message": "No ids provided"}, status=400)
+
+        # 실제 DB 모델 임포트 (예시)
+        from .models import ReturnItem
+
+        # claim_type이 N/A(대소문자 구분X) 이거나 빈 문자열('')인 아이템만 필터
+        # Q(..., claim_type__iexact='N/A') OR Q(..., claim_type='')
+        queryset = ReturnItem.objects.filter(
+            id__in=ids
+        ).filter(
+            Q(claim_type__iexact='N/A') | Q(claim_type='')
+        )
+
+        updated_count = queryset.update(claim_type=claim_type)
+
+        return JsonResponse({
+            "success": True,
+            "updated_count": updated_count
+        })
+
+    return JsonResponse({"success": False, "message": "Method not allowed"}, status=405)
+
+    
 
 @login_required
 def update_stock_bulk(request):
