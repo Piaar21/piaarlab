@@ -25,6 +25,8 @@
                 <button type="button" class="btn btn-primary mb-3" id="approve-return-btn">반품승인</button>
                 <button type="button" class="btn btn-info mb-3" id="send-sms-btn">배송비문자</button>
                 <button type="button" class="btn btn-warning mb-3" id="update-product-order-status">현재 클레임상태 업데이트</button>
+                <button type="button" class="btn btn-info mb-3" id="btn-claim-type-return">클레임종류→RETURN</button>
+                <button type="button" class="btn btn-info mb-3" id="btn-claim-type-exchange">클레임종류→EXCHANGE</button>
                 <button type="button" class="btn btn-warning mb-3" id="exchange-dispatch-btn">교환재배송</button>
                 <!-- 필터 영역 시작 -->
                 <div class="d-flex mb-3 gap-3 align-items-center">
@@ -88,6 +90,7 @@
                         <tbody>
                             {% for item in items %}
                             <tr data-product_issue="{{ item.product_issue|default:'미검수' }}"
+                                data-claim_type="{{ item.claim_type|default:'N/A' }}"
                                 data-claim_reason="{{ item.claim_reason|default:'N/A' }}"
                                 data-customer_reason="{{ item.customer_reason|default:'N/A' }}"
                                 data-note="{{ item.note|default:' ' }}"
@@ -696,6 +699,116 @@
             });
         });
     });
+
+        function showTemporaryMessage(msg, duration=1500) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-info position-fixed top-0 start-50 translate-middle-x mt-3';
+        alertDiv.style.zIndex = '9999';
+        alertDiv.textContent = msg;
+        document.body.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), duration);
+        }
+
+        /** 
+         * "claim_type='N/A'" 인 레코드만 골라서 id를 배열로 반환 
+         */
+        function getCheckedIdsNAOnly() {
+            const result = [];
+            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+            checkedBoxes.forEach(chk => {
+                const tr = chk.closest('tr');
+                if (!tr) return;
+                const claimType = tr.getAttribute('data-claim_type') || "";
+                if (claimType === 'N/A') {
+                // 체크박스의 value="{{ item.id }}"
+                result.push(chk.value);
+                }
+            });
+            console.log("=== [DEBUG] getCheckedIdsNAOnly =>", result);
+            return result;
+            }
+
+        // (A) “클레임종류→RETURN” 버튼
+        const btnReturn = document.getElementById('btn-claim-type-return');
+        btnReturn.addEventListener('click', () => {
+        const selectedIds = getCheckedIdsNAOnly();
+        if (selectedIds.length === 0) {
+            showTemporaryMessage("체크된 항목 중 'N/A'가 없습니다.");
+            return;
+        }
+        // 서버로 fetch
+        fetch("{% url 'update_claim_type' %}", {
+            method: 'POST',
+            headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+            action: 'update_claim_type',
+            claim_type: 'RETURN',
+            ids: selectedIds
+            })
+        })
+            .then(res => {
+            if (!res.ok) {
+                // 서버에서 HTML 에러 페이지 등 받으면 여기서 에러 처리
+                throw new Error("서버 응답이 정상이 아님(HTTP " + res.status + ")");
+            }
+            return res.json(); // JSON 파싱
+            })
+            .then(data => {
+            if (data.success) {
+                showTemporaryMessage(`RETURN으로 ${data.updated_count}건 업데이트 완료`);
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                showTemporaryMessage(`업데이트 실패: ${data.message || '알 수 없는 오류'}`);
+            }
+            })
+            .catch(err => {
+            console.error(err);
+            showTemporaryMessage(`요청 오류: ${err.message}`);
+            });
+        });
+
+        // (B) “클레임종류→EXCHANGE” 버튼 (동일 로직, claim_type='EXCHANGE')
+        const btnExchange = document.getElementById('btn-claim-type-exchange');
+        btnExchange.addEventListener('click', () => {
+        const selectedIds = getCheckedIdsNAOnly();
+        if (selectedIds.length === 0) {
+            showTemporaryMessage("체크된 항목 중 'N/A'가 없습니다.");
+            return;
+        }
+        fetch("{% url 'update_claim_type' %}", {
+            method: 'POST',
+            headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+            action: 'update_claim_type',
+            claim_type: 'EXCHANGE',
+            ids: selectedIds
+            })
+        })
+            .then(res => {
+            if (!res.ok) {
+                throw new Error("서버 응답 문제(HTTP " + res.status + ")");
+            }
+            return res.json();
+            })
+            .then(data => {
+            if (data.success) {
+                showTemporaryMessage(`EXCHANGE로 ${data.updated_count}건 업데이트 완료`);
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                showTemporaryMessage(`업데이트 실패: ${data.message || '알 수 없는 오류'}`);
+            }
+            })
+            .catch(err => {
+            console.error(err);
+            showTemporaryMessage(`요청 오류: ${err.message}`);
+            });
+        }); 
 </script>
 
 <style>

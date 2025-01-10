@@ -56,16 +56,16 @@ def upload_delayed_orders(request):
                 quantity            = (row[5] or "").strip()
                 seller_product_name = (row[6] or "").strip()
                 seller_option_name  = (row[7] or "").strip()
-                order_number_1      = (row[8] or "").strip()  # 쓰지 않아도 되지만 일단 남김
-                order_number_2      = (row[9] or "").strip()
+                order_number_1      = (row[8] or "").strip()
+                order_number_2      = (row[9] or "").strip()  # 필요하다면 남김
                 store_name_raw      = (row[10] or "").strip()
 
-                # 옵션코드 / 주문번호2가 반드시 있어야 한다고 가정
+                # 옵션코드 / 주문번호1이 반드시 있어야 한다고 가정
                 if not option_code:
                     print("=== DEBUG: 옵션코드 없음, 스킵 ===")
                     continue
-                if not order_number_2:
-                    print("=== DEBUG: 주문번호2 없음, 스킵 ===")
+                if not order_number_1:
+                    print("=== DEBUG: 주문번호1 없음, 스킵 ===")
                     continue
 
                 order_data = {
@@ -78,7 +78,7 @@ def upload_delayed_orders(request):
                     'seller_product_name': seller_product_name,
                     'seller_option_name': seller_option_name,
                     'order_number_1': order_number_1,
-                    'order_number_2': order_number_2,
+                    'order_number_2': order_number_2,  # 필요에 따라 사용
                     'store_name': store_name_raw,
                 }
                 temp_orders.append(order_data)
@@ -98,11 +98,11 @@ def upload_delayed_orders(request):
             messages.error(request, "임시 데이터가 없습니다.")
             return redirect('upload_delayed_orders')
 
-        # 1) 기존 DB에서 'order_number_2' 목록 추출 → 중복 체크용
+        # 1) 기존 DB에서 'order_number_1' 목록 추출 → 중복 체크용
         existing_orders = set(
-            DelayedShipment.objects.values_list('order_number_2', flat=True)
+            DelayedShipment.objects.values_list('order_number_1', flat=True)
         )
-        print(f"=== DEBUG: DB 내 이미 존재하는 주문번호2 개수: {len(existing_orders)}")
+        print(f"=== DEBUG: DB 내 이미 존재하는 주문번호1 개수: {len(existing_orders)}")
 
         success_count = 0
         fail_count = 0
@@ -116,22 +116,22 @@ def upload_delayed_orders(request):
 
         # 2) temp_orders 순회, 중복 검사
         for od in temp_orders:
-            order_num_2 = od.get('order_number_2', '')
+            order_num_1 = od.get('order_number_1', '')
 
-            if not order_num_2:
-                # 주문번호2 없으면 실패 처리
+            if not order_num_1:
+                # 주문번호1 없으면 실패 처리
                 fail_count += 1
                 remaining_temp_orders.append(od)
                 continue
 
-            if order_num_2 in existing_orders:
+            if order_num_1 in existing_orders:
                 # 이미 DB에 존재하면 실패 처리
                 fail_count += 1
                 remaining_temp_orders.append(od)
                 continue
 
             # 3) 중복 아니면 DB 저장
-            #    그룹핑 기준: (주문번호2 + customer_name + customer_contact)
+            #    그룹핑 기준: (주문번호1 + customer_name + customer_contact)
             group_key = (
                 od['order_number_2'].strip(),
                 od['customer_name'].strip(),
@@ -149,14 +149,15 @@ def upload_delayed_orders(request):
                 seller_product_name = od['seller_product_name'],
                 seller_option_name  = od['seller_option_name'],
                 order_number_1      = od['order_number_1'],
-                order_number_2      = od['order_number_2'],
+                order_number_2      = od['order_number_2'],  # 필요 시 저장
                 store_name          = od['store_name'],
                 token               = group_token,
             )
             newly_created_ids.append(shipment.id)
             success_count += 1
-            # 새로 등록된 order_number_2 추가
-            existing_orders.add(order_num_2)
+
+            # 새로 등록된 order_number_1 추가
+            existing_orders.add(order_num_1)
 
         # 4) 세션에는 실패 항목만 남긴다
         request.session['delayed_orders_temp'] = remaining_temp_orders
@@ -179,7 +180,7 @@ def upload_delayed_orders(request):
         )
         return render(request, 'delayed_management/upload_delayed_orders.html', {
             'form': DelayedOrderUploadForm(),
-            'temp_orders': remaining_temp_orders,  # 실패한 항목이 남음
+            'temp_orders': remaining_temp_orders,  # 실패한 항목
         })
 
     # (C) 임시 데이터 중 하나 삭제
@@ -207,6 +208,7 @@ def upload_delayed_orders(request):
             'form': DelayedOrderUploadForm(),
             'temp_orders': temp_orders,
         })
+
 
 
 
@@ -1461,6 +1463,7 @@ def process_confirmed_shipments(request):
 
 
 
+
 def shipped_list_view(request):
     """
     flow_status='shipped' 인 데이터들만 보여주는 출고완료 페이지
@@ -1471,9 +1474,9 @@ def shipped_list_view(request):
 
 def process_shipped_shipments(request):
     """
-    출고완료 목록(shipped_list.html)에서:
-      - action="complete_shipment" → 출고완료( flow_status='shipped' )
-      - action="delete_multiple"   → 선택 삭제
+    '출고완료 목록' 템플릿에서 POST로 전달된 shipment_ids에 대해
+    - action = "delete_multiple"      → 선택 삭제
+    - action = "revert_to_confirmed" → 확인완료로 되돌리기(flow_status='confirmed')
     """
     if request.method == 'POST':
         action = request.POST.get('action', '')
@@ -1481,22 +1484,23 @@ def process_shipped_shipments(request):
 
         if not shipment_ids:
             messages.warning(request, "선택된 항목이 없습니다.")
-            return redirect('shipped_list')  # 출고완료 목록 페이지 (혹은 다른 페이지)
+            return redirect('shipped_list')  # 실제 템플릿 이름/URL에 맞게 변경
 
         qs = DelayedShipment.objects.filter(id__in=shipment_ids)
 
         if action == 'delete_multiple':
-            deleted_info = qs.delete()
-            total_deleted = deleted_info[0]
-            messages.success(request, f"{total_deleted}건이 삭제되었습니다.")
+            # 예: 실제로는 delete가 아니라 is_deleted 처리 등으로 구현할 수도 있음
+            count = qs.delete()[0]  # delete()는 (삭제개수, {테이블정보}) 형태로 반환
+            messages.success(request, f"{count}건을 삭제했습니다.")
             return redirect('shipped_list')
 
-        elif action == 'complete_shipment':
-            count = qs.update(flow_status='shipped')
-            messages.success(request, f"{count}건 출고완료로 변경했습니다.")
+        elif action == 'revert_to_confirmed':
+            # 확인완료로 되돌리기
+            count = qs.update(flow_status='confirmed')
+            messages.success(request, f"{count}건을 확인완료 상태로 되돌렸습니다.")
             return redirect('shipped_list')
 
-    # 그 외(GET 등) 잘못된 접근은 목록 페이지로
+    # GET 등 다른 요청이면 그냥 목록 페이지로
     return redirect('shipped_list')
 
 def confirmed_list(request):
