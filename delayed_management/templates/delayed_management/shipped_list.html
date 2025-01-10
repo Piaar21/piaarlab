@@ -29,6 +29,7 @@
                             <th>확인여부</th>
                             <th>기다리기</th>
                             <th>변경된옵션</th>
+                            <th>변경된옵션코드</th>
                             <th>주문번호1</th>
                             <th>옵션코드</th>
                             <th>주문상품명</th>
@@ -68,6 +69,7 @@
                             <td>{% if s.confirmed %}확인됨{% else %}미확인{% endif %}</td>
                             <td>{% if s.waiting %}기다리는 중{% else %}-{% endif %}</td>
                             <td>{{ s.changed_option }}</td>
+                            <td>{{ s.changed_option_code }}</td>
                             <td>{{ s.order_number_1 }}</td>
                             <td>{{ s.option_code }}</td>
                             <td>{{ s.order_product_name }}</td>
