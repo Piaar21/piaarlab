@@ -22,9 +22,11 @@ def webhook(request):
     try:
         data = json.loads(request.body)  # 들어온 JSON 데이터를 파싱
         user_message = data.get('userRequest', {}).get('utterance', '').strip()
+        print(f"[DEBUG] user_message = {user_message}")
 
         # /ㅈㄱ로 시작하면 재고 조회
         if user_message.startswith('/ㅈㄱ'):
+            print(f"[DEBUG] 들어온 명령어: '/ㅈㄱ' OK, product_name = {product_name}")
             product_name = user_message[len('/ㅈㄱ'):].strip()
 
             if product_name:
@@ -62,6 +64,7 @@ def webhook(request):
 
         # /ㅈㄱ 외 다른 명령어인 경우
         else:
+            print("[DEBUG] /ㅈㄱ로 시작하지 않음, else문으로 빠집니다.")
             response_text = "알 수 없는 명령입니다. '/ㅈㄱ 상품명' 형태로 입력해주세요."
 
         # 카카오톡 챗봇에 맞는 JSON 응답 포맷
