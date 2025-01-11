@@ -2,19 +2,21 @@
 import json
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Q  # OR 조건을 위해 Q 객체 임포트
 
-# utils.py에서 필요한 함수만 임포트
 from .utils import (
     get_product_options,
     get_stock_by_option_codes,
     join_data
 )
 
+from delayed_management.models import DelayedShipment
+
 @csrf_exempt
 def webhook(request):
     """
-    카카오톡 챗봇(또는 다른 플랫폼)에서 들어온 Webhook 요청을 처리하는 Django View.
-    ChatGPT 관련 코드는 제외하고, 오직 /ㅈㄱ 로직만 구현.
+    카카오톡 챗봇에서 들어온 요청을 처리하는 Django View.
+    /ㅈㄱ: 재고 조회, /ㅇㄱ: 재입고 예정 조회
     """
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'], "Only POST method is allowed.")
@@ -24,17 +26,14 @@ def webhook(request):
         user_message = data.get('userRequest', {}).get('utterance', '').strip()
         print(f"[DEBUG] user_message = {user_message}")
 
-        # /ㅈㄱ로 시작하면 재고 조회
+        # /ㅈㄱ 재고 조회
         if user_message.startswith('/ㅈㄱ'):
-            # 먼저 product_name을 정의한 후 debug 메시지 출력
             product_name = user_message[len('/ㅈㄱ'):].strip()
-            print(f"[DEBUG] 들어온 명령어: '/ㅈㄱ' OK, product_name = {product_name}")
+            print(f"[DEBUG] '/ㅈㄱ' 명령어. product_name={product_name}")
 
             if product_name:
-                # 1) 상품 옵션 조회
                 product_options = get_product_options(product_name)
                 if product_options:
-                    # 2) 옵션 코드 목록 추출
                     option_codes = [
                         item['productOptionCode'].strip().upper()
                         for item in product_options if 'productOptionCode' in item
@@ -42,13 +41,10 @@ def webhook(request):
                     if not option_codes:
                         response_text = f"'{product_name}'에 해당하는 옵션 코드를 찾을 수 없습니다."
                     else:
-                        # 3) 재고 조회
                         stock_data = get_stock_by_option_codes(option_codes)
                         if stock_data:
-                            # 4) 옵션+재고 데이터를 조합
                             joined = join_data(product_options, stock_data)
                             if joined:
-                                # 옵션+재고 정보 문구 생성
                                 lines = [
                                     f"옵션: {item.get('productOptionName')} / 재고: {item.get('재고 수량')}"
                                     for item in joined
@@ -63,10 +59,48 @@ def webhook(request):
             else:
                 response_text = "사용 예: '/ㅈㄱ 상품명' 형태로 입력해주세요."
 
-        # /ㅈㄱ 외 다른 명령어인 경우
+        # /ㅇㄱ 재입고 날짜 안내
+        elif user_message.startswith('/ㅇㄱ'):
+            product_name = user_message[len('/ㅇㄱ'):].strip()
+            print(f"[DEBUG] '/ㅇㄱ' 명령어. product_name={product_name}")
+
+            if product_name:
+                # OR 조건으로 검색:
+                # seller_product_name 혹은 order_product_name에 product_name이 포함되는지
+                shipments = DelayedShipment.objects.filter(
+                    Q(seller_product_name__icontains=product_name) |
+                    Q(order_product_name__icontains=product_name)
+                )
+
+                if shipments.exists():
+                    lines = []
+                    for s in shipments:
+                        # s.expected_restock_date가 있으면 날짜 표시, 없으면 (미정)
+                        if s.expected_restock_date:
+                            lines.append(
+                                f"옵션코드: {s.option_code}, "
+                                f"옵션명: {s.order_option_name or s.seller_option_name}, "
+                                f"재입고 예상날짜: {s.expected_restock_date.strftime('%Y-%m-%d')}"
+                            )
+                        else:
+                            lines.append(
+                                f"옵션코드: {s.option_code}, "
+                                f"옵션명: {s.order_option_name or s.seller_option_name}, "
+                                f"재입고 예상날짜: (미정)"
+                            )
+                    response_text = "\n".join(lines)
+                else:
+                    response_text = "입고 예정이 없는 상품입니다."
+            else:
+                response_text = "사용 예: '/ㅇㄱ 상품명' 형태로 입력해주세요."
+
         else:
-            print("[DEBUG] /ㅈㄱ로 시작하지 않음, else문으로 빠집니다.")
-            response_text = "알 수 없는 명령입니다. '/ㅈㄱ 상품명' 형태로 입력해주세요."
+            print("[DEBUG] /ㅈㄱ, /ㅇㄱ 명령어가 아님, else문으로 빠집니다.")
+            response_text = (
+                "알 수 없는 명령입니다.\n"
+                "• '/ㅈㄱ 상품명' = 재고 조회\n"
+                "• '/ㅇㄱ 상품명' = 재입고 예상날짜 안내"
+            )
 
         # 카카오톡 챗봇에 맞는 JSON 응답 포맷
         kakao_response = {
