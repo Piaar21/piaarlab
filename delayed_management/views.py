@@ -1078,6 +1078,7 @@ def solapi_send_messages(messages_list):
         # 전송 성공
         for s, msg_obj in messages_list:
             s.send_status = 'SUCCESS'
+            s.message_sent_at = timezone.now()  # 이 때 현재 시각 저장
             s.save()
             success_list.append(s.id)
     else:

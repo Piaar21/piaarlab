@@ -130,6 +130,7 @@ class DelayedShipment(models.Model):
     # 추가: 문자/알림톡 발송 후 고객 확인용 토큰
     token = models.CharField(max_length=200, blank=True, null=True)
     changed_option_code = models.CharField(max_length=100, blank=True, null=True)
+    message_sent_at = models.DateTimeField(null=True, blank=True)  # 문자 발송된 시간
 
 
     def __str__(self):
