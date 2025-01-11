@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'django_crontab',
     'delayed_management',  # 새로 추가
     'cs_management.apps.CsManagementConfig',  # 또는 'cs_management'
+    'webhook',
 
 
 ]
