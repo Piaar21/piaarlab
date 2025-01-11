@@ -41,6 +41,7 @@
                             <th>셀러툴상품명</th>
                             <th>셀러툴옵션명</th>
                             <th>주문번호2</th>
+                            <th>문자 발송일자</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -91,6 +92,13 @@
                             <td>{{ s.seller_product_name }}</td>
                             <td>{{ s.seller_option_name }}</td>
                             <td>{{ s.order_number_2 }}</td>
+                            <td>
+                                {% if s.message_sent_at %}
+                                  {{ s.message_sent_at|date:"Y-m-d H:i" }}
+                                {% else %}
+                                  -
+                                {% endif %}
+                            </td>                
                         </tr>
                         {% empty %}
                         <tr>
