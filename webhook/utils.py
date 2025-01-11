@@ -5,11 +5,12 @@ import hashlib
 import hmac
 import requests
 import json
-
+from decouple import config
 # 환경 변수에서 API 키를 가져옵니다.
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')  # (현재 사용 안 해도 무방)
-SELLERTOOL_API_KEY = os.environ.get('SELLERTOOL_API_KEY')
-SELLERTOOL_SECRET_KEY = os.environ.get('SELLERTOOL_SECRET_KEY')
+SELLERTOOL_API_KEY = config('ST_API_KEY', default=None)
+SELLERTOOL_SECRET_KEY = config('ST_SECRET_KEY', default=None)
+
+
 
 def generate_signature(api_key, secret_key, timestamp):
     """
