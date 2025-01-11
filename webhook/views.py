@@ -26,8 +26,9 @@ def webhook(request):
 
         # /ㅈㄱ로 시작하면 재고 조회
         if user_message.startswith('/ㅈㄱ'):
-            print(f"[DEBUG] 들어온 명령어: '/ㅈㄱ' OK, product_name = {product_name}")
+            # 먼저 product_name을 정의한 후 debug 메시지 출력
             product_name = user_message[len('/ㅈㄱ'):].strip()
+            print(f"[DEBUG] 들어온 명령어: '/ㅈㄱ' OK, product_name = {product_name}")
 
             if product_name:
                 # 1) 상품 옵션 조회
