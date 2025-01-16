@@ -141,3 +141,150 @@ class DelayedShipment(models.Model):
         # STATUS_CHOICES의 label 반환
         return dict(STATUS_CHOICES).get(self.status, '알수없음')
 
+# models.py
+class ExternalPlatformMapping(models.Model):
+    """
+    옵션코드와 외부몰(네이버, 쿠팡, 11번가 등) 간의 매핑 정보.
+    """
+    option_code = models.CharField(max_length=100)  # 내부 시스템의 옵션코드
+    platform_name = models.CharField(max_length=50) # 예: "NAVER", "COUPANG", ...
+    platform_product_id = models.CharField(max_length=100, blank=True, null=True)
+    platform_option_id = models.CharField(max_length=100, blank=True, null=True)
+
+    # 예: 품절 여부, 재고수량 캐싱, etc.
+    is_out_of_stock = models.BooleanField(default=False)
+    last_known_stock = models.IntegerField(default=0)   # 최근에 확인한 플랫폼 재고
+    updated_at = models.DateTimeField(auto_now=True)
+    # 재고 필드들 (초기값=0)
+    niedlich_stock = models.IntegerField(default=0)
+    subida_stock = models.IntegerField(default=0)
+    nonegae_stock = models.IntegerField(default=0)
+    arbing_stock = models.IntegerField(default=0)
+    coupang01_stock = models.IntegerField(default=0)
+    coupang02_stock = models.IntegerField(default=0)
+    store_stock = models.IntegerField(default=0)
+
+    # 예시: 셀러툴 재고
+    seller_tool_stock = models.IntegerField(default=0)
+
+
+    def __str__(self):
+        return self.option_code
+
+    def __str__(self):
+        return f"{self.option_code} / {self.platform_name} / {self.platform_option_id}"
+
+class StockLog(models.Model):
+    option_code = models.CharField(max_length=100)
+    platform = models.CharField(max_length=50)       # NAVER, COUPANG, ...
+    action = models.CharField(max_length=50)         # '품절처리', '판매재개', '재고확인' 등
+    old_stock = models.IntegerField(default=0)
+    new_stock = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"[{self.created_at}] {self.option_code} / {self.platform} / {self.action} {self.old_stock}->{self.new_stock}"
+
+
+class ExternalProductItem(models.Model):
+    origin_product_no = models.BigIntegerField(unique=True)
+    product_name = models.CharField(max_length=255, blank=True, null=True)
+    representative_image = models.URLField(blank=True, null=True)
+    sale_price = models.IntegerField(blank=True, null=True)
+    stock_quantity = models.IntegerField(blank=True, null=True)
+    seller_code_info = models.CharField(max_length=255, blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"[{self.origin_product_no}] {self.product_name}"
+
+class ExternalProductOption(models.Model):
+    product = models.ForeignKey(
+        ExternalProductItem, 
+        on_delete=models.CASCADE, 
+        related_name='options'
+    )
+    option_id = models.CharField(max_length=100, blank=True, null=True)
+    option_name1 = models.CharField(max_length=255, blank=True, null=True)
+    option_name2 = models.CharField(max_length=255, blank=True, null=True)
+    stock_quantity = models.IntegerField(default=0)
+    price = models.IntegerField(default=0)
+    seller_manager_code = models.CharField(max_length=255, blank=True, null=True)
+    seller_tool_stock = models.IntegerField(default=0)  # 새로운 필드 추가
+    store_name = models.CharField(max_length=100, blank=True)
+
+    # ▼ 추가: (product, option_id) 쌍을 유니크하게
+    class Meta:
+        unique_together = (("product", "option_id"), )
+
+    def __str__(self):
+        return f"{self.product.product_name} / {self.option_name1} / {self.option_name2}"
+
+
+class OptionMapping(models.Model):
+    """
+    내부에서 사용하는 메인 "옵션코드" 중심 모델.
+    (우리 쪽 고유의 option_code)
+    """
+    option_code = models.CharField(max_length=100, unique=True)
+
+    # 추가 정보들 (기존 필드)
+    order_product_name  = models.CharField(max_length=200, blank=True)
+    order_option_name   = models.CharField(max_length=200, blank=True)
+    store_name          = models.CharField(max_length=100, blank=True)
+    seller_product_name = models.CharField(max_length=200, blank=True)
+    seller_option_name  = models.CharField(max_length=200, blank=True)
+    expected_date       = models.CharField(max_length=200, blank=True)
+    expected_start      = models.DateField(null=True, blank=True)
+    expected_end        = models.DateField(null=True, blank=True)
+    updated_at          = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.option_code}"
+
+
+class OptionPlatformDetail(models.Model):
+    """
+    하나의 "option_code(OptionMapping)"에 대해,
+    여러 플랫폼(스토어)별로 다른 옵션ID / 재고 / 가격 / 이미지 ... 
+    등등을 1:N 형태로 저장하는 테이블.
+    """
+    option_mapping = models.ForeignKey(
+        OptionMapping,
+        on_delete=models.CASCADE,
+        related_name='platform_details'
+    )
+    platform_name = models.CharField(max_length=50)
+    platform_product_id = models.CharField(max_length=100, blank=True, null=True)
+    platform_option_id  = models.CharField(max_length=100, blank=True, null=True)
+
+    order_product_name  = models.CharField(max_length=200, blank=True, null=True)
+    order_option_name   = models.CharField(max_length=200, blank=True, null=True)
+    # 아래 부분 오타 중복에 주의(사용자 코드에 보면 order_option_name이 2번 나왔는데, 하나 제거 필요)
+    stock               = models.IntegerField(default=0)
+    price               = models.IntegerField(default=0)
+    seller_manager_code = models.CharField(max_length=255, blank=True, null=True)
+    representative_image= models.URLField(blank=True, null=True)
+    origin_product_no   = models.CharField(max_length=100, blank=True, null=True)
+    updated_at          = models.DateTimeField(auto_now=True)
+    seller_tool_stock   = models.IntegerField(default=0)  # 새로운 필드 추가
+
+    def __str__(self):
+        return (
+            f"[{self.platform_name}] "
+            f"option_id={self.platform_option_id}, "
+            f"stock={self.stock}, price={self.price}"
+        )
+
+class OutOfStockMapping(models.Model):
+    option_code = models.CharField(max_length=100, db_index=True)
+    order_product_name = models.CharField(max_length=200, blank=True)
+    order_option_name  = models.CharField(max_length=200, blank=True)
+    store_name         = models.CharField(max_length=100, blank=True)
+    seller_product_name= models.CharField(max_length=200, blank=True)
+    seller_option_name = models.CharField(max_length=200, blank=True)
+    expected_date      = models.CharField(max_length=200, blank=True)
+    updated_at         = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"[OutOfStock] {self.option_code}"
