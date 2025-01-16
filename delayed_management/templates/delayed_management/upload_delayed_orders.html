@@ -7,10 +7,29 @@
             <!-- 엑셀 업로드 폼 -->
             <form method="post" enctype="multipart/form-data" action="{% url 'upload_delayed_orders' %}">
                 {% csrf_token %}
-                <div class="d-flex align-items-center mb-3">
-                    <input type="file" name="file" class="form-control w-auto me-3" required>
-                    <button type="submit" name="upload_excel" class="btn btn-primary">엑셀 업로드</button>
+                
+                <!-- 드래그 앤 드롭 영역 -->
+                <div id="drag-and-drop-area" class="drag-and-drop-area mb-3">
+                    <p class="mb-0">이곳에 엑셀 파일을 드래그 앤 드롭 하거나 클릭해서 선택하세요.</p>
                 </div>
+    
+                <!-- 숨겨진 파일 입력 -->
+                <input
+                    type="file"
+                    id="file-input"
+                    name="file"
+                    class="form-control w-auto me-3 d-none"
+                    accept=".xls,.xlsx"  
+                    required
+                />
+    
+                <!-- 선택된 파일명 표시 영역 -->
+                <div id="selected-file-info" class="text-secondary mb-3">
+                    <!-- 선택된 파일명이 여기에 표시됩니다 -->
+                </div>
+    
+                <!-- 업로드 버튼 -->
+                <button type="submit" name="upload_excel" class="btn btn-primary">엑셀 업로드</button>
             </form>
         </div>
     </div>
@@ -165,5 +184,73 @@
         text-overflow: ellipsis;
         max-width: 200px;
     }
+
+    .drag-and-drop-area {
+        border: 2px dashed var(--primary-color);
+        border-radius: 15px;
+        padding: 40px;
+        text-align: center;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+
+    .drag-and-drop-area p {
+        margin-bottom: 0;
+        color: var(--text-color);
+    }
+
+    /* 드래그 중일 때 배경 색상 변환 */
+    .drag-and-drop-area.drag-over {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
 </style>
+
+
+<!-- 드래그 앤 드롭 스크립트 -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const dropArea = document.getElementById('drag-and-drop-area');
+        const fileInput = document.getElementById('file-input');
+        const selectedFileInfo = document.getElementById('selected-file-info');
+
+        // 드래그 영역에 들어왔을 때
+        dropArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropArea.classList.add('drag-over');
+        });
+
+        // 드래그 영역에서 벗어났을 때
+        dropArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dropArea.classList.remove('drag-over');
+        });
+
+        // 드롭됐을 때
+        dropArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dropArea.classList.remove('drag-over');
+
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files; 
+                // 파일명 표시
+                selectedFileInfo.textContent = `선택된 파일: ${e.dataTransfer.files[0].name}`;
+            }
+        });
+
+        // 영역 클릭 시 -> 숨겨진 파일 탐색창 열기
+        dropArea.addEventListener('click', function() {
+            fileInput.click();
+        });
+
+        // 파일 선택창에서 직접 파일을 골랐을 때
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) {
+                selectedFileInfo.textContent = `선택된 파일: ${fileInput.files[0].name}`;
+            }
+        });
+    });
+</script>
+
 {% endblock %}
