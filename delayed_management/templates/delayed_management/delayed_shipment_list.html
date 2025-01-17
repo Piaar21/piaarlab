@@ -5,13 +5,13 @@
 
     <form method="post" action="{% url 'change_exchangeable_options' %}">
         {% csrf_token %}
-
         <div class="mb-3 d-flex gap-2">
             <button type="submit" name="action" value="extract_options" class="btn btn-warning btn-sm">옵션추출</button>
             <button type="submit" name="action" value="store_mapping" class="btn btn-info btn-sm">스토어 매핑</button>
             <button type="submit" name="action" value="delete_multiple" class="btn btn-danger btn-sm">선택 삭제</button>
             <button type="submit" name="action" value="send_sms" class="btn btn-success btn-sm">문자 발송</button>
             <button type="submit" name="action" value="send_option_mapping" class="btn btn-outline-primary btn-sm">옵션매핑 전송</button>
+            <!-- 여러 상품 동시 변경 버튼 -->
             <button type="button" id="bulkOptionChangeBtn" class="btn btn-secondary btn-sm">옵션변경</button>
         </div>
 
@@ -39,7 +39,8 @@
                     </thead>
                     <tbody>
                         {% for s in shipments %}
-                        <tr class="clickable-row">
+                        <!-- 상품명을 data- 속성에 담아서 JS에서 사용 -->
+                        <tr class="clickable-row" data-seller-product-name="{{ s.seller_product_name|default_if_none:'' }}">
                             <td>
                                 <input type="checkbox" name="shipment_ids" value="{{ s.id }}" class="option-checkbox">
                             </td>
@@ -48,7 +49,7 @@
                             <td>{{ s.order_product_name }}</td>
                             <td>{{ s.order_option_name }}</td>
                             <td>{{ s.quantity }}</td>
-                            <!-- ▼ 여기: 'exchangeable-options-cell' 셀 클릭 시 모달 열기 -->
+                            <!-- 교환옵션 셀: 클릭 시 단일 편집 모달 열기 -->
                             <td class="exchangeable-options-cell" data-shipment-id="{{ s.id }}">
                                 {{ s.exchangeable_options }}
                             </td>
@@ -173,280 +174,333 @@ td, th {
     font-size: 1.5rem;
     cursor: pointer;
 }
+.table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
 </style>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      // 1) 전체 선택 체크박스
-      const selectAllCheckbox = document.getElementById('selectAll');
-      const checkboxes = document.querySelectorAll('.option-checkbox');
-      if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', function() {
-          checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
-        });
-      }
-    
-      // 2) 행 클릭 시 체크박스 토글
-      const rows = document.querySelectorAll('.clickable-row');
-      rows.forEach(row => {
-        row.addEventListener('click', function(e) {
-          // 교환옵션 셀(.exchangeable-options-cell) 클릭 시 모달 열기이므로 제외
-          if (e.target.type !== 'checkbox' && 
-              !e.target.classList.contains('exchangeable-options-cell')) {
-            const checkbox = this.querySelector('.option-checkbox');
-            if (checkbox) {
-              checkbox.checked = !checkbox.checked;
-            }
-          }
-        });
-      });
-    
-      // 3) "교환옵션" 셀을 클릭하면 모달 열기
-      const optionCells = document.querySelectorAll('.exchangeable-options-cell');
-      optionCells.forEach(cell => {
-        cell.addEventListener('click', function(e) {
-          const shipmentId = this.getAttribute('data-shipment-id');
-          openExchangeModal(shipmentId);
-          e.stopPropagation();  // 상위 tr 클릭 이벤트 중단
-        });
-      });
-    
-      // 4) 모달 닫기 버튼
-      const closeBtn = document.getElementById('closeModalBtn');
-      if (closeBtn) {
-        closeBtn.onclick = function() {
-          document.getElementById('exchangeModal').style.display = 'none';
-        };
-      }
-    
-      // 5) "저장" 버튼 클릭 시
-      const saveBtn = document.getElementById('saveBtn');
-      if (saveBtn) {
-        saveBtn.onclick = saveExchangeOptions;
+document.addEventListener('DOMContentLoaded', function() {
+  // 1) 전체 선택 체크박스
+  const selectAllCheckbox = document.getElementById('selectAll');
+  const checkboxes = document.querySelectorAll('.option-checkbox');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', function() {
+      checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+    });
+  }
+
+  // 2) 행 클릭 시 체크박스 토글
+  const rows = document.querySelectorAll('.clickable-row');
+  rows.forEach(row => {
+    row.addEventListener('click', function(e) {
+      // 교환옵션 셀(.exchangeable-options-cell) 클릭 시 모달 열기이므로 제외
+      if (e.target.type !== 'checkbox' && 
+          !e.target.classList.contains('exchangeable-options-cell')) {
+        const checkbox = this.querySelector('.option-checkbox');
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+        }
       }
     });
-    
-    // 전역 변수
-    let currentShipmentId = null;
-    let selectedOptionSet = new Set();
-    
-    /**
-     * 모달 열기
-     */
-    function openExchangeModal(shipmentId) {
-      currentShipmentId = shipmentId;
-      document.getElementById('modalShipmentId').textContent = shipmentId;
-    
-      // 모달 열기
-      const modal = document.getElementById('exchangeModal');
-      modal.style.display = 'block';
-    
-      // 로딩 스피너 표시
-      const loadingSpinner = document.getElementById('loadingSpinner');
-      loadingSpinner.style.display = 'block';
-    
-      // 영역 초기화
-      const allOptionsArea = document.getElementById('allOptionsArea');
-      allOptionsArea.innerHTML = '';
-      selectedOptionSet.clear();
-    
-      // ❶ 서버에서 "전체 옵션" + "현재 선택된 옵션" 가져오기
-      fetch(`/delayed/api/sellertool-options/${shipmentId}/`)
-      .then(res => {
-          if (!res.ok) {
-            throw new Error("Response not OK");
-          }
-          return res.json();
-        })
-        .then(data => {
-          loadingSpinner.style.display = 'none';
-    
-          if (data.status !== 'success') {
-            alert("옵션 불러오기 실패: " + data.message);
-            return;
-          }
-    
-          // allOptions: [{ optionName, optionCode, stock }, ...]
-          const allOptions = data.allOptions || [];
-          // current: ["빨강_M", "파랑_L", ...]
-          const curOps = data.current || [];
-    
-          // 이미 선택된 옵션들
-          curOps.forEach(optName => selectedOptionSet.add(optName));
-    
-          // ❷ 버튼 생성
-          allOptions.forEach(op => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.style.margin = '4px';
-            btn.className = 'btn btn-sm';  // 부트스트랩 등 사용 시
-    
-            // 라벨: "옵션명 (재고:NN)"
-            btn.textContent = `${op.optionName} (재고:${op.stock})`;
-    
-            if (op.stock === 0) {
-              // 재고 0 → 선택 불가
-              btn.disabled = true;
-              btn.style.cursor = 'not-allowed';
-              btn.classList.add('btn-danger'); // 시각적 강조
-            } else {
-              // 재고가 있는 경우 → 선택 토글 처리
-              if (selectedOptionSet.has(op.optionName)) {
-                // 이미 선택된 옵션
-                btn.classList.add('btn-primary');
-              } else {
-                btn.classList.add('btn-outline-secondary');
-              }
-    
-              // 클릭 시 토글
-              btn.onclick = () => {
-                if (selectedOptionSet.has(op.optionName)) {
-                  selectedOptionSet.delete(op.optionName);
-                  btn.classList.remove('btn-primary');
-                  btn.classList.add('btn-outline-secondary');
-                } else {
-                  selectedOptionSet.add(op.optionName);
-                  btn.classList.remove('btn-outline-secondary');
-                  btn.classList.add('btn-primary');
-                }
-              };
-            }
-    
-            allOptionsArea.appendChild(btn);
-          });
-        })
-        .catch(err => {
-          loadingSpinner.style.display = 'none';
-          console.error(err);
-          alert("에러 발생: " + err);
+  });
+
+  // 3) "교환옵션" 셀을 클릭하면 (단일) 모달 열기
+  const optionCells = document.querySelectorAll('.exchangeable-options-cell');
+  optionCells.forEach(cell => {
+    cell.addEventListener('click', function(e) {
+      const shipmentId = this.getAttribute('data-shipment-id');
+      openExchangeModal(shipmentId);
+      e.stopPropagation();  // 상위 tr 클릭 이벤트 중단
+    });
+  });
+
+  // 4) 모달 닫기 버튼
+  const closeBtn = document.getElementById('closeModalBtn');
+  if (closeBtn) {
+    closeBtn.onclick = function() {
+      document.getElementById('exchangeModal').style.display = 'none';
+    };
+  }
+
+  // 5) "저장" 버튼 (단일) 클릭
+  const saveBtn = document.getElementById('saveBtn');
+  if (saveBtn) {
+    saveBtn.onclick = saveExchangeOptions;
+  }
+
+  // 6) "옵션변경" 버튼 (다중) → 그룹별 순차 처리
+  const bulkOptionChangeBtn = document.getElementById('bulkOptionChangeBtn');
+  if (bulkOptionChangeBtn) {
+    bulkOptionChangeBtn.addEventListener('click', async function() {
+      const checkedBoxes = document.querySelectorAll('.option-checkbox:checked');
+      if (checkedBoxes.length === 0) {
+        alert('옵션 변경할 항목을 선택하세요.');
+        return;
+      }
+
+      // 6-1) 체크된 Shipments에서 ID & 상품명 추출
+      let shipmentsData = [];
+      checkedBoxes.forEach(cb => {
+        const row = cb.closest('tr');
+        const productName = row.getAttribute('data-seller-product-name') || '기타';
+        const shipmentId = parseInt(cb.value, 10);
+        shipmentsData.push({
+          id: shipmentId,
+          productName: productName
         });
-    }
-    
-    /**
-     * 저장하기
-     */
-    function saveExchangeOptions() {
-      if (!currentShipmentId) return;
-    
-      const selectedArr = Array.from(selectedOptionSet);  // ["빨강_M", "파랑_L", ...]
-      const formData = new FormData();
-      formData.append('selected_options_json', JSON.stringify(selectedArr));
-    
-      fetch(`/delayed/api/save-sellertool-options/${currentShipmentId}/`, {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': '{{ csrf_token }}'
-        },
-        body: formData
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.status === 'success') {
-            alert("저장되었습니다.");
-            document.getElementById('exchangeModal').style.display = 'none';
-            // 필요시 새로고침
-            window.location.reload();
+      });
+
+      // 6-2) 상품명 기준으로 그룹화
+      const groups = {};
+      shipmentsData.forEach(s => {
+        if (!groups[s.productName]) {
+          groups[s.productName] = [];
+        }
+        groups[s.productName].push(s);
+      });
+
+      const groupNames = Object.keys(groups);
+      if (groupNames.length === 0) {
+        alert("선택된 항목이 없습니다.");
+        return;
+      }
+
+      // 6-3) 그룹별로 순차적으로 모달을 열어 옵션 변경
+      for (let i=0; i < groupNames.length; i++){
+        const gName = groupNames[i];
+        const shipmentsInGroup = groups[gName];
+        // 그룹 내 대표 Shipment
+        const firstShipmentId = shipmentsInGroup[0].id;
+
+        await openExchangeModalForGroup(firstShipmentId, shipmentsInGroup);
+      }
+
+      // 모든 그룹 처리 후
+      alert("모든 상품의 옵션 변경이 완료되었습니다.");
+      window.location.reload();
+    });
+  }
+});
+
+/** 전역: 단일 모달 편집 시 사용하는 변수 */
+let currentShipmentId = null;
+let selectedOptionSet = new Set();
+
+/**
+ * (A) 단일 편집용 함수
+ */
+function openExchangeModal(shipmentId) {
+  currentShipmentId = shipmentId;
+  document.getElementById('modalShipmentId').textContent = shipmentId;
+
+  const modal = document.getElementById('exchangeModal');
+  modal.style.display = 'block';
+
+  // 로딩 스피너 ON
+  const loadingSpinner = document.getElementById('loadingSpinner');
+  loadingSpinner.style.display = 'block';
+
+  // 영역 초기화
+  const allOptionsArea = document.getElementById('allOptionsArea');
+  allOptionsArea.innerHTML = '';
+  selectedOptionSet.clear();
+
+  // 서버에서 옵션 불러오기
+  fetch(`/delayed/api/sellertool-options/${shipmentId}/`)
+    .then(res => {
+      if (!res.ok) throw new Error("Response not OK");
+      return res.json();
+    })
+    .then(data => {
+      loadingSpinner.style.display = 'none';
+      if (data.status !== 'success') {
+        alert("옵션 불러오기 실패: " + data.message);
+        return;
+      }
+
+      const allOptions = data.allOptions || [];
+      const curOps = data.current || [];
+
+      // 이미 선택된 옵션
+      curOps.forEach(optName => selectedOptionSet.add(optName));
+
+      // 버튼 생성
+      allOptions.forEach(op => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.margin = '4px';
+        btn.className = 'btn btn-sm';
+        btn.textContent = `${op.optionName} (재고:${op.stock})`;
+
+        if (op.stock === 0) {
+          btn.disabled = true;
+          btn.style.cursor = 'not-allowed';
+          btn.classList.add('btn-danger');
+        } else {
+          if (selectedOptionSet.has(op.optionName)) {
+            btn.classList.add('btn-primary');
           } else {
-            alert("저장 실패: " + data.message);
+            btn.classList.add('btn-outline-secondary');
           }
-        })
-        .catch(err => {
-          console.error(err);
-          alert("Error: " + err);
-        });
-    }
-    const bulkOptionChangeBtn = document.getElementById('bulkOptionChangeBtn');
-      if (bulkOptionChangeBtn) {
-        bulkOptionChangeBtn.addEventListener('click', async function() {
-          const checkedBoxes = document.querySelectorAll('.option-checkbox:checked');
-          if (checkedBoxes.length === 0) {
-            alert('옵션 변경할 항목을 선택하세요.');
-            return;
-          }
-          
-          // 1) 체크된 Shipments ID와 seller_product_name을 JS에서 가져오기 위해선
-          //    서버 렌더링 시 data-* 속성에 담거나, Ajax로 가져오는 방식 등이 필요.
-          //    예: row에 data-seller-product-name="{{ s.seller_product_name }}" 추가
-          let shipmentsData = [];
-          checkedBoxes.forEach(cb => {
-            // tr 요소 찾기
-            const row = cb.closest('tr');
-            const productName = row.getAttribute('data-seller-product-name'); // 예: <tr data-seller-product-name="선반">
-            const shipmentId = parseInt(cb.value, 10);
-
-            shipmentsData.push({
-              id: shipmentId,
-              productName: productName || "기타"
-            });
-          });
-
-          // 2) 그룹화: { 상품명: [ {id, productName}, ... ], ... }
-          const groups = {};
-          shipmentsData.forEach(s => {
-            if (!groups[s.productName]) {
-              groups[s.productName] = [];
+          btn.onclick = () => {
+            if (selectedOptionSet.has(op.optionName)) {
+              selectedOptionSet.delete(op.optionName);
+              btn.classList.remove('btn-primary');
+              btn.classList.add('btn-outline-secondary');
+            } else {
+              selectedOptionSet.add(op.optionName);
+              btn.classList.remove('btn-outline-secondary');
+              btn.classList.add('btn-primary');
             }
-            groups[s.productName].push(s);
-          });
+          };
+        }
 
-          // 3) 그룹 목록 (키 배열)
-          const groupNames = Object.keys(groups);
-          if (groupNames.length === 0) {
-            alert("선택된 항목이 없습니다.");
-            return;
-          }
+        allOptionsArea.appendChild(btn);
+      });
+    })
+    .catch(err => {
+      loadingSpinner.style.display = 'none';
+      console.error(err);
+      alert("에러 발생: " + err);
+    });
+}
 
-          // 4) 그룹별로 순차 처리
-          for (let i=0; i < groupNames.length; i++){
-            const gName = groupNames[i];
-            const shipmentsInGroup = groups[gName]; // [{id, productName}, ...]
+/**
+ * (A-1) 단일 편집 → 저장
+ */
+function saveExchangeOptions() {
+  if (!currentShipmentId) return;
 
-            // (1) 첫 번째 shipment id 로부터 옵션목록 불러오기
-            const firstShipmentId = shipmentsInGroup[0].id;
-            
-            // 모달 열기 (openExchangeModal을 그대로 써도 되고, 새 함수 만들 수도 있음)
-            await openExchangeModalForGroup(firstShipmentId, shipmentsInGroup);
-            // 사용자가 모달에서 "저장" or "취소"해야 다음 그룹 진행
-          }
+  const selectedArr = Array.from(selectedOptionSet);
+  const formData = new FormData();
+  formData.append('selected_options_json', JSON.stringify(selectedArr));
 
-          alert("모든 상품의 옵션 변경이 완료되었습니다.");
-          window.location.reload();
-        });
-        function openExchangeModalForGroup(firstShipmentId, shipmentsInGroup) {
+  fetch(`/delayed/api/save-sellertool-options/${currentShipmentId}/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': '{{ csrf_token }}'
+    },
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === 'success') {
+      alert("저장되었습니다.");
+      document.getElementById('exchangeModal').style.display = 'none';
+      window.location.reload();
+    } else {
+      alert("저장 실패: " + data.message);
+    }
+  })
+  .catch(err => {
+    console.error(err);
+    alert("Error: " + err);
+  });
+}
+
+/**
+ * (B) 다중 편집용 함수 (그룹별 모달)
+ */
+function openExchangeModalForGroup(firstShipmentId, shipmentsInGroup) {
   return new Promise((resolve, reject) => {
-    // 1) 모달 열기
-    // 기존 openExchangeModal() 로직 + 모달이 닫힐 때 resolve() 하는 식으로 구현
+    // 모달 열기 (기존 openExchangeModal 일부 로직 재사용)
     const modal = document.getElementById('exchangeModal');
     modal.style.display = 'block';
 
-    // 2) 옵션 불러오기, 버튼 생성, ...
-    //   => firstShipmentId 로 fetch(...)
-    //   => selectedOptionSet = new Set() ...
+    // 로딩 스피너
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    loadingSpinner.style.display = 'block';
 
-    // 3) "저장" 버튼 클릭 시 → shipmentsInGroup 각각에 POST
+    // 초기화
+    selectedOptionSet.clear();
+    const allOptionsArea = document.getElementById('allOptionsArea');
+    allOptionsArea.innerHTML = '';
+
+    // fetch 옵션
+    fetch(`/delayed/api/sellertool-options/${firstShipmentId}/`)
+      .then(res => {
+        if (!res.ok) throw new Error("Response not OK");
+        return res.json();
+      })
+      .then(data => {
+        loadingSpinner.style.display = 'none';
+        if (data.status !== 'success') {
+          alert("옵션 불러오기 실패: " + data.message);
+          // 그냥 다음으로 넘어가려면 reject 대신 resolve
+          return resolve();
+        }
+
+        const allOptions = data.allOptions || [];
+        const curOps = data.current || [];
+
+        // 이미 선택된 옵션
+        curOps.forEach(optName => selectedOptionSet.add(optName));
+
+        // 버튼 생성
+        allOptions.forEach(op => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.style.margin = '4px';
+          btn.className = 'btn btn-sm';
+          btn.textContent = `${op.optionName} (재고:${op.stock})`;
+
+          if (op.stock === 0) {
+            btn.disabled = true;
+            btn.style.cursor = 'not-allowed';
+            btn.classList.add('btn-danger');
+          } else {
+            if (selectedOptionSet.has(op.optionName)) {
+              btn.classList.add('btn-primary');
+            } else {
+              btn.classList.add('btn-outline-secondary');
+            }
+            btn.onclick = () => {
+              if (selectedOptionSet.has(op.optionName)) {
+                selectedOptionSet.delete(op.optionName);
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-outline-secondary');
+              } else {
+                selectedOptionSet.add(op.optionName);
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-primary');
+              }
+            };
+          }
+
+          allOptionsArea.appendChild(btn);
+        });
+      })
+      .catch(err => {
+        loadingSpinner.style.display = 'none';
+        console.error(err);
+        // 오류 시 다음 그룹으로 넘어갈지 여부는 상황 따라 처리
+        return resolve();
+      });
+
+    // "저장" 버튼 클릭 → 그룹 내 Shipment 모두에 POST
     const saveBtn = document.getElementById('saveBtn');
     const closeBtn = document.getElementById('closeModalBtn');
 
-    // 기존 saveExchangeOptions()를 약간 수정해서,
-    // 그룹 내 모든 Shipment에 대해 POST
     saveBtn.onclick = () => {
       const selectedArr = Array.from(selectedOptionSet);
       const promises = [];
       shipmentsInGroup.forEach(s => {
-        const formData = new FormData();
-        formData.append('selected_options_json', JSON.stringify(selectedArr));
+        const fData = new FormData();
+        fData.append('selected_options_json', JSON.stringify(selectedArr));
         promises.push(fetch(`/delayed/api/save-sellertool-options/${s.id}/`, {
           method: 'POST',
           headers: {'X-CSRFToken': '{{ csrf_token }}'},
-          body: formData
+          body: fData
         }));
       });
 
       Promise.all(promises)
-        .then(resAll => {
-          // 모두 성공
+        .then(() => {
+          // 모두 성공 가정
           modal.style.display = 'none';
-          resolve();  // 다음 그룹으로 넘어감
+          resolve();
         })
         .catch(err => {
           alert("오류: " + err);
@@ -454,75 +508,12 @@ td, th {
         });
     };
 
-    // "닫기" 버튼 누르면 중단(or 넘어가기) 처리
+    // 닫기 버튼 → 넘어가기
     closeBtn.onclick = () => {
       modal.style.display = 'none';
-      resolve(); // 일단 넘어간다고 가정
+      resolve();
     };
   });
 }
-    
-        }
-        function saveExchangeOptions() {
-            // 1) 만약 '교환옵션 셀'을 직접 클릭한 경우 -> currentShipmentId (단일)
-            //    '옵션변경' 버튼을 통해 들어온 경우 -> window.selectedShipmentIds (복수)
-            
-            let selectedShipmentIds = [];
-
-            // 우선 bulk 선택이 있는지 확인
-            if (window.selectedShipmentIds && window.selectedShipmentIds.length > 0) {
-              selectedShipmentIds = window.selectedShipmentIds;
-            } else if (currentShipmentId) {
-              // 단일로 들어온 경우
-              selectedShipmentIds = [currentShipmentId];
-            } else {
-              // 둘 다 없다면?
-              alert('Shipment ID가 없습니다.');
-              return;
-            }
-
-            // 선택된 옵션 목록
-            const selectedArr = Array.from(selectedOptionSet);
-            
-            // 동시에 여러 개 POST를 보내기 위해 Promise.all()을 사용할 수 있습니다.
-            const promises = [];
-
-            // CSRF 토큰 (Django)
-            const csrftoken = '{{ csrf_token }}';  // 이미 템플릿에 있으므로 사용
-            
-            selectedShipmentIds.forEach((id) => {
-              const formData = new FormData();
-              formData.append('selected_options_json', JSON.stringify(selectedArr));
-
-              const p = fetch(`/delayed/api/save-sellertool-options/${id}/`, {
-                method: 'POST',
-                headers: {
-                  'X-CSRFToken': csrftoken
-                },
-                body: formData
-              })
-              .then(res => res.json())
-              .then(data => {
-                if (data.status !== 'success') {
-                  throw new Error(`(ID:${id}) 저장 실패: ${data.message}`);
-                }
-              });
-              
-              promises.push(p);
-            });
-
-            // 모든 POST가 끝날 때까지 기다림
-            Promise.all(promises)
-              .then(() => {
-                alert("저장되었습니다.");
-                document.getElementById('exchangeModal').style.display = 'none';
-                window.selectedShipmentIds = [];  // 초기화
-                window.location.reload();         // 필요 시 새로고침
-              })
-              .catch(err => {
-                console.error(err);
-                alert("오류 발생: " + err.message);
-              });
-          }
-    </script>
+</script>
 {% endblock %}
