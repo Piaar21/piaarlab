@@ -259,7 +259,7 @@ def fetch_naver_products(account_info):
         "searchKeywordType": "SELLER_CODE",
         "productStatusTypes": ["SALE","OUTOFSTOCK"],
         "page": 1,
-        "size": 100,
+        "size": 1,
         "orderType": "NO",
     }
 
@@ -631,7 +631,7 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
     # (C) '최근 상품' 10개만 slice
     # → 쿠팡 API가 어떤 순서로 리턴하는지에 따라 다름 (가장 최신이 앞에 오는지? 뒤에 오는지?)
     # 여기서는 예: 앞에서 10개만
-    recent_10 = all_products[:1000]
+    recent_10 = all_products[:1]
 
     return True, recent_10
 
