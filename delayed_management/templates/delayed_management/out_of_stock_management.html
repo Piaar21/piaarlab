@@ -200,7 +200,7 @@
           </thead>
           <tbody>
             {% for row in details %}
-            <tr>
+            <tr class="clickable-row">
               <td>
                 <input type="checkbox"
                        class="option-checkbox"
@@ -335,28 +335,30 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // (1) 전체 선택 체크박스
-    const selectAllCheckbox = document.getElementById('selectAll');
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
     const optionCheckboxes = document.querySelectorAll('.option-checkbox');
     if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', function() {
-            optionCheckboxes.forEach(cb => {
-                cb.checked = selectAllCheckbox.checked;
-            });
+      selectAllCheckbox.addEventListener('change', function() {
+        optionCheckboxes.forEach(cb => {
+          cb.checked = selectAllCheckbox.checked;
         });
+      });
     }
 
-    // (2) 행 클릭 시 체크박스 토글
+    // (2) 행 클릭 시 (체크박스 아닌 곳) → 해당 행 체크박스 토글
     const rows = document.querySelectorAll('.clickable-row');
     rows.forEach(row => {
-        row.addEventListener('click', function(e) {
-            if (e.target.type !== 'checkbox') {
-                const checkbox = this.querySelector('.option-checkbox');
-                if (checkbox) {
-                    checkbox.checked = !checkbox.checked;
-                }
-            }
-        });
+      row.addEventListener('click', function(e) {
+        // 클릭 대상이 checkbox 자체면 무시
+        if (e.target.type !== 'checkbox') {
+          const checkbox = row.querySelector('.option-checkbox');
+          if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+          }
+        }
+      });
     });
+
 
     // (3) 옵션코드 복사
     const copyBtn = document.getElementById('copySelected');
