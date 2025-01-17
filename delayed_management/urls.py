@@ -51,6 +51,7 @@ urlpatterns = [
     path('do-out-of-stock/', views.do_out_of_stock_view, name='do_out_of_stock'),
     path('add-stock-for-selection/', views.add_stock_9999_view, name='add_stock_9999'),
     path('update-seller-tool/', views.update_seller_tool_and_increase_stock_view, name='update_seller_tool'),
-
+    # (1) 셀러툴 옵션 목록 (GET) - bulk
+    path("out-of-stock/update-seller-tool-stock/", views.update_seller_tool_stock, name="update_seller_tool_stock"),
 
 ]
