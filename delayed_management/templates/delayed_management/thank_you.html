@@ -87,12 +87,32 @@
     <div class="message-container">
         <div class="icon">📦</div>
         <h1>재입고 후 발송 안내</h1>
+
+        <!-- 여러 Shipment가 있을 경우 전부 표시 -->
+
+
         <p>
             기다리기 버튼을 눌러주셔서 감사합니다.<br>
             고객님의 기다림에 깊이 감사드립니다.<br>
             상품이 입고되는 즉시 신속하게 발송해 드리겠습니다.
         </p>
         <p class="thank-you">감사합니다.</p>
+<p style="font-weight:bold; color: #2980b9;">
+    아래는 재입고 예정일자 입니다</p>
+        {% for s in shipments %}    
+        {% if s.expected_start and s.expected_end %}
+        
+            <p style="font-weight:bold;">
+                <!-- 예) "[상품명 - 옵션명] 제품도착예상 날짜:" -->
+                {{ s.order_option_name }}  :
+                {{ s.expected_start|date:"Y.m.d" }} ~ {{ s.expected_end|date:"m.d" }}
+            </p>
+        {% else %}
+            <p style="font-weight:bold;">
+                {{ s.order_option_name }}  : (미정)
+            </p>
+        {% endif %}
+    {% endfor %}
     </div>
 </body>
 </html>

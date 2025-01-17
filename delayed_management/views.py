@@ -1348,7 +1348,7 @@ def customer_action_view(request):
         logger.debug(f"=== DEBUG: Before: flow_status={shipment.flow_status}, waiting={shipment.waiting}")
         shipment.flow_status = 'confirmed'
         shipment.save()
-        return redirect('thank_you_view')
+        return redirect(f'/delayed/thank-you/?token={token}')
 
     elif action == 'change':
         # TODO: flow_status='confirmed' 는 옵션변경 후 최종 저장(옵션변경 완료 시점)에 세팅
@@ -1360,14 +1360,34 @@ def customer_action_view(request):
     
     
 def thank_you_view(request):
+    
     """
     "기다리기" 버튼을 클릭한 뒤 띄울 페이지.
-    간단한 감사 메시지를 렌더링한다.
+    간단한 감사 메시지를 렌더링 + 제품도착예상 날짜 표시.
     """
-    return render(request, 'delayed_management/thank_you.html')    
+    token = request.GET.get('token', '')
+    logger.debug("thank_you_view() token = %s", token)
+    shipments = DelayedShipment.objects.filter(token=token)
+    if not shipments.exists():
+        return HttpResponse("유효하지 않은 토큰", status=404)
+
+    # 각 Shipment마다 예상날짜 계산
+    for s in shipments:
+        min_days, max_days = ETA_RANGES.get(s.status, (0, 0))
+        if s.expected_restock_date:
+            s.expected_start = s.expected_restock_date + timedelta(days=min_days)
+            s.expected_end   = s.expected_restock_date + timedelta(days=max_days)
+        else:
+            s.expected_start = None
+            s.expected_end   = None
+
+    return render(request, 'delayed_management/thank_you.html', {
+        'shipments': shipments,
+    }) 
 
 def option_change_view(request):
     token = request.GET.get('token', '')
+    logger.debug("option_change_view() token = %s", token)
     shipments = DelayedShipment.objects.filter(token=token)
     if not shipments.exists():
         return HttpResponse("유효하지 않은 토큰", status=404)
