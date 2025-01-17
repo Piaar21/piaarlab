@@ -11,6 +11,11 @@
   <a href="{% url 'match_option_ids' %}" class="btn btn-danger btn-sm">
     옵션ID 매칭
   </a>
+  <a href="#"
+   class="btn btn-info btn-sm"
+   onclick="return doSellerToolStockUpdate();">
+  셀러툴 재고 업데이트
+  </a>
   <!-- 선택재고 업데이트 -->
   <a href="#"
      class="btn btn-primary btn-sm"
@@ -42,11 +47,7 @@
    onclick="return showAccountModal();">
   상품 업데이트
 </a>
-<a href="#"
-   class="btn btn-info btn-sm"
-   onclick="return doSellerToolStockUpdate();">
-  셀러툴 재고 업데이트
-</a>
+
 
 <!-- (B) 모달 (Bootstrap 5) -->
 <div class="modal fade" id="accountModal" tabindex="-1" aria-labelledby="accountModalLabel" aria-hidden="true">

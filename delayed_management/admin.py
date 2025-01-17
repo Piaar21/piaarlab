@@ -5,6 +5,7 @@ from .models import (
     ExternalProductOption,
     OptionMapping,
     OptionPlatformDetail,
+    DelayedShipment,
 )
 
 ## 1) ExternalProductOption: Inline
@@ -131,3 +132,24 @@ class OptionPlatformDetailAdmin(admin.ModelAdmin):
         "origin_product_no",
         "option_mapping__option_code",  # FK를 통한 검색
     )
+
+
+@admin.register(DelayedShipment)
+class DelayedShipmentAdmin(admin.ModelAdmin):
+    # ① 리스트 화면에서 보여줄 필드들
+    list_display = (
+        'id',
+        'order_number_1',
+        'option_code',
+        'store_name',
+        'customer_name',
+        'status',
+        'send_status',
+        'token',   # <- token 필드를 리스트에 표시
+    )
+    
+    # ② 필터 기능(필요하다면)
+    list_filter = ('status', 'send_status', 'store_name')
+
+    # ③ 검색 기능(필요하다면)
+    search_fields = ('order_number_1', 'option_code', 'customer_name', 'token')
