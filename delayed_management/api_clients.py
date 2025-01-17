@@ -259,7 +259,7 @@ def fetch_naver_products(account_info):
         "searchKeywordType": "SELLER_CODE",
         "productStatusTypes": ["SALE","OUTOFSTOCK"],
         "page": 1,
-        "size": 5,
+        "size": 100,
         "orderType": "NO",
     }
 
@@ -524,14 +524,14 @@ def generate_coupang_signature(method, url_path, query_params, secret_key):
     return signature, datetime_now
 
 
-def fetch_coupang_all_seller_products(account_info, max_per_page=50):
+def fetch_coupang_all_seller_products(account_info, max_per_page=150):
     """
     쿠팡 등록상품 목록 '페이징' 조회.
     '최신 10개'만 가져오려면, 아래에서 all_products -> slice
     """
     import time, urllib, requests
     import logging
-    from .api_clients import generate_coupang_signature
+    
     logger = logging.getLogger(__name__)
 
     method = 'GET'
