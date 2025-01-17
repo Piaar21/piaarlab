@@ -243,7 +243,7 @@ def get_access_token(account_info):
 
 
 def fetch_naver_products(account_info):
-    from .api_clients import fetch_naver_access_token
+    
 
     access_token = fetch_naver_access_token(account_info)
     if not access_token:
@@ -323,7 +323,6 @@ def get_naver_minimal_product_info(account_info, origin_product_no):
     :param origin_product_no: 조회할 원상품번호 (int)
     :return: (True, result_dict) or (False, 에러메시지)
     """
-    from .api_clients import fetch_naver_access_token
 
     access_token = fetch_naver_access_token(account_info)
     if not access_token:
@@ -442,10 +441,7 @@ def fetch_naver_products_with_details(account_info):
     2) 각 상품별로 get_naver_minimal_product_info (단건조회) 호출
     3) "optionCombinations"까지 포함하여 detailed_list 에 담아서 return
     """
-    from .api_clients import (
-        fetch_naver_products,
-        get_naver_minimal_product_info
-    )
+
     import time
 
     # (A) 상품 목록
@@ -635,7 +631,7 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
     # (C) '최근 상품' 10개만 slice
     # → 쿠팡 API가 어떤 순서로 리턴하는지에 따라 다름 (가장 최신이 앞에 오는지? 뒤에 오는지?)
     # 여기서는 예: 앞에서 10개만
-    recent_10 = all_products[:10]
+    recent_10 = all_products[:1000]
 
     return True, recent_10
 
@@ -853,7 +849,6 @@ def fetch_naver_option_stock(account_info, origin_product_no):
     import logging
     logger = logging.getLogger(__name__)
 
-    from .api_clients import fetch_naver_access_token
 
     access_token = fetch_naver_access_token(account_info)
     if not access_token:
@@ -934,7 +929,6 @@ def get_coupang_item_inventories(account_info, vendor_item_id):
     import requests, time, urllib
     import logging
     logger = logging.getLogger(__name__)
-    from .api_clients import generate_coupang_signature
 
     access_key = account_info.get("access_key")
     secret_key = account_info.get("secret_key")
@@ -994,7 +988,6 @@ def naver_update_option_stock(origin_no, option_id, new_stock=0, platform_name=N
     import logging, requests
     logger = logging.getLogger(__name__)
 
-    from .api_clients import NAVER_ACCOUNTS, fetch_naver_access_token
 
     if not platform_name:
         return False, "[naver_update_option_stock] platform_name이 없습니다."
@@ -1063,7 +1056,6 @@ def coupang_update_item_stock(vendor_item_id, new_stock=0, platform_name=None):
     logger = logging.getLogger(__name__)
 
     # (1) COUPANG_ACCOUNTS + generate_coupang_signature 가져오기
-    from .api_clients import COUPANG_ACCOUNTS, generate_coupang_signature
 
     if not platform_name:
         return False, "[coupang_update_item_stock] platform_name이 없습니다."
@@ -1148,7 +1140,6 @@ def put_naver_option_stock_9999(origin_no, option_id, platform_name=None):
     logger = logging.getLogger(__name__)
 
     # NAVER_ACCOUNTS, fetch_naver_access_token 불러오기
-    from .api_clients import NAVER_ACCOUNTS, fetch_naver_access_token
 
     if not platform_name:
         return False, "[put_naver_option_stock_9999] platform_name이 없습니다."
@@ -1215,7 +1206,6 @@ def put_coupang_option_stock_9999(vendor_item_id, platform_name=None):
     import logging, requests
     logger = logging.getLogger(__name__)
 
-    from .api_clients import COUPANG_ACCOUNTS, generate_coupang_signature
 
     if not platform_name:
         return False, "[put_coupang_option_stock_9999] platform_name이 없습니다."
