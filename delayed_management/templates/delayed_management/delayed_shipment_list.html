@@ -12,6 +12,7 @@
             <button type="submit" name="action" value="delete_multiple" class="btn btn-danger btn-sm">선택 삭제</button>
             <button type="submit" name="action" value="send_sms" class="btn btn-success btn-sm">문자 발송</button>
             <button type="submit" name="action" value="send_option_mapping" class="btn btn-outline-primary btn-sm">옵션매핑 전송</button>
+            <button type="button" id="bulkOptionChangeBtn" class="btn btn-secondary btn-sm">옵션변경</button>
         </div>
 
         <div class="card shadow-sm mb-4">
@@ -251,7 +252,7 @@ td, th {
     
       // ❶ 서버에서 "전체 옵션" + "현재 선택된 옵션" 가져오기
       fetch(`/delayed/api/sellertool-options/${shipmentId}/`)
-        .then(res => {
+      .then(res => {
           if (!res.ok) {
             throw new Error("Response not OK");
           }
@@ -354,5 +355,174 @@ td, th {
           alert("Error: " + err);
         });
     }
+    const bulkOptionChangeBtn = document.getElementById('bulkOptionChangeBtn');
+      if (bulkOptionChangeBtn) {
+        bulkOptionChangeBtn.addEventListener('click', async function() {
+          const checkedBoxes = document.querySelectorAll('.option-checkbox:checked');
+          if (checkedBoxes.length === 0) {
+            alert('옵션 변경할 항목을 선택하세요.');
+            return;
+          }
+          
+          // 1) 체크된 Shipments ID와 seller_product_name을 JS에서 가져오기 위해선
+          //    서버 렌더링 시 data-* 속성에 담거나, Ajax로 가져오는 방식 등이 필요.
+          //    예: row에 data-seller-product-name="{{ s.seller_product_name }}" 추가
+          let shipmentsData = [];
+          checkedBoxes.forEach(cb => {
+            // tr 요소 찾기
+            const row = cb.closest('tr');
+            const productName = row.getAttribute('data-seller-product-name'); // 예: <tr data-seller-product-name="선반">
+            const shipmentId = parseInt(cb.value, 10);
+
+            shipmentsData.push({
+              id: shipmentId,
+              productName: productName || "기타"
+            });
+          });
+
+          // 2) 그룹화: { 상품명: [ {id, productName}, ... ], ... }
+          const groups = {};
+          shipmentsData.forEach(s => {
+            if (!groups[s.productName]) {
+              groups[s.productName] = [];
+            }
+            groups[s.productName].push(s);
+          });
+
+          // 3) 그룹 목록 (키 배열)
+          const groupNames = Object.keys(groups);
+          if (groupNames.length === 0) {
+            alert("선택된 항목이 없습니다.");
+            return;
+          }
+
+          // 4) 그룹별로 순차 처리
+          for (let i=0; i < groupNames.length; i++){
+            const gName = groupNames[i];
+            const shipmentsInGroup = groups[gName]; // [{id, productName}, ...]
+
+            // (1) 첫 번째 shipment id 로부터 옵션목록 불러오기
+            const firstShipmentId = shipmentsInGroup[0].id;
+            
+            // 모달 열기 (openExchangeModal을 그대로 써도 되고, 새 함수 만들 수도 있음)
+            await openExchangeModalForGroup(firstShipmentId, shipmentsInGroup);
+            // 사용자가 모달에서 "저장" or "취소"해야 다음 그룹 진행
+          }
+
+          alert("모든 상품의 옵션 변경이 완료되었습니다.");
+          window.location.reload();
+        });
+        function openExchangeModalForGroup(firstShipmentId, shipmentsInGroup) {
+  return new Promise((resolve, reject) => {
+    // 1) 모달 열기
+    // 기존 openExchangeModal() 로직 + 모달이 닫힐 때 resolve() 하는 식으로 구현
+    const modal = document.getElementById('exchangeModal');
+    modal.style.display = 'block';
+
+    // 2) 옵션 불러오기, 버튼 생성, ...
+    //   => firstShipmentId 로 fetch(...)
+    //   => selectedOptionSet = new Set() ...
+
+    // 3) "저장" 버튼 클릭 시 → shipmentsInGroup 각각에 POST
+    const saveBtn = document.getElementById('saveBtn');
+    const closeBtn = document.getElementById('closeModalBtn');
+
+    // 기존 saveExchangeOptions()를 약간 수정해서,
+    // 그룹 내 모든 Shipment에 대해 POST
+    saveBtn.onclick = () => {
+      const selectedArr = Array.from(selectedOptionSet);
+      const promises = [];
+      shipmentsInGroup.forEach(s => {
+        const formData = new FormData();
+        formData.append('selected_options_json', JSON.stringify(selectedArr));
+        promises.push(fetch(`/delayed/api/save-sellertool-options/${s.id}/`, {
+          method: 'POST',
+          headers: {'X-CSRFToken': '{{ csrf_token }}'},
+          body: formData
+        }));
+      });
+
+      Promise.all(promises)
+        .then(resAll => {
+          // 모두 성공
+          modal.style.display = 'none';
+          resolve();  // 다음 그룹으로 넘어감
+        })
+        .catch(err => {
+          alert("오류: " + err);
+          reject(err);
+        });
+    };
+
+    // "닫기" 버튼 누르면 중단(or 넘어가기) 처리
+    closeBtn.onclick = () => {
+      modal.style.display = 'none';
+      resolve(); // 일단 넘어간다고 가정
+    };
+  });
+}
+    
+        }
+        function saveExchangeOptions() {
+            // 1) 만약 '교환옵션 셀'을 직접 클릭한 경우 -> currentShipmentId (단일)
+            //    '옵션변경' 버튼을 통해 들어온 경우 -> window.selectedShipmentIds (복수)
+            
+            let selectedShipmentIds = [];
+
+            // 우선 bulk 선택이 있는지 확인
+            if (window.selectedShipmentIds && window.selectedShipmentIds.length > 0) {
+              selectedShipmentIds = window.selectedShipmentIds;
+            } else if (currentShipmentId) {
+              // 단일로 들어온 경우
+              selectedShipmentIds = [currentShipmentId];
+            } else {
+              // 둘 다 없다면?
+              alert('Shipment ID가 없습니다.');
+              return;
+            }
+
+            // 선택된 옵션 목록
+            const selectedArr = Array.from(selectedOptionSet);
+            
+            // 동시에 여러 개 POST를 보내기 위해 Promise.all()을 사용할 수 있습니다.
+            const promises = [];
+
+            // CSRF 토큰 (Django)
+            const csrftoken = '{{ csrf_token }}';  // 이미 템플릿에 있으므로 사용
+            
+            selectedShipmentIds.forEach((id) => {
+              const formData = new FormData();
+              formData.append('selected_options_json', JSON.stringify(selectedArr));
+
+              const p = fetch(`/delayed/api/save-sellertool-options/${id}/`, {
+                method: 'POST',
+                headers: {
+                  'X-CSRFToken': csrftoken
+                },
+                body: formData
+              })
+              .then(res => res.json())
+              .then(data => {
+                if (data.status !== 'success') {
+                  throw new Error(`(ID:${id}) 저장 실패: ${data.message}`);
+                }
+              });
+              
+              promises.push(p);
+            });
+
+            // 모든 POST가 끝날 때까지 기다림
+            Promise.all(promises)
+              .then(() => {
+                alert("저장되었습니다.");
+                document.getElementById('exchangeModal').style.display = 'none';
+                window.selectedShipmentIds = [];  // 초기화
+                window.location.reload();         // 필요 시 새로고침
+              })
+              .catch(err => {
+                console.error(err);
+                alert("오류 발생: " + err.message);
+              });
+          }
     </script>
 {% endblock %}

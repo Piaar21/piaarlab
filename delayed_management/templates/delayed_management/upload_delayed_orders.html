@@ -85,9 +85,10 @@
                 </table>
             </div>
             <div class="mt-3 text-end">
-                <form method="post" action="{% url 'upload_delayed_orders' %}">
+                <form method="post" action="{% url 'upload_delayed_orders' %}" id="finalize-form">
                     {% csrf_token %}
                     <button type="submit" name="finalize" class="btn btn-success">리스트 업로드</button>
+                    <button type="submit" name="delete_all_items" class="btn btn-danger ms-3">전체삭제</button>
                 </form>
             </div>
         </div>
@@ -98,7 +99,29 @@
     </div>
     {% endif %}
 </div>
-
+<div 
+    id="loading-overlay" 
+    style="
+      position: fixed; 
+      top: 0; 
+      left: 0; 
+      width: 100%; 
+      height: 100%; 
+      background: rgba(0,0,0,0.5); 
+      display: none; 
+      align-items: center; 
+      justify-content: center; 
+      z-index: 9999;
+    "
+>
+    <div class="text-center">
+        <!-- Bootstrap 스피너 예시 -->
+        <div class="spinner-border text-light" role="status" style="width:3rem; height:3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <div class="text-white mt-2">업로드 처리 중입니다. 잠시만 기다려주세요...</div>
+    </div>
+</div>
 
 <style>
     :root {
@@ -252,5 +275,20 @@
         });
     });
 </script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const finalizeForm = document.getElementById('finalize-form');
+        
+        if (finalizeForm) {
+            finalizeForm.addEventListener('submit', function(e) {
+                // 어떤 버튼이 클릭되었는지 확인 (name="finalize" 버튼이 눌렸을 때만 로딩 표시)
+                const clickedButton = document.activeElement;
+                if (clickedButton && clickedButton.name === 'finalize') {
+                    document.getElementById('loading-overlay').style.display = 'flex';
+                }
+            });
+        }
+    });
+    </script>
 
 {% endblock %}
