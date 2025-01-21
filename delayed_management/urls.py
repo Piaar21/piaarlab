@@ -53,5 +53,6 @@ urlpatterns = [
     path('update-seller-tool/', views.update_seller_tool_and_increase_stock_view, name='update_seller_tool'),
     # (1) 셀러툴 옵션 목록 (GET) - bulk
     path("out-of-stock/update-seller-tool-stock/", views.update_seller_tool_stock, name="update_seller_tool_stock"),
+    path('solapi/webhook-message/', views.solapi_webhook_message, name='solapi_webhook_message'),
 
 ]
