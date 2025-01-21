@@ -616,7 +616,7 @@ def change_exchangeable_options(request):
                 if pf_id:
                     s.send_type = 'KAKAO'
                 else:
-                    s.send_type = 'KAKAO'
+                    s.send_type = 'SMS'
                 s.send_status = 'SENDING'
                 s.save()
 
@@ -1365,81 +1365,70 @@ def check_solapi_group_status_and_update(group_id):
 @csrf_exempt
 def solapi_webhook_message(request):
     """
-    Solapi "메시지 리포트" 웹훅 수신
+    Solapi "메시지 리포트" 웹훅
+    예: [ { "messageId":"...", "type":"ATA", "statusCode":"4000", "customFields":{"shipment_id":"298"}, ... }, ... ]
     """
     if request.method != 'POST':
         return JsonResponse({"error": "Only POST allowed"}, status=405)
 
     try:
-        data_list = json.loads(request.body.decode('utf-8'))  # [ {...}, {...} ]
+        body_str = request.body.decode('utf-8')
+        data_list = json.loads(body_str)  # [ {...}, {...} ]
     except Exception as e:
         logger.debug(f"=== WEBHOOK ERROR: invalid JSON => {str(e)}")
         return JsonResponse({"error": f"invalid json: {str(e)}"}, status=400)
 
-    # data_list = [ { "messageId":..., "groupId":..., "type":"ATA", "statusCode":"2000", "customFields":{...} }, {...} ]
+    # data_list 루프
     for item in data_list:
-        # 1) 로그로 모든 주요 필드 찍기
+        # 1) 로그 출력
         logger.debug("=== WEBHOOK ITEM START ===")
         logger.debug(f"messageId={item.get('messageId')}")
         logger.debug(f"groupId={item.get('groupId')}")
-        logger.debug(f"type={item.get('type')}")  # ATA면 알림톡(카카오), CTA(친구톡) 등
-        logger.debug(f"statusCode={item.get('statusCode')} => {item.get('statusMessage')}")
-        logger.debug(f"networkCode={item.get('networkCode')}")
+        logger.debug(f"type={item.get('type')}  statusCode={item.get('statusCode')}")
         logger.debug(f"customFields={item.get('customFields', {})}")
         logger.debug("=== WEBHOOK ITEM END ===")
 
-        message_id   = item.get("messageId")
-        group_id     = item.get("groupId")
-        status_code  = item.get("statusCode")  # "2000" 등
-        msg_type     = item.get("type")        # "ATA", "CTA", "SMS", etc.
+        # 2) 필요한 필드 파싱
+        message_id  = item.get("messageId")
+        group_id    = item.get("groupId")
+        type_       = item.get("type")         # "ATA" or "LMS" etc.
+        status_code = item.get("statusCode")   # "4000" 등
         custom_fields = item.get("customFields", {})
 
-        # 2) shipment_id 매핑
+        # 3) DB 식별
         shipment_id_str = custom_fields.get("shipment_id")
         if not shipment_id_str:
-            logger.debug("webhook => no shipment_id => skip")
+            logger.debug("No shipment_id => skip this item")
             continue
 
         try:
             shipment_id = int(shipment_id_str)
             s = DelayedShipment.objects.get(id=shipment_id)
         except (ValueError, DelayedShipment.DoesNotExist):
-            logger.debug(f"webhook => invalid or not found shipment_id={shipment_id_str}")
+            logger.debug(f"Invalid or not-found shipment_id={shipment_id_str}")
             continue
 
-        # 3) 대체발송(문자) 성공 여부(예: failover?.statusCode)를 보고 싶다면
-        failover = item.get("failover") or {}
-        failover_code = failover.get("statusCode")  # "2000"이면 failback SMS 성공
-
-        # 4) 최종 분기
-        # (A) "type"이 ATA or CTA => 알림톡 계열
-        # (B) statusCode==2000 => 메인(알림톡) 성공
-        # (C) failover_code==2000 => 문자 대체발송 성공
-        # (D) 나머지 => 실패
-        logger.debug(f"WEBHOOK => main_code={status_code}, failover_code={failover_code}, type={msg_type}")
-
-        # 예시 로직
-        if status_code == "2000":
-            # 알림톡 성공
+        # 4) 분기 로직
+        if type_ == "ATA" and status_code == "4000":
+            # 알림톡(ATA) 성공
             s.send_type = "KAKAO"
             s.send_status = "SUCCESS"
             logger.debug(f"shipment<{s.id}> => 알림톡 SUCCESS")
-        elif failover_code == "2000":
-            # 알림톡 실패했지만 대체발송 문자 성공
+        elif type_ == "LMS" and status_code == "4000":
+            # 문자(LMS) 성공
             s.send_type = "SMS"
             s.send_status = "SUCCESS"
-            logger.debug(f"shipment<{s.id}> => 문자(대체발송) SUCCESS")
+            logger.debug(f"shipment<{s.id}> => 문자(LMS) SUCCESS")
         else:
-            # 둘 다 실패
+            # 나머지 -> 발송 실패
             s.send_type = "NONE"
             s.send_status = "FAIL"
-            logger.debug(f"shipment<{s.id}> => FAIL / status_code={status_code}")
+            logger.debug(f"shipment<{s.id}> => FAIL (type={type_}, code={status_code})")
 
         s.save()
 
-    # 반드시 HTTP 200
-    return JsonResponse({"message": "ok"}, status=200)
-
+    # (5) 반드시 200 응답
+    return JsonResponse({"message":"ok"}, status=200)
 
 ##########################################
 # 2) 그룹 단위로 카톡을 보내는 예시 함수
