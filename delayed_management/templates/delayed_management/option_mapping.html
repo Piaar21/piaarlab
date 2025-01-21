@@ -1,0 +1,529 @@
+{% extends 'delayed_management_base.html' %}
+{% block content %}
+
+<div class="container-fluid mt-4">
+  <h2 class="mb-4 text-primary">옵션 매핑 업로드</h2>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data" action="{% url 'action_option_mapping' %}">
+        {% csrf_token %}
+        <div class="d-flex align-items-center mb-3">
+
+          <!-- 옵션매칭 모달 열기 버튼 -->
+          <button type="button" class="btn btn-info ms-3" data-bs-toggle="modal" data-bs-target="#optionMatchingModal">
+            옵션매칭
+          </button>
+          
+          <button type="submit" name="action" value="ST_stock_update" class="btn btn-danger ms-3">
+            셀러툴재고
+          </button>
+          <!-- 선택 삭제 버튼 (폼 submit) -->
+          <button type="submit" name="action" value="delete_multiple" class="btn btn-danger ms-3">
+            선택 삭제
+          </button>
+        </div>
+      
+    </div>
+  </div>
+
+
+  <!-- (A) [옵션 매핑 테이블] -->
+  {% if details and details|length > 0 %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover table-striped align-middle">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="selectAllChk"></th>
+              <th>품절여부</th>
+              <th>옵션ID</th>        <!-- platform_option_id -->
+              <th>옵션ID재고</th>    <!-- stock -->
+              <th>주문상품명</th>   <!-- order_product_name -->
+              <th>주문옵션명</th>   <!-- order_option_name -->
+              <th>예상날짜</th>     <!-- option_mapping.expected_start / expected_end -->
+              <th>스토어</th>       <!-- option_mapping.store_name -->
+              <th>셀러툴상품명</th> <!-- option_mapping.seller_product_name -->
+              <th>셀러툴옵션명</th> <!-- option_mapping.seller_option_name -->
+              <th>셀러툴재고</th>   <!-- ?? (option_mapping.seller_tool_stock 있으면) -->
+              <th>옵션코드</th>     <!-- option_mapping.option_code -->
+              <th>플랫폼명</th>     <!-- row.platform_name (예: NAVER, 쿠팡01...) -->
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in details %}
+            <tr>
+              <!-- (1) 체크박스 -->
+              <td>
+                <input type="checkbox" name="detail_ids" value="{{ row.id }}">
+              </td>
+
+              <!-- (2) 품절여부 -->
+              <td>
+                {% if row.stock == 0 %}
+                  o
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <!-- (3) 옵션ID -->
+              <td>{{ row.platform_option_id }}</td>
+
+              <!-- (4) 옵션ID재고 -->
+              <td>{{ row.stock }}</td>
+
+              <!-- (5) 주문상품명 -->
+              <td>{{ row.order_product_name }}</td>
+
+              <!-- (6) 주문옵션명 -->
+              <td>{{ row.order_option_name }}</td>
+
+              <!-- (7) 예상날짜 (option_mapping 필드) -->
+              <td>
+                {% if row.option_mapping.expected_start and row.option_mapping.expected_end %}
+                  {{ row.option_mapping.expected_start|date:"Y.m.d" }} ~ {{ row.option_mapping.expected_end|date:"m.d" }}
+                {% else %}
+                  (미정)
+                {% endif %}
+              </td>
+
+              <!-- (8) 스토어 -->
+              <td>{{ row.option_mapping.store_name }}</td>
+
+              <!-- (9) 셀러툴상품명 -->
+              <td>{{ row.option_mapping.seller_product_name }}</td>
+
+              <!-- (10) 셀러툴옵션명 -->
+              <td>{{ row.option_mapping.seller_option_name }}</td>
+
+              <!-- (11) 셀러툴재고 (필드가 있다면) -->
+              <td>{{ row.seller_tool_stock }}</td>
+
+              <!-- (12) 옵션코드 (OptionMapping의 고유 값) -->
+              <td>{{ row.option_mapping.option_code }}</td>
+
+              <!-- (13) 플랫폼명 -->
+              <td>{{ row.platform_name }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </form>
+        <!-- 페이지네이션 -->
+        <nav class="mt-3">
+          <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link"
+                 href="?page={{ page_obj.previous_page_number }}&search_option_code={{ search_option_code }}">
+                «
+              </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">«</span></li>
+            {% endif %}
+
+            {% for num in page_range_custom %}
+              {% if num == page_obj.number %}
+              <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+              {% else %}
+              <li class="page-item">
+                <a class="page-link"
+                   href="?page={{ num }}&search_option_code={{ search_option_code }}">
+                  {{ num }}
+                </a>
+              </li>
+              {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link"
+                 href="?page={{ page_obj.next_page_number }}&search_option_code={{ search_option_code }}">
+                »
+              </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">»</span></li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div> <!-- table-responsive -->
+    </div> <!-- card-body -->
+  </div> <!-- card -->
+  {% else %}
+    <div class="text-center text-muted mt-5">
+      OptionPlatformDetail 정보가 없습니다.
+    </div>
+  {% endif %}
+</div> <!-- container-fluid 끝 -->
+
+<!-- 단건 추가/수정 모달 -->
+<div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
+  <!-- ... (생략) ... -->
+</div>
+
+<!-- 옵션매칭 모달 (전체 화면 모달) -->
+<div class="modal fade" id="optionMatchingModal" tabindex="-1" aria-labelledby="optionMatchingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="optionMatchingModalLabel">옵션 매칭</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        
+        <div class="modal-body">
+          <!-- "목록 업데이트 (계정 선택)" 버튼 -->
+          <button type="button" class="btn btn-success mb-3" id="showAccountButtonsBtn">
+              목록 업데이트 (계정 선택)
+          </button>
+  
+          <!-- 계정 목록 버튼들 -->
+          <div id="accountButtonsContainer" class="mb-3" style="display: none;">
+              <button type="button" class="btn btn-outline-primary btn-sm me-2 account-update-btn" data-account-name="니뜰리히">
+                  니뜰리히
+              </button>
+              <button type="button" class="btn btn-outline-primary btn-sm me-2 account-update-btn" data-account-name="수비다 SUBIDA">
+                  수비다 SUBIDA
+              </button>
+              <button type="button" class="btn btn-outline-primary btn-sm me-2 account-update-btn" data-account-name="노는 개 최고양">
+                  노는 개 최고양
+              </button>
+              <button type="button" class="btn btn-outline-primary btn-sm me-2 account-update-btn" data-account-name="아르빙">
+                  아르빙
+              </button>
+              <!-- ▼ 새로 쿠팡01 / 쿠팡02 버튼 추가 -->
+              <button type="button" class="btn btn-outline-primary btn-sm me-2 account-update-btn" data-account-name="쿠팡01">
+                  쿠팡01
+              </button>
+              <button type="button" class="btn btn-outline-primary btn-sm me-2 account-update-btn" data-account-name="쿠팡02">
+                  쿠팡02
+              </button>
+          </div>
+  
+          <div class="row">
+              <!-- 왼쪽: 미매칭된 우리 옵션코드 리스트 -->
+              <div class="col-md-6 border">
+                  <h5 class="mt-2">미매칭 옵션코드</h5>
+                  <div style="max-height: 400px; overflow-y: auto;">
+                      <table class="table table-hover align-middle">
+                          <thead>
+                              <tr>
+                                  <th>옵션코드</th>
+                                  <th>상품명</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              {% for code_item in unmatched_options %}
+                              <tr>
+                                  <td>{{ code_item.option_code }}</td>
+                                  <td>{{ code_item.product_name }}</td>
+                              </tr>
+                              {% empty %}
+                              <tr>
+                                  <td colspan="2" class="text-muted">미매칭된 옵션코드가 없습니다.</td>
+                              </tr>
+                              {% endfor %}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+  
+              <!-- 오른쪽: 상품 목록 (Flatten된 옵션별 행) -->
+              <div class="col-md-6 border">
+                <h5 class="mt-2">상품목록 + 옵션정보</h5>
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>대표이미지</th>
+                                <th>옵션ID</th>
+                                <th>상품명</th>
+                                <th>옵션명1</th>
+                                <th>옵션명2</th>
+                                <th>옵션재고</th>
+                                <th>판매가</th>
+                                <th>옵션가격</th>
+                                <th>originProductNo</th>
+                                <th>옵션코드</th>
+                            </tr>
+                        </thead>
+                        <tbody id="naverProductList"><!-- 테이블 바디 ID -->
+                            {% for row in naver_products %}
+                            <tr>
+                                <!-- (1) 대표이미지 -->
+                                <td>
+                                    {% if row.representative_image %}
+                                        <img src="{{ row.representative_image }}" style="max-width: 50px;">
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <!-- (2) 옵션ID -->
+                                <td>{{ row.option_id }}</td>
+                                <!-- (3) 상품명 -->
+                                <td>{{ row.product_name|default:"-" }}</td>
+                                <!-- (4) 옵션명1 -->
+                                <td>{{ row.option_name1|default:"-" }}</td>
+                                <!-- (5) 옵션명2 -->
+                                <td>{{ row.option_name2|default:"-" }}</td>
+                                <!-- (6) 옵션재고 -->
+                                <td>{{ row.option_stock|default:"-" }}</td>
+                                <!-- (7) 판매가(상위상품) -->
+                                <td>
+                                    {% if row.sale_price %}
+                                        {{ row.sale_price }}원
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <!-- (8) 옵션가격 -->
+                                <td>{{ row.option_price|default:"-" }}</td>
+                                <!-- (9) originProductNo -->
+                                <td>{{ row.origin_product_no }}</td>
+                                <!-- (10) 옵션코드 (seller_manager_code) -->
+                                <td>{{ row.option_code }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="10" class="text-muted">
+                                    상품 목록이 없습니다.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+              </div>
+          </div> <!-- row end -->
+        </div> <!-- modal-body end -->
+  
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  
+  <!-- 자바스크립트: 전체 선택 체크박스 -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      const selectAll = document.getElementById('selectAllChk');
+      if (selectAll) {
+        selectAll.addEventListener('change', function(){
+          const rowChks = document.querySelectorAll('.row-chk');
+          rowChks.forEach(chk => {
+            chk.checked = selectAll.checked;
+          });
+        });
+      }
+    });
+  </script>
+  
+  <!-- 자바스크립트: "목록 업데이트 (계정 선택)" 버튼 & 계정 버튼 클릭 시 API 호출 -->
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+      const showAccountButtonsBtn = document.getElementById('showAccountButtonsBtn');
+      const accountButtonsContainer = document.getElementById('accountButtonsContainer');
+  
+      // "목록 업데이트 (계정 선택)" 버튼 클릭 -> 계정 버튼들 표시
+      showAccountButtonsBtn.addEventListener('click', function() {
+          accountButtonsContainer.style.display = 'block';
+      });
+  
+      // 각 계정 버튼에 공통 이벤트
+      document.querySelectorAll('.account-update-btn').forEach(btn => {
+          btn.addEventListener('click', function() {
+              const accountName = this.dataset.accountName;
+              if (!accountName) return;
+  
+              let targetUrl;
+              if (accountName === "쿠팡01" || accountName === "쿠팡02") {
+                  targetUrl = "{% url 'update_coupang_product_list' %}?account_name=" + encodeURIComponent(accountName);
+              } else {
+                  targetUrl = "{% url 'update_naver_product_list' %}?account_name=" + encodeURIComponent(accountName);
+              }
+  
+              fetch(targetUrl, {
+                  method: "GET",
+                  headers: { 'X-Requested-With': 'XMLHttpRequest' }
+              })
+              .then(response => response.json())
+              .then(data => {
+                  if (data.error) {
+                      alert("업데이트 실패: " + (data.detail || '알 수 없음'));
+                      return;
+                  }
+  
+                  alert(`${accountName} 목록 업데이트 완료. 불러온 상품 수: ${data.count}`);
+  
+                  // Flatten 결과 → naverProductList 테이블에 표시
+                  const productList = data.products || [];
+                  const tableBody = document.getElementById('naverProductList');
+                  tableBody.innerHTML = ""; // Clear old rows
+  
+                  if (productList.length === 0) {
+                      tableBody.innerHTML = `
+                          <tr>
+                              <td colspan="10" class="text-muted">상품 목록이 없습니다.</td>
+                          </tr>
+                      `;
+                      return;
+                  }
+  
+                  productList.forEach(item => {
+                      // 대표이미지
+                      let repImgUrl = "";
+                      if (item.representativeImage) {
+                          if (typeof item.representativeImage === 'object' && item.representativeImage.url) {
+                              repImgUrl = item.representativeImage.url;
+                          } else if (typeof item.representativeImage === 'string') {
+                              repImgUrl = item.representativeImage;
+                          }
+                      }
+                      const repImgHtml = repImgUrl
+                          ? `<img src="${repImgUrl}" style="max-width: 50px;">`
+                          : "-";
+  
+                      const optionID    = item.optionID    || item.vendorItemId || "-";
+                      const productNm   = item.productName || "-";
+                      const optName1    = item.optionName1 || item.itemName || "-";
+                      const optName2    = item.optionName2 || "-";
+                      let   optStock    = (item.optionStock !== undefined) ? item.optionStock : "-";
+                      if (optStock === "") optStock = "-";
+  
+                      let salePriceText = "-";
+                      if (item.salePrice && item.salePrice !== 0) {
+                          salePriceText = item.salePrice + "원";
+                      }
+  
+                      let optPriceText = "-";
+                      if (item.optionPrice !== undefined && item.optionPrice !== "") {
+                          optPriceText = item.optionPrice;
+                      }
+  
+                      let originNo  = item.originProductNo
+                                      || item.sellerProductId
+                                      || "-";
+  
+                      const optionCode = item.option_code
+                                         || item.optionSellerCode
+                                         || "-";
+  
+                      const rowHtml = `
+                          <td>${repImgHtml}</td>
+                          <td>${optionID}</td>
+                          <td>${productNm}</td>
+                          <td>${optName1}</td>
+                          <td>${optName2}</td>
+                          <td>${optStock}</td>
+                          <td>${salePriceText}</td>
+                          <td>${optPriceText}</td>
+                          <td>${originNo}</td>
+                          <td>${optionCode}</td>
+                      `;
+                      const tr = document.createElement('tr');
+                      tr.innerHTML = rowHtml;
+                      tableBody.appendChild(tr);
+                  });
+              })
+              .catch(err => {
+                  console.error(err);
+                  alert("목록 업데이트 중 오류 발생! " + err);
+              });
+          });
+      });
+  });
+  </script>
+<!-- 모달 전체 스타일 -->
+<style>
+    :root {
+        --primary-color: #6c5ce7;
+        --secondary-color: #a29bfe;
+        --background-color: #f8f9fa;
+        --text-color: #2d3436;
+        --border-color: #dfe6e9;
+        --table-text-color: #2d3436;
+        --table-background: #ffffff;
+    }
+
+    body {
+        background-color: var(--background-color);
+        color: var(--text-color);
+    }
+
+    .container-fluid {
+        max-width: 1400px;
+    }
+
+    h2 {
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+    .btn-primary:hover {
+        background-color: var(--secondary-color);
+        border-color: var(--secondary-color);
+    }
+
+    .card {
+        border: none;
+        border-radius: 15px;
+        overflow: hidden;
+        background-color: #ffffff;
+        color: var(--text-color);
+    }
+
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: var(--table-background);
+        color: var(--table-text-color);
+    }
+
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background-color: var(--primary-color);
+        color: white;
+        z-index: 1;
+        padding: 15px;
+        white-space: nowrap;
+    }
+
+    .table tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+
+    .table tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+
+    .table td,
+    .table th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+    }
+</style>
+
+
+
+{% endblock %}
