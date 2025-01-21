@@ -8,7 +8,7 @@
                 <!-- 만약 "반품승인" 버튼을 반품완료 페이지에서도 사용하고자 한다면 유지,
                      아니라면 제거 가능합니다. -->
                 <button type="submit" class="btn btn-primary mb-3">재고반영</button>
-                <a href="{% url 'download_returned_items' %}" class="btn btn-success mb-3 ms-2">
+                <button type="button" class="btn btn-success mb-3 ms-2" id="download-excel-btn">
                     엑셀다운
                 </a>
                 <!-- 필터 영역 (검수완료 페이지와 동일한 필터) -->
@@ -165,41 +165,51 @@
             .map(chk => chk.value);
     }
 
-    // 엑셀 다운로드 버튼 클릭 이벤트
-    document.getElementById('export-excel-btn').addEventListener('click', function () {
+    // "엑셀다운" 버튼 클릭 -> 체크된 id만 서버로 전송
+    const downloadExcelBtn = document.getElementById('download-excel-btn');
+    downloadExcelBtn.addEventListener('click', function () {
         const selectedIds = getCheckedIds();
         if (!selectedIds.length) {
             alert("체크된 항목이 없습니다.");
             return;
         }
 
-        fetch("{% url 'download_returned_items' %}", { // URL에 매핑된 뷰 함수 호출
+        // fetch로 POST
+        fetch("{% url 'download_returned_items' %}", {
             method: 'POST',
             headers: {
-                'X-CSRFToken': '{{ csrf_token }}', // CSRF 토큰 포함
-                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',  // Django CSRF 사용 시
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ ids: selectedIds }) // 선택된 ID 전송
+            body: JSON.stringify({
+                item_ids: selectedIds
+            })
         })
         .then(response => {
-            if (!response.ok) throw new Error("다운로드 실패");
-            return response.blob(); // Blob으로 파일 다운로드
+            if (!response.ok) {
+                throw new Error("서버 응답이 정상이 아님(HTTP " + response.status + ")");
+            }
+            // 엑셀 파일(이진)로 내려주므로 blob으로 받음
+            return response.blob();
         })
         .then(blob => {
+            // Blob -> 임시 URL -> 다운로드
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = "selected_items.xlsx"; // 파일명 지정
+            a.download = "returned_items.xlsx"; // 다운받을 파일명
             document.body.appendChild(a);
             a.click();
+
+            // 다운로드 후 URL 정리
             setTimeout(() => {
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
             }, 0);
         })
         .catch(err => {
-            console.error(err);
-            alert("엑셀 다운로드 실패: " + err.message);
+            console.error("엑셀다운 오류:", err);
+            alert("엑셀 다운로드 중 오류가 발생했습니다: " + err.message);
         });
     });
 </script>

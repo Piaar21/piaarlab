@@ -1668,41 +1668,51 @@ def home(request):
         return redirect('login')  # 로그인되지 않은 사용자는 로그인 페이지로 이동
 
 
+@login_required
 def download_returned_items(request):
+    """
+    체크박스 선택된 반품완료 목록을 엑셀 파일로 다운로드.
+    """
     if request.method == 'POST':
-        # 1. 클라이언트에서 보낸 데이터 가져오기
-        data = json.loads(request.body)
-        ids = data.get('ids', [])
+        # 1) JSON 파싱
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+        except Exception as e:
+            return JsonResponse({"error": f"JSON 파싱 오류: {str(e)}"}, status=400)
+        
+        item_ids = data.get('item_ids', [])
+        if not item_ids:
+            return JsonResponse({"error": "item_ids가 비어 있음"}, status=400)
 
-        # 2. 선택된 항목만 가져오기
-        items = ReturnItem.objects.filter(id__in=ids)
+        # 2) DB에서 선택된 id만 가져오기
+        items = ReturnItem.objects.filter(id__in=item_ids)
 
-        # 3. 엑셀 파일 생성
-        wb = openpyxl.Workbook()
+        # 3) openpyxl 워크북 생성
+        wb = Workbook()
         ws = wb.active
-        ws.title = "선택된 반품 항목"
+        ws.title = "반품완료목록"
 
-        # 4. 헤더 작성
+        # 4) 헤더 작성 (테이블에 보이는 순서대로)
         headers = [
             "검수 결과", "현재클레임상태", "클레임 종류", "클레임 사유",
-            "고객 사유", "사유", "수거 배송비", "배송비 지급 방식",
+            "고객 사유", "사유(노트)", "수거 배송비", "배송비 지급 방식",
             "주문번호", "스토어명", "수취인명", "연락처",
             "옵션코드", "상품명", "옵션명", "수량",
         ]
         for col_num, header in enumerate(headers, start=1):
             ws.cell(row=1, column=col_num, value=header)
 
-        # 5. 데이터 작성
+        # 5) 행 데이터 작성
         for row_num, item in enumerate(items, start=2):
-            ws.cell(row=row_num, column=1, value=item.product_issue or "미검수")
-            ws.cell(row=row_num, column=2, value=item.product_order_status or "N/A")
-            ws.cell(row=row_num, column=3, value=item.claim_type or "N/A")
-            ws.cell(row=row_num, column=4, value=item.claim_reason or "N/A")
-            ws.cell(row=row_num, column=5, value=item.customer_reason or "N/A")
-            ws.cell(row=row_num, column=6, value=item.note or "")
-            ws.cell(row=row_num, column=7, value=item.return_shipping_charge or "0")
-            ws.cell(row=row_num, column=8, value=item.shipping_charge_payment_method or "N/A")
-            ws.cell(row=row_num, column=9, value=item.order_number)
+            ws.cell(row=row_num, column=1,  value=item.product_issue or "미검수")
+            ws.cell(row=row_num, column=2,  value=item.product_order_status or "N/A")
+            ws.cell(row=row_num, column=3,  value=item.claim_type or "N/A")
+            ws.cell(row=row_num, column=4,  value=item.claim_reason or "N/A")
+            ws.cell(row=row_num, column=5,  value=item.customer_reason or "N/A")
+            ws.cell(row=row_num, column=6,  value=item.note or "")
+            ws.cell(row=row_num, column=7,  value=item.return_shipping_charge or "0")
+            ws.cell(row=row_num, column=8,  value=item.shipping_charge_payment_method or "N/A")
+            ws.cell(row=row_num, column=9,  value=item.order_number)
             ws.cell(row=row_num, column=10, value=item.store_name or "N/A")
             ws.cell(row=row_num, column=11, value=item.recipient_name or "N/A")
             ws.cell(row=row_num, column=12, value=item.recipient_contact or "N/A")
@@ -1711,19 +1721,22 @@ def download_returned_items(request):
             ws.cell(row=row_num, column=15, value=item.option_name or "N/A")
             ws.cell(row=row_num, column=16, value=item.quantity or 0)
 
-        # 6. 열 너비 조정
-        for col_num in range(1, len(headers) + 1):
-            column_letter = get_column_letter(col_num)
-            ws.column_dimensions[column_letter].width = 15
+        # 6) 메모리에 저장
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
 
-        # 7. 엑셀 파일 반환
+        # 7) HttpResponse로 바이너리 전송
         response = HttpResponse(
+            output,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = 'attachment; filename="selected_items.xlsx"'
-        wb.save(response)
+        response['Content-Disposition'] = 'attachment; filename="returned_items.xlsx"'
         return response
 
+    else:
+        # GET 등 다른 메서드로 접근 시 에러 or 처리
+        return JsonResponse({"error": "POST only"}, status=400)
 
 # 대시보드
 @login_required
