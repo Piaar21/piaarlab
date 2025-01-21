@@ -619,9 +619,29 @@ def change_exchangeable_options(request):
                 s.send_status = 'pending'  # 대기중
                 s.save()
 
-                # (생략) 치환변수 등 ...
-                variables = {...}
+                # 치환변수 등
+                min_days, max_days = ETA_RANGES.get(s.status, (0, 0))
+                if s.restock_date:
+                    start_d = s.restock_date + timedelta(days=min_days)
+                    end_d   = s.restock_date + timedelta(days=max_days)
+                    발송일자_str = f"{start_d.strftime('%Y.%m.%d')} ~ {end_d.strftime('%m.%d')}"
+                else:
+                    발송일자_str = "상담원문의"
 
+                url_thx = f"piaarlab.store/delayed/customer-action?action=wait&token={s.token}"
+                url_change = f"piaarlab.store/delayed/option-change?action=change&token={s.token}"
+
+                variables = {
+                    '#{고객명}': s.customer_name or "",
+                    '#{상품명}': s.order_product_name or "",
+                    '#{옵션명}': s.order_option_name or "",
+                    '#{발송일자}': 발송일자_str,
+                    '#{교환옵션명}': s.exchangeable_options or "",
+                    '#{채널명}': s.store_name or "",
+                    '#{url}': "example.com",
+                    '#{url_thx}': url_thx,
+                    '#{url_change}': url_change,
+                }
                 msg = {
                     "to": s.customer_contact or "",
                     "from": SOLAPI_SENDER_NUMBER,
