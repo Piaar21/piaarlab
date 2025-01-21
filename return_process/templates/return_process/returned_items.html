@@ -10,7 +10,7 @@
                 <button type="submit" class="btn btn-primary mb-3">재고반영</button>
                 <button type="button" class="btn btn-success mb-3 ms-2" id="download-excel-btn">
                     엑셀다운
-                </a>
+                </button>
                 <!-- 필터 영역 (검수완료 페이지와 동일한 필터) -->
                 <div class="d-flex mb-3 gap-3 align-items-center">
 
@@ -159,59 +159,40 @@
     // 초기 필터 적용
     filterRows();
 
-    // 체크된 항목 ID 가져오기
     function getCheckedIds() {
-        return Array.from(document.querySelectorAll('.row-checkbox:checked'))
-            .map(chk => chk.value);
+    return Array.from(document.querySelectorAll('#items-table tbody input[type="checkbox"]:checked'))
+                .map(chk => chk.value);
+}
+
+document.getElementById('download-excel-btn').addEventListener('click', function() {
+    const selectedIds = getCheckedIds();
+    if (!selectedIds.length) {
+        alert("체크된 항목이 없습니다.");
+        return;
     }
 
-    // "엑셀다운" 버튼 클릭 -> 체크된 id만 서버로 전송
-    const downloadExcelBtn = document.getElementById('download-excel-btn');
-    downloadExcelBtn.addEventListener('click', function () {
-        const selectedIds = getCheckedIds();
-        if (!selectedIds.length) {
-            alert("체크된 항목이 없습니다.");
-            return;
-        }
-
-        // fetch로 POST
-        fetch("{% url 'download_returned_items' %}", {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}',  // Django CSRF 사용 시
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                item_ids: selectedIds
-            })
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error("서버 응답이 정상이 아님(HTTP " + response.status + ")");
-            }
-            // 엑셀 파일(이진)로 내려주므로 blob으로 받음
-            return response.blob();
-        })
-        .then(blob => {
-            // Blob -> 임시 URL -> 다운로드
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = "returned_items.xlsx"; // 다운받을 파일명
-            document.body.appendChild(a);
-            a.click();
-
-            // 다운로드 후 URL 정리
-            setTimeout(() => {
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            }, 0);
-        })
-        .catch(err => {
-            console.error("엑셀다운 오류:", err);
-            alert("엑셀 다운로드 중 오류가 발생했습니다: " + err.message);
-        });
-    });
+    fetch("{% url 'download_returned_items' %}", {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ item_ids: selectedIds })
+    })
+    .then(response => response.blob())
+    .then(blob => {
+        // blob -> 다운로드
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "returned_items.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(err => console.error("엑셀 다운로드 오류:", err));
+});
 </script>
 
 <style>
