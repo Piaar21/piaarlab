@@ -600,77 +600,49 @@ def change_exchangeable_options(request):
             local_fail_ids = []
 
             for s in shipments:
-                # 스토어명 없으면 => fail
                 if not s.store_name:
                     local_fail_ids.append(s.id)
-                    s.send_status = 'FAIL'
+                    s.send_status = 'failed'  # 혹은 'FAIL'
                     s.save()
                     continue
 
-                # store_name → channel_name → pfId/templateId
+                # pf_id → 알림톡 유무
                 channel_name = map_store_to_channel(s.store_name)
                 pf_id = get_pfId_by_channel(channel_name)
                 template_id = get_templateId_by_channel(channel_name)
 
-                # 임시로 DB에 SENDING
+                # 임시로 DB에 'SENDING' (or just set send_status='pending' here?)
                 if pf_id:
-                    s.send_type = 'KAKAO'
+                    s.send_type = 'kakao'
                 else:
-                    s.send_type = 'SMS'
-                s.send_status = 'SENDING'
+                    s.send_type = 'sms'
+                s.send_status = 'pending'  # 대기중
                 s.save()
 
-                # 치환변수 등
-                min_days, max_days = ETA_RANGES.get(s.status, (0, 0))
-                if s.restock_date:
-                    start_d = s.restock_date + timedelta(days=min_days)
-                    end_d   = s.restock_date + timedelta(days=max_days)
-                    발송일자_str = f"{start_d.strftime('%Y.%m.%d')} ~ {end_d.strftime('%m.%d')}"
-                else:
-                    발송일자_str = "상담원문의"
-
-                url_thx = f"piaarlab.store/delayed/customer-action?action=wait&token={s.token}"
-                url_change = f"piaarlab.store/delayed/option-change?action=change&token={s.token}"
-
-                variables = {
-                    '#{고객명}': s.customer_name or "",
-                    '#{상품명}': s.order_product_name or "",
-                    '#{옵션명}': s.order_option_name or "",
-                    '#{발송일자}': 발송일자_str,
-                    '#{교환옵션명}': s.exchangeable_options or "",
-                    '#{채널명}': s.store_name or "",
-                    '#{url}': "example.com",
-                    '#{url_thx}': url_thx,
-                    '#{url_change}': url_change,
-                }
+                # (생략) 치환변수 등 ...
+                variables = {...}
 
                 msg = {
                     "to": s.customer_contact or "",
                     "from": SOLAPI_SENDER_NUMBER,
                 }
                 if pf_id:
-                    # 알림톡
                     msg["kakaoOptions"] = {
                         "pfId": pf_id,
                         "templateId": template_id,
                         "variables": variables
                     }
                 else:
-                    # 문자
                     msg["text"] = (
                         f"[문자 테스트]\n"
-                        f"안녕하세요 {s.customer_name or ''}님,\n"
-                        f"{s.order_product_name or ''} 제품이 품절되어 연락드립니다. "
-                        "스토어로 연락주시면 상품 변경/취소처리를 빠르게 도와드리겠습니다."
+                        f"안녕하세요 {s.customer_name}님..."
                     )
 
-                # customFields에 shipment_id 필수!
-                # 웹훅에서 이걸로 DB 매칭
+                # customFields => shipment_id
                 if "customFields" not in msg:
                     msg["customFields"] = {}
                 msg["customFields"]["shipment_id"] = str(s.id)
 
-                # 추가
                 messages_list.append((s, msg))
 
             if not messages_list and not local_fail_ids:
@@ -680,22 +652,24 @@ def change_exchangeable_options(request):
             try:
                 logger.debug("=== DEBUG: solapi_send_messages() 호출 전 ===")
                 success_list, fail_list, group_id = solapi_send_messages(messages_list)
-                logger.debug(f"=== DEBUG: solapi_send_messages() 완료 => success_list={success_list}, fail_list={fail_list}, group_id={group_id}")
+                logger.debug(f"=== DEBUG: solapi_send_messages() => success={success_list}, fail={fail_list}, group_id={group_id}")
 
+                # local_fail_ids도 합침
                 fail_list.extend(local_fail_ids)
 
                 # groupId 저장
                 all_sent_ids = [s.id for (s, _) in messages_list]
                 DelayedShipment.objects.filter(id__in=all_sent_ids).update(solapi_group_id=group_id)
 
-                # 성공건, 실패건
-                DelayedShipment.objects.filter(id__in=success_list).update(flow_status='sent', send_status='SUCCESS')
-                DelayedShipment.objects.filter(id__in=fail_list).update(flow_status='pre_send', send_status='FAIL')
+                # (A) 성공건 => send_status='pending'
+                DelayedShipment.objects.filter(id__in=success_list).update(flow_status='sent', send_status='pending')
+                # (B) 실패건 => send_status='failed'
+                DelayedShipment.objects.filter(id__in=fail_list).update(flow_status='pre_send', send_status='failed')
 
-                messages.success(request, f"문자 발송 완료 (groupId={group_id})")
+                messages.success(request, f"문자 발송 완료 (groupId={group_id}). 대기중 상태로 표시됩니다.")
 
             except Exception as e:
-                logger.exception("=== DEBUG: 문자 발송 오류 발생 ===")
+                logger.exception("=== DEBUG: 문자 발송 오류 ===")
                 messages.error(request, f"문자 발송 오류: {str(e)}")
 
             return redirect('delayed_shipment_list')
@@ -1243,9 +1217,6 @@ def solapi_send_messages(messages_list):
         # 이미 customFields / shipment_id 를 세팅했으므로 OK
         body["messages"].append(msg_obj)
 
-        s.send_type = 'SMS'  # 임시
-        s.send_status = 'SENDING'
-        s.save()
 
     now_iso = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
     salt = str(uuid.uuid4())

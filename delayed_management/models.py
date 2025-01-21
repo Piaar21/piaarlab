@@ -46,6 +46,7 @@ SEND_TYPE_CHOICES = [
     ('none', '미발송'),
     ('sms', '문자'),
     ('kakao', '알림톡'),
+    ('webhook','대기중'),
 ]
 
 SEND_STATUS_CHOICES = [
