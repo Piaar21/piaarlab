@@ -104,19 +104,19 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <a href="piaarlab.store/delayed/customer-action?action=wait&token={{ s.token }}"
+                                <a href="{% url 'customer_action' %}?action=wait&token={{ s.token }}"
                                    class="btn btn-sm btn-primary"
                                    target="_blank">
                                    기다리기
                                 </a>
                             </td>
                             <td>
-                                <a href="piaarlab.store/delayed/option-change?action=change&token={{ s.token }}"
+                                <a href="{% url 'option_change_view' %}?action=change&token={{ s.token }}"
                                    class="btn btn-sm btn-secondary"
                                    target="_blank">
                                    옵션변경
                                 </a>
-                            </td>                
+                            </td>              
                         </tr>
                         {% empty %}
                         <tr>
