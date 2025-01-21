@@ -596,12 +596,11 @@ def change_exchangeable_options(request):
                 messages.error(request, "발송할 데이터가 없습니다.")
                 return redirect('delayed_shipment_list')
 
-            # (1) 메시지 구성
             messages_list = []
-            local_fail_ids = []  # 스토어명 없는 경우 등, 발송 불가로 미리 실패 처리
+            local_fail_ids = []
 
             for s in shipments:
-                # 스토어명이 없으면 fail
+                # 스토어명 없으면 => fail
                 if not s.store_name:
                     local_fail_ids.append(s.id)
                     s.send_status = 'FAIL'
@@ -613,7 +612,7 @@ def change_exchangeable_options(request):
                 pf_id = get_pfId_by_channel(channel_name)
                 template_id = get_templateId_by_channel(channel_name)
 
-                # 발송유형(KAKAO/SMS), 전송상태 SENDING
+                # 임시로 DB에 SENDING
                 if pf_id:
                     s.send_type = 'KAKAO'
                 else:
@@ -621,7 +620,7 @@ def change_exchangeable_options(request):
                 s.send_status = 'SENDING'
                 s.save()
 
-                # 재입고 안내날짜 계산
+                # 치환변수 등
                 min_days, max_days = ETA_RANGES.get(s.status, (0, 0))
                 if s.restock_date:
                     start_d = s.restock_date + timedelta(days=min_days)
@@ -630,7 +629,6 @@ def change_exchangeable_options(request):
                 else:
                     발송일자_str = "상담원문의"
 
-                # 치환 변수
                 url_thx = f"piaarlab.store/delayed/customer-action?action=wait&token={s.token}"
                 url_change = f"piaarlab.store/delayed/option-change?action=change&token={s.token}"
 
@@ -646,10 +644,9 @@ def change_exchangeable_options(request):
                     '#{url_change}': url_change,
                 }
 
-                # Solapi에 보낼 메시지
                 msg = {
                     "to": s.customer_contact or "",
-                    "from": SOLAPI_SENDER_NUMBER,  # 예: "023389465"
+                    "from": SOLAPI_SENDER_NUMBER,
                 }
                 if pf_id:
                     # 알림톡
@@ -663,47 +660,37 @@ def change_exchangeable_options(request):
                     msg["text"] = (
                         f"[문자 테스트]\n"
                         f"안녕하세요 {s.customer_name or ''}님,\n"
-                        f"{s.order_product_name or ''} 제품이 품절되어 연락드렸습니다."
-                        " 구매하신 스토어로 연락주시면 상품 변경 및 취소처리를 빠르게 도와드릴 수 있도록 하겠습니다."
+                        f"{s.order_product_name or ''} 제품이 품절되어 연락드립니다. "
+                        "스토어로 연락주시면 상품 변경/취소처리를 빠르게 도와드리겠습니다."
                     )
 
-                # 발송 대상 리스트에 추가
+                # customFields에 shipment_id 필수!
+                # 웹훅에서 이걸로 DB 매칭
+                if "customFields" not in msg:
+                    msg["customFields"] = {}
+                msg["customFields"]["shipment_id"] = str(s.id)
+
+                # 추가
                 messages_list.append((s, msg))
 
-            # (2) 실제 발송할 대상이 전혀 없는 경우
             if not messages_list and not local_fail_ids:
-                messages.warning(request, "발송할 대상이 없습니다 (스토어명 없음 등).")
+                messages.warning(request, "발송할 대상이 없습니다.")
                 return redirect('delayed_shipment_list')
 
-            # (3) Solapi 발송 로직
             try:
                 logger.debug("=== DEBUG: solapi_send_messages() 호출 전 ===")
                 success_list, fail_list, group_id = solapi_send_messages(messages_list)
                 logger.debug(f"=== DEBUG: solapi_send_messages() 완료 => success_list={success_list}, fail_list={fail_list}, group_id={group_id}")
 
-                # (A) local_fail_ids(스토어명 없는 경우)도 fail_list에 합침
                 fail_list.extend(local_fail_ids)
-                logger.debug(f"=== DEBUG: fail_list + local_fail_ids => {fail_list}")
 
-                # (B) [중요] groupId를 DB에 저장
-                #    messages_list에는 (DelayedShipment 객체, msg) 형태이므로,
-                #    그 객체들의 id 목록을 추출해서 update
+                # groupId 저장
                 all_sent_ids = [s.id for (s, _) in messages_list]
-                updated_groupid_count = DelayedShipment.objects.filter(id__in=all_sent_ids).update(
-                    solapi_group_id = group_id
-                )
-                logger.debug(f"=== DEBUG: groupId='{group_id}' 저장 => {updated_groupid_count}건 업데이트")
+                DelayedShipment.objects.filter(id__in=all_sent_ids).update(solapi_group_id=group_id)
 
-                # (C) 성공건/실패건 DB update
-                updated_success = DelayedShipment.objects.filter(id__in=success_list).update(
-                    flow_status='sent', 
-                    send_status='SUCCESS'
-                )
-                updated_fail = DelayedShipment.objects.filter(id__in=fail_list).update(
-                    flow_status='pre_send', 
-                    send_status='FAIL'
-                )
-                logger.debug(f"=== DEBUG: updated_success={updated_success}, updated_fail={updated_fail}")
+                # 성공건, 실패건
+                DelayedShipment.objects.filter(id__in=success_list).update(flow_status='sent', send_status='SUCCESS')
+                DelayedShipment.objects.filter(id__in=fail_list).update(flow_status='pre_send', send_status='FAIL')
 
                 messages.success(request, f"문자 발송 완료 (groupId={group_id})")
 
@@ -711,7 +698,6 @@ def change_exchangeable_options(request):
                 logger.exception("=== DEBUG: 문자 발송 오류 발생 ===")
                 messages.error(request, f"문자 발송 오류: {str(e)}")
 
-            # (4) 끝난 후 배송지연 목록으로 돌아감
             return redirect('delayed_shipment_list')
 
 
@@ -1245,31 +1231,22 @@ def send_message_process(request):
 
 def solapi_send_messages(messages_list):
     """
-    messages_list = [(DelayedShipment 객체, Solapi message dict), ...]
-
-    [간단 버전]
-    HTTP 200 → 모든 메시지를 success, 
-    그 외 (404, 500 등) → 모두 fail
-
-    return (success_list, fail_list, group_id)
-      - success_list, fail_list: [shipment.id ...]
-      - group_id: 응답 JSON에서 추출 (없으면 None)
+    HTTP 200 -> success_list
+    else -> fail_list
     """
     success_list = []
     fail_list = []
-    group_id = None  # groupId 저장용(필요 없다면 생략 가능)
+    group_id = None
 
-    # (1) 요청 바디 구성
     body = {"messages": []}
     for s, msg_obj in messages_list:
-        if "customFields" not in msg_obj:
-            msg_obj["customFields"] = {}
-        msg_obj["customFields"]["shipment_id"] = str(s.id)
-
+        # 이미 customFields / shipment_id 를 세팅했으므로 OK
         body["messages"].append(msg_obj)
 
+        s.send_type = 'SMS'  # 임시
+        s.send_status = 'SENDING'
+        s.save()
 
-    # (2) 인증/헤더
     now_iso = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(timespec='seconds')
     salt = str(uuid.uuid4())
     signature = make_solapi_signature(now_iso, salt, SOLAPI_API_SECRET)
@@ -1279,24 +1256,13 @@ def solapi_send_messages(messages_list):
         "Content-Type": "application/json",
         "Authorization": auth_header
     }
-
     url = "https://api.solapi.com/messages/v4/send-many"
-    logger.debug(f"=== DEBUG: solapi_send_messages -> POST {url}")
-    logger.debug(f"=== DEBUG: payload={body}")
-    logger.debug(f"=== DEBUG: headers={headers}")
-
-    # (3) 실제 요청
     res = requests.post(url, json=body, headers=headers, timeout=10)
-    logger.debug(f"=== DEBUG: 솔라피 응답 code={res.status_code} / body={res.text}")
-
-    # (4) HTTP 200 → 전부 성공, 그 외 전부 실패
     if res.status_code == 200:
         res_json = res.json()
-        group_id = res_json.get("groupId")  # or None
-
+        group_id = res_json.get("groupId")
         for s, _ in messages_list:
             s.send_status = 'SUCCESS'
-            # 알림톡인지 문자인지, 여기선 구분 안 하므로 일단 SMS
             s.message_sent_at = timezone.now()
             s.save()
             success_list.append(s.id)
@@ -1399,67 +1365,56 @@ def check_solapi_group_status_and_update(group_id):
 @csrf_exempt
 def solapi_webhook_message(request):
     """
-    Solapi가 메시지 리포트를 POST로 보내줄 때,
-    여기서 JSON을 파싱해 DB 상태를 업데이트한다.
+    Solapi "메시지 리포트" 웹훅
+    ex) [ { "messageId":"...", "groupId":"...", "statusCode":"3104", "customFields":{"shipment_id":"12"}, ... } ]
     """
     if request.method != 'POST':
         return JsonResponse({"error": "Only POST allowed"}, status=405)
 
     try:
-        body_str = request.body.decode('utf-8')
-        data_list = json.loads(body_str)  # Solapi가 [ {...}, {...} ] 형태 배열로 보낸다고 가정
+        data_list = json.loads(request.body.decode('utf-8'))
     except Exception as e:
-        return JsonResponse({"error": f"Invalid JSON: {str(e)}"}, status=400)
+        return JsonResponse({"error": f"invalid json: {str(e)}"}, status=400)
 
-    # data_list = [
-    #   {
-    #     "messageId": "...",
-    #     "groupId": "...",
-    #     "statusCode": "...",
-    #     "customFields": {...},
-    #     ...
-    #   },
-    #   ...
-    # ]
+    # data_list -> 배열
     for item in data_list:
-        message_id   = item.get("messageId")
-        group_id     = item.get("groupId")
-        status_code  = item.get("statusCode")  # 예: "2000" (성공), "3104"(카톡 미사용자) 등
+        message_id = item.get("messageId")
+        group_id   = item.get("groupId")
+        status_code = item.get("statusCode")  # "2000"=카톡 성공, "3104"=카톡 미사용자, ...
         custom_fields = item.get("customFields", {})
-        # ... 기타 "type", "dateProcessed" 등 필요 시 사용
-
-        # DB 매칭: customFields["shipment_id"]를 써서 DelayedShipment 찾는 식
         shipment_id_str = custom_fields.get("shipment_id")
+        logger.debug(f"=== WEBHOOK => messageId={message_id}, groupId={group_id}, statusCode={status_code}, shipment_id={shipment_id_str}")
+
         if not shipment_id_str:
-            # 식별 불가 → 로그만 남기고 넘어감
+            logger.debug("no shipment_id => skip")
             continue
 
+        # DB 찾기
         try:
             shipment_id = int(shipment_id_str)
             s = DelayedShipment.objects.get(id=shipment_id)
         except (ValueError, DelayedShipment.DoesNotExist):
-            # 없는 shipment_id
+            logger.debug(f"shipment_id={shipment_id_str} invalid => skip")
             continue
 
-        # statusCode 에 따라 send_type / send_status 업데이트
+        # 실제 로직 (status_code 따라)
         if status_code == "2000":
             # 알림톡 성공
             s.send_type = "KAKAO"
             s.send_status = "SUCCESS"
         elif status_code in ("3104", "3032"):
-            # 카카오톡 미사용자(3104) / 미가입(3032)
-            # → 대체발송이 성공했으면 또 다른 콜백 메시지가 날아올 수도 있음
-            # 일단 여기선 실패로 처리
+            # 카톡 미사용/미가입 => 실패
             s.send_type = "NONE"
             s.send_status = "FAIL"
         else:
-            # 나머지는 일단 실패 처리 (혹은 다른 로직)
+            # 기타 실패
             s.send_type = "NONE"
             s.send_status = "FAIL"
 
         s.save()
+        logger.debug(f"shipment<{s.id}> updated => send_type={s.send_type}, send_status={s.send_status}")
 
-    # 웹훅 성공 응답(반드시 200)
+    # 반드시 200
     return JsonResponse({"message":"ok"}, status=200)
 
 
