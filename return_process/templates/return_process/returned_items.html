@@ -1,0 +1,248 @@
+{% extends 'return_process_base.html' %} {% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-primary">반품완료 목록</h2>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="post" action="{% url '재고반영_bulk' %}">
+                {% csrf_token %}
+                <!-- 만약 "반품승인" 버튼을 반품완료 페이지에서도 사용하고자 한다면 유지,
+                     아니라면 제거 가능합니다. -->
+                <button type="submit" class="btn btn-primary mb-3">재고반영</button>
+                <a href="{% url 'download_returned_items' %}" class="btn btn-success mb-3 ms-2">
+                    엑셀다운
+                </a>
+                <!-- 필터 영역 (검수완료 페이지와 동일한 필터) -->
+                <div class="d-flex mb-3 gap-3 align-items-center">
+
+                    <!-- 검수 결과 필터 -->
+                    <div>
+                        <label for="issue-filter" class="form-label me-2">검수 결과:</label>
+                        <select id="issue-filter" class="form-select w-auto">
+                            <option value="">전체</option>
+                            <option value="미검수">미검수</option>
+                            <option value="오배송">오배송</option>
+                            <option value="이상없음">이상없음</option>
+                            <option value="파손및불량">파손및불량</option>
+                        </select>
+                    </div>
+
+                    <!-- 클레임 사유 필터 -->
+                    <div>
+                        <label for="reason-filter" class="form-label me-2">클레임 사유:</label>
+                        <select id="reason-filter" class="form-select w-auto">
+                            <option value="">전체</option>
+                            <option value="N/A">N/A</option>
+                            <option value="고객변심">고객변심</option>
+                            <option value="오배송">오배송</option>
+                            <option value="상품 불량">상품 불량</option>
+                        </select>
+                    </div>
+
+                </div>
+                <!-- 필터 영역 끝 -->
+
+                <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+                    <table class="table table-hover table-striped align-middle" id="items-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="select-all"></th>
+                                <th>검수 결과</th>
+                                <th>현재클레임상태</th>
+                                <th>클레임 종류</th>
+                                <th>클레임 사유</th>
+                                <th>고객 사유</th>
+                                <th>사유</th>
+                                <th>수거 배송비</th>
+                                <th>배송비 지급 방식</th>
+                                <th>주문번호</th>
+                                <th>스토어명</th>
+                                <th>수취인명</th>
+                                <th>연락처</th>
+                                <th>옵션코드</th>
+                                <th>상품명</th>
+                                <th>옵션명</th>
+                                <th>수량</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td><input type="checkbox" name="item_ids" value="{{ item.id }}"></td>
+                                <td class="issue-cell">{{ item.product_issue|default:"미검수" }}</td>
+                                <td class="product-order-status-cell">{{ item.product_order_status|default:"N/A" }}</td>
+                                <td>{{ item.claim_type|default:"N/A" }}</td>
+                                <td class="reason-cell">{{ item.claim_reason|default:"N/A" }}</td>
+                                <td>{{ item.customer_reason|default:"N/A" }}</td>
+                                <td>{{ item.note|default:" " }}</td>
+                                <td>{{ item.return_shipping_charge|default:"0" }}</td>
+                                <td>{{ item.shipping_charge_payment_method|default:"N/A" }}</td>
+                                <td>{{ item.order_number }}</td>
+                                <td>{{ item.store_name|default:"N/A" }}</td>
+                                <td>{{ item.recipient_name|default:"N/A" }}</td>
+                                <td>{{ item.recipient_contact|default:"N/A" }}</td>
+                                <td>{{ item.option_code|default:"N/A" }}</td>
+                                <td>{{ item.product_name|default:"N/A" }}</td>
+                                <td>{{ item.option_name|default:"N/A" }}</td>
+                                <td>{{ item.quantity|default:"0" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="14" class="text-center">데이터가 없습니다.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 전체 선택 체크박스 기능
+    document.getElementById('select-all').addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('#items-table tbody input[type="checkbox"]');
+        for (let checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    });
+
+    // 행 클릭 시 체크박스 토글
+    const rows = document.querySelectorAll('#items-table tbody tr');
+    rows.forEach(row => {
+        row.addEventListener('click', function(e) {
+            if (e.target.tagName.toLowerCase() !== 'input') {
+                const checkbox = this.querySelector('input[type="checkbox"]');
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                }
+            }
+        });
+    });
+
+    const issueFilter = document.getElementById('issue-filter');
+    const reasonFilter = document.getElementById('reason-filter');
+
+    function filterRows() {
+        const issueValue = issueFilter.value.trim();
+        const reasonValue = reasonFilter.value.trim();
+
+        rows.forEach(row => {
+            const issueCell = row.querySelector('.issue-cell');
+            const reasonCell = row.querySelector('.reason-cell');
+
+            if (!issueCell || !reasonCell) return;
+
+            const issueText = issueCell.textContent.trim();
+            const reasonText = reasonCell.textContent.trim();
+
+            let showRow = true;
+
+            // 검수 결과 필터
+            if (issueValue !== '' && issueText !== issueValue) {
+                showRow = false;
+            }
+
+            // 클레임 사유 필터
+            if (reasonValue !== '' && reasonText !== reasonValue) {
+                showRow = false;
+            }
+
+            row.style.display = showRow ? '' : 'none';
+        });
+    }
+
+    // 필터 변경 시 재필터
+    issueFilter.addEventListener('change', filterRows);
+    reasonFilter.addEventListener('change', filterRows);
+
+    // 초기 필터 적용
+    filterRows();
+</script>
+
+<style>
+     :root {
+        --primary-color: #6c5ce7;
+        --secondary-color: #a29bfe;
+        --background-color: #f8f9fa;
+        --text-color: #2d3436;
+        --border-color: #dfe6e9;
+        --table-text-color: #2d3436;
+        --table-background: #ffffff;
+    }
+    
+    body {
+        background-color: var(--background-color);
+        color: var(--text-color);
+    }
+    
+    .container-fluid {
+        max-width: 1400px;
+    }
+    
+    h2 {
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+    
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+    
+    .btn-primary:hover {
+        background-color: var(--secondary-color);
+        border-color: var(--secondary-color);
+    }
+    
+    .card {
+        border: none;
+        border-radius: 15px;
+        overflow: hidden;
+        background-color: #ffffff;
+        color: var(--text-color);
+    }
+    
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    .table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: var(--table-background);
+        color: var(--table-text-color);
+    }
+    
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background-color: var(--primary-color);
+        color: white;
+        z-index: 1;
+        padding: 15px;
+        white-space: nowrap;
+    }
+    
+    .table tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+    
+    .table tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+    
+    .table td,
+    .table th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+    }
+</style>
+{% endblock %}
