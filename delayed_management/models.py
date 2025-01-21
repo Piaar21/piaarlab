@@ -131,6 +131,7 @@ class DelayedShipment(models.Model):
     token = models.CharField(max_length=200, blank=True, null=True)
     changed_option_code = models.CharField(max_length=100, blank=True, null=True)
     message_sent_at = models.DateTimeField(null=True, blank=True)  # 문자 발송된 시간
+    solapi_group_id = models.CharField(max_length=60, blank=True, null=True)
 
 
     def __str__(self):
