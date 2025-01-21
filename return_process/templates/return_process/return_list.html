@@ -42,8 +42,16 @@
             <option value="재고반영">재고반영</option>
             <option value="처리완료">처리완료</option>
         </select>
+
+           <!-- 수취인명 검색 폼 -->
+    <form method="GET" action="" class="d-flex align-items-center ms-3">
+        <input type="text" name="recipient_name" class="form-control" placeholder="수취인명 검색"
+               value="{{ request.GET.recipient_name|default_if_none:'' }}" style="width:200px;">
+        <button type="submit" class="btn btn-secondary ms-2">검색</button>
+    </form>
     </div>
 
+ 
     <div class="card shadow-sm">
         <div class="card-body">
             <!-- 일괄 삭제 버튼 추가 -->

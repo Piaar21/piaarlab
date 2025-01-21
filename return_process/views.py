@@ -68,6 +68,14 @@ def return_list(request):
 
     # 최신 업데이트 기준으로 정렬된 아이템
     return_items = ReturnItem.objects.order_by('-last_update_date')
+
+        # ---- (검색어 필터링) ----
+    search_recipient_name = request.GET.get('recipient_name', '').strip()
+    if search_recipient_name:
+        # 수취인명 컬럼(recipient_name)을 icontains로 필터
+        return_items = return_items.filter(recipient_name__icontains=search_recipient_name)
+
+
     # 총 반품건수
     total_count = return_items.count()
 
