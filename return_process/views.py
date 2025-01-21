@@ -37,6 +37,7 @@ import pandas as pd
 from django.db.models.functions import Coalesce, TruncDate
 from .models import ReturnItem
 from django.db.models import DateTimeField,Count, Q,Sum,Count
+import io
 
 
 
@@ -1242,7 +1243,65 @@ def inspected_items(request):
     # 기존 GET 로직 그대로
     return render(request, 'return_process/inspected_items.html', {'items': items})
 
+def inspected_export_excel(request):
+    if request.method == 'POST':
+        data = json.loads(request.body.decode('utf-8'))
+        ids = data.get('ids', [])
 
+        # items 가져오기
+        items = ReturnItem.objects.filter(id__in=ids)
+
+        # openpyxl로 엑셀 파일 생성
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "선택 항목"
+
+        # 헤더 작성
+        ws.append([
+            "ID", "주문번호", "클레임 종류", "검수 결과", 
+            "클레임 사유", "고객 사유", "사유(노트)", "수거 송장번호",
+            "수거 배송비", "배송비 지급 방식", "스토어명", 
+            "수취인명", "연락처", "옵션코드", 
+            "상품명", "옵션명", "수량", "배송 완료일", 
+            "클레임 요청일", "업데이트 날짜"
+        ])
+        for item in items:
+            ws.append([
+                item.id,  # ID
+                item.order_number,  # 주문번호
+                item.claim_type,  # 클레임 종류
+                item.product_issue,  # 검수 결과
+                item.claim_reason,  # 클레임 사유
+                item.customer_reason,  # 고객 사유
+                item.note,  # 사유(노트)
+                item.collect_tracking_number,  # 수거 송장번호
+                item.return_shipping_charge,  # 수거 배송비
+                item.shipping_charge_payment_method,  # 배송비 지급 방식
+                item.store_name,  # 스토어명
+                item.recipient_name,  # 수취인명
+                item.recipient_contact,  # 연락처
+                item.option_code,  # 옵션코드
+                item.product_name,  # 상품명
+                item.option_name,  # 옵션명
+                item.quantity,  # 수량
+                item.delivered_date.strftime("%Y-%m-%d") if item.delivered_date else "",  # 배송 완료일
+                item.claim_request_date.strftime("%Y-%m-%d") if item.claim_request_date else "",  # 클레임 요청일
+                item.inspected_at.strftime("%Y-%m-%d %H:%M:%S") if item.inspected_at else ""  # 업데이트 날짜
+            ])
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        response = HttpResponse(
+            output,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response['Content-Disposition'] = 'attachment; filename=selected_items.xlsx'
+        return response
+
+    # POST 외 다른 메서드일 때 처리
+    return JsonResponse({"error": "POST only"}, status=400)
 
 @csrf_exempt
 def send_shipping_sms(request):
@@ -1609,80 +1668,61 @@ def home(request):
         return redirect('login')  # 로그인되지 않은 사용자는 로그인 페이지로 이동
 
 
-@login_required
 def download_returned_items(request):
-    """
-    반품완료 목록 테이블 데이터를 엑셀 파일로 다운로드
-    """
-    # 반품완료 목록에 표시되는 동일한 QuerySet
-    # (실제 코드와 동일하게 불러오거나, request.user 필터 등을 걸어서 필요한 데이터만 가져오세요.)
-    items = ReturnItem.objects.filter(processing_status='반품완료')
+    if request.method == 'POST':
+        # 1. 클라이언트에서 보낸 데이터 가져오기
+        data = json.loads(request.body)
+        ids = data.get('ids', [])
 
-    # 1) 새로운 Workbook 생성
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "반품완료목록"
+        # 2. 선택된 항목만 가져오기
+        items = ReturnItem.objects.filter(id__in=ids)
 
-    # 2) 헤더 작성 (원하시는 순서와 컬럼명을 넣어주세요)
-    headers = [
-        "검수 결과",
-        "현재클레임상태",
-        "클레임 종류",
-        "클레임 사유",
-        "고객 사유",
-        "사유",
-        "수거 배송비",
-        "배송비 지급 방식",
-        "주문번호",
-        "스토어명",
-        "수취인명",
-        "연락처",
-        "옵션코드",
-        "상품명",
-        "옵션명",
-        "수량",
-    ]
-    for col_num, header in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col_num, value=header)
-        # 굵게 표시 등 스타일 적용을 원하시면 아래와 같이 하실 수도 있습니다.
-        cell.font = openpyxl.styles.Font(bold=True)
+        # 3. 엑셀 파일 생성
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "선택된 반품 항목"
 
-    # 3) 테이블 내용 작성
-    for row_num, item in enumerate(items, start=2):
-        # 여기서 item은 DB에서 가져온 ReturnedItem 모델의 인스턴스입니다.
-        # 실제 필드명에 맞추어 적절히 대응해 넣어 주세요.
-        ws.cell(row=row_num, column=1, value=item.product_issue or "미검수")
-        ws.cell(row=row_num, column=2, value=item.product_order_status or "N/A")
-        ws.cell(row=row_num, column=3, value=item.claim_type or "N/A")
-        ws.cell(row=row_num, column=4, value=item.claim_reason or "N/A")
-        ws.cell(row=row_num, column=5, value=item.customer_reason or "N/A")
-        ws.cell(row=row_num, column=6, value=item.note or "")
-        ws.cell(row=row_num, column=7, value=item.return_shipping_charge or "0")
-        ws.cell(row=row_num, column=8, value=item.shipping_charge_payment_method or "N/A")
-        ws.cell(row=row_num, column=9, value=item.order_number)
-        ws.cell(row=row_num, column=10, value=item.store_name or "N/A")
-        ws.cell(row=row_num, column=11, value=item.recipient_name or "N/A")
-        ws.cell(row=row_num, column=12, value=item.recipient_contact or "N/A")
-        ws.cell(row=row_num, column=13, value=item.option_code or "N/A")
-        ws.cell(row=row_num, column=14, value=item.product_name or "N/A")
-        ws.cell(row=row_num, column=15, value=item.option_name or "N/A")
-        ws.cell(row=row_num, column=16, value=item.quantity or 0)
+        # 4. 헤더 작성
+        headers = [
+            "검수 결과", "현재클레임상태", "클레임 종류", "클레임 사유",
+            "고객 사유", "사유", "수거 배송비", "배송비 지급 방식",
+            "주문번호", "스토어명", "수취인명", "연락처",
+            "옵션코드", "상품명", "옵션명", "수량",
+        ]
+        for col_num, header in enumerate(headers, start=1):
+            ws.cell(row=1, column=col_num, value=header)
 
+        # 5. 데이터 작성
+        for row_num, item in enumerate(items, start=2):
+            ws.cell(row=row_num, column=1, value=item.product_issue or "미검수")
+            ws.cell(row=row_num, column=2, value=item.product_order_status or "N/A")
+            ws.cell(row=row_num, column=3, value=item.claim_type or "N/A")
+            ws.cell(row=row_num, column=4, value=item.claim_reason or "N/A")
+            ws.cell(row=row_num, column=5, value=item.customer_reason or "N/A")
+            ws.cell(row=row_num, column=6, value=item.note or "")
+            ws.cell(row=row_num, column=7, value=item.return_shipping_charge or "0")
+            ws.cell(row=row_num, column=8, value=item.shipping_charge_payment_method or "N/A")
+            ws.cell(row=row_num, column=9, value=item.order_number)
+            ws.cell(row=row_num, column=10, value=item.store_name or "N/A")
+            ws.cell(row=row_num, column=11, value=item.recipient_name or "N/A")
+            ws.cell(row=row_num, column=12, value=item.recipient_contact or "N/A")
+            ws.cell(row=row_num, column=13, value=item.option_code or "N/A")
+            ws.cell(row=row_num, column=14, value=item.product_name or "N/A")
+            ws.cell(row=row_num, column=15, value=item.option_name or "N/A")
+            ws.cell(row=row_num, column=16, value=item.quantity or 0)
 
-    # 4) 열 너비 자동 조절(선택사항)
-    for col_num in range(1, len(headers) + 1):
-        column_letter = get_column_letter(col_num)
-        ws.column_dimensions[column_letter].auto_size = True  # 일부 엑셀뷰어에선 동작 안 할 수도 있습니다.
+        # 6. 열 너비 조정
+        for col_num in range(1, len(headers) + 1):
+            column_letter = get_column_letter(col_num)
+            ws.column_dimensions[column_letter].width = 15
 
-    # 5) HttpResponse로 엑셀 파일 전송
-    response = HttpResponse(
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    response['Content-Disposition'] = 'attachment; filename="returned_items.xlsx"'
-
-    wb.save(response)
-    return response
-
+        # 7. 엑셀 파일 반환
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="selected_items.xlsx"'
+        wb.save(response)
+        return response
 
 
 # 대시보드

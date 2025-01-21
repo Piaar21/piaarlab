@@ -158,6 +158,50 @@
 
     // 초기 필터 적용
     filterRows();
+
+    // 체크된 항목 ID 가져오기
+    function getCheckedIds() {
+        return Array.from(document.querySelectorAll('.row-checkbox:checked'))
+            .map(chk => chk.value);
+    }
+
+    // 엑셀 다운로드 버튼 클릭 이벤트
+    document.getElementById('export-excel-btn').addEventListener('click', function () {
+        const selectedIds = getCheckedIds();
+        if (!selectedIds.length) {
+            alert("체크된 항목이 없습니다.");
+            return;
+        }
+
+        fetch("{% url 'download_returned_items' %}", { // URL에 매핑된 뷰 함수 호출
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}', // CSRF 토큰 포함
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids: selectedIds }) // 선택된 ID 전송
+        })
+        .then(response => {
+            if (!response.ok) throw new Error("다운로드 실패");
+            return response.blob(); // Blob으로 파일 다운로드
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "selected_items.xlsx"; // 파일명 지정
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 0);
+        })
+        .catch(err => {
+            console.error(err);
+            alert("엑셀 다운로드 실패: " + err.message);
+        });
+    });
 </script>
 
 <style>

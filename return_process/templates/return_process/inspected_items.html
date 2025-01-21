@@ -28,6 +28,10 @@
                 <button type="button" class="btn btn-info mb-3" id="btn-claim-type-return">클레임종류→RETURN</button>
                 <button type="button" class="btn btn-info mb-3" id="btn-claim-type-exchange">클레임종류→EXCHANGE</button>
                 <button type="button" class="btn btn-warning mb-3" id="exchange-dispatch-btn">교환재배송</button>
+                <button type="button" class="btn btn-success mb-3" id="copy-order-numbers-btn">주문번호 복사</button>
+                <button type="button" class="btn btn-success mb-3" id="export-excel-btn">엑셀 다운로드</button>
+
+
                 <!-- 필터 영역 시작 -->
                 <div class="d-flex mb-3 gap-3 align-items-center">
                     <!-- 검수 결과 필터 -->
@@ -56,7 +60,21 @@
                             <option value="단순 변심">단순 변심</option>
                         </select>
                     </div>
+                    <div>
+                        <label for="claim-type-filter" class="form-label me-2">클레임 종류:</label>
+                        <select id="claim-type-filter" class="form-select w-auto">
+                            <option value="">전체</option>
+                            <!-- 실제로 DB에 들어가는 값들에 맞춰 options 작성 -->
+                            <option value="RETURN">RETURN</option>
+                            <option value="EXCHANGE">EXCHANGE</option>
+                            <option value="반품">반품</option>
+                            <option value="교환">교환</option>
+                            <option value="N/A">N/A</option>
+                        </select>
+                    </div>
                 </div>
+
+                
                 <!-- 필터 영역 끝 -->
 
                 <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
@@ -69,7 +87,7 @@
                                 <th>클레임 종류</th>
                                 <th>클레임 사유</th>
                                 <th>고객 사유</th>
-                                <th>사유</th>
+                                <th style="width:400px !important;">사유</th>
                                 <th>수거 송장번호</th>
                                 <th>수거 배송비</th>
                                 <th>배송비 지급 방식</th>
@@ -296,36 +314,48 @@
 
     const issueFilter = document.getElementById('issue-filter');
     const reasonFilter = document.getElementById('reason-filter');
+    const claimTypeFilter = document.getElementById('claim-type-filter');
 
     function filterRows() {
         const issueValue = issueFilter.value.trim();
         const reasonValue = reasonFilter.value.trim();
+        const claimTypeValue = claimTypeFilter.value.trim();
 
         rows.forEach(row => {
-            const issueCell = row.querySelector('.issue-cell');
-            const reasonCell = row.querySelector('.reason-cell');
+            // "검수 결과"는 .issue-cell,
+            // "클레임 사유"는 .reason-cell,
+            // "클레임 종류"는 data-claim_type 속성에서 가져올 수 있습니다.
 
-            if (!issueCell || !reasonCell) return;
-
-            const issueText = issueCell.textContent.trim();
-            const reasonText = reasonCell.textContent.trim();
+            const issueText = row.querySelector('.issue-cell')?.textContent.trim() || '';
+            const reasonText = row.querySelector('.reason-cell')?.textContent.trim() || '';
+            const rowClaimType = row.getAttribute('data-claim_type')?.trim() || '';
 
             let showRow = true;
 
+            // 검수 결과 필터
             if (issueValue !== '' && issueText !== issueValue) {
                 showRow = false;
             }
-
+            // 클레임 사유 필터
             if (reasonValue !== '' && reasonText !== reasonValue) {
                 showRow = false;
             }
+            // 클레임 종류 필터
+            if (claimTypeValue !== '' && rowClaimType !== claimTypeValue) {
+                showRow = false;
+            }
 
+            // 최종 결과에 따라 표시/숨김
             row.style.display = showRow ? '' : 'none';
         });
     }
 
+    // 세 개 필터의 change 이벤트마다 filterRows를 실행
     issueFilter.addEventListener('change', filterRows);
     reasonFilter.addEventListener('change', filterRows);
+    claimTypeFilter.addEventListener('change', filterRows);
+
+    // 페이지 로드 후 초기 호출
     filterRows();
 
     const applyReasonBtn = document.getElementById('apply-reason');
@@ -809,6 +839,69 @@
             showTemporaryMessage(`요청 오류: ${err.message}`);
             });
         }); 
+        const copyOrderNumbersBtn = document.getElementById('copy-order-numbers-btn');
+    copyOrderNumbersBtn.addEventListener('click', () => {
+        // 이미 정의된 헬퍼 getCheckedRows() 활용
+        const checkedRows = getCheckedRows(); 
+        if (checkedRows.length === 0) {
+            showTemporaryMessage('체크한 항목이 없습니다.');
+            return;
+        }
+
+        // data-order_number 속성값들을 모아서 쉼표로 구분
+        const orderNumbers = checkedRows.map(row => row.dataset.order_number);
+        const textToCopy = orderNumbers.join(', ');
+
+        // 클립보드 복사
+        navigator.clipboard.writeText(textToCopy)
+            .then(() => {
+                showTemporaryMessage(`복사 완료: ${textToCopy}`);
+            })
+            .catch(err => {
+                console.error('클립보드 복사 실패:', err);
+                showTemporaryMessage('클립보드 복사 실패');
+            });
+    });
+    const exportExcelBtn = document.getElementById('export-excel-btn');
+    exportExcelBtn.addEventListener('click', function() {
+        const selectedIds = getCheckedIds();
+        if (!selectedIds.length) {
+            alert("체크한 항목이 없습니다.");
+            return;
+        }
+
+        fetch("{% url 'inspected_export_excel' %}", {  // ★ URL 확인
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}', // CSRF 사용 시
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ids: selectedIds })
+        })
+        .then(res => {
+            if (!res.ok) {
+                throw new Error("서버 응답이 정상이 아님(HTTP " + res.status + ")");
+            }
+            return res.blob();
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "selected_items.xlsx";
+            document.body.appendChild(a);
+            a.click();
+
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 0);
+        })
+        .catch(err => {
+            console.error("엑셀 다운로드 오류:", err);
+            alert("엑셀 다운로드 실패: " + err.message);
+        });
+    });
 </script>
 
 <style>
@@ -894,6 +987,11 @@
         overflow: hidden;
         text-overflow: ellipsis;
         max-width: 250px;
+    }
+    .table thead th:nth-child(7),
+    .table tbody td:nth-child(7) {
+        width: 200px !important;
+        min-width: 400px !important;
     }
 </style>
 {% endblock %}
