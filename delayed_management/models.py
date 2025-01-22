@@ -270,6 +270,8 @@ class OptionPlatformDetail(models.Model):
     origin_product_no   = models.CharField(max_length=100, blank=True, null=True)
     updated_at          = models.DateTimeField(auto_now=True)
     seller_tool_stock   = models.IntegerField(default=0)  # 새로운 필드 추가
+    out_of_stock_at = models.DateTimeField(null=True, blank=True)
+
 
     def __str__(self):
         return (
@@ -287,6 +289,7 @@ class OutOfStockMapping(models.Model):
     seller_option_name = models.CharField(max_length=200, blank=True)
     expected_date      = models.CharField(max_length=200, blank=True)
     updated_at         = models.DateTimeField(auto_now=True)
+    out_of_stock_at    = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"[OutOfStock] {self.option_code}"

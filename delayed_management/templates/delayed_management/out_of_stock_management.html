@@ -47,6 +47,11 @@
    onclick="return showAccountModal();">
   상품 업데이트
 </a>
+<a href="#"
+   class="btn btn-warning btn-sm"
+   onclick="return downloadOutOfStockExcel();">
+  품절엑셀다운
+</a>
 
 
 <!-- (B) 모달 (Bootstrap 5) -->
@@ -197,6 +202,7 @@
               <th>셀러툴상품명</th>
               <th>셀러툴옵션명</th>
               <th>옵션코드</th>
+              <th>품절처리시간</th>
             </tr>
           </thead>
           <tbody>
@@ -215,7 +221,7 @@
                   <span class="text-success">판매중</span>
                 {% endif %}
               </td>
-              <td>{{ row.platform_name }}</td>
+              <td>{{ row }}</td>
               <td>
                 {% if row.representative_image %}
                   <img src="{{ row.representative_image }}" style="max-width:50px;">
@@ -232,6 +238,13 @@
               <td>{{ row.seller_product_name }}</td>
               <td>{{ row.seller_option_name }}</td>
               <td>{{ row.option_code }}</td>
+              <td>
+                {% if row.out_of_stock_at %}
+                  {{ row.out_of_stock_at|date:"Y-m-d H:i" }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -643,6 +656,34 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   return false; // <a> 태그 기본이동 막기
+}
+// "품절엑셀다운" 버튼 누르면, 서버에 fetch로 요청 → 오늘 품절된 데이터 엑셀 다운로드
+function downloadOutOfStockExcel() {
+  fetch("{% url 'download_out_of_stock_excel_today' %}", {
+    method: "GET",
+  })
+  .then(res => {
+    if(!res.ok) {
+      throw new Error("서버 응답 에러: HTTP " + res.status);
+    }
+    return res.blob();
+  })
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "today_out_of_stock.xlsx"; // 파일명
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  })
+  .catch(err => {
+    console.error(err);
+    alert("엑셀 다운로드 실패: " + err.message);
+  });
+
+  return false; // a 태그 기본 이동 방지
 }
   </script>
 {% endblock %}
