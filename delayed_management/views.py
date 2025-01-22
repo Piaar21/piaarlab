@@ -1,3 +1,4 @@
+import io
 import openpyxl
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -24,6 +25,8 @@ from django.conf import settings
 from django.utils import timezone
 import json
 from django.views.decorators.http import require_POST
+import datetime
+from openpyxl import Workbook
 
 
 logger = logging.getLogger(__name__)
@@ -2141,73 +2144,79 @@ def out_of_stock_management_view(request):
     combined_rows = []
 
     for out_of_stock in outofstock_qs:
-        # (A) Mapping 찾기
+        # (A) option_code로 매핑 찾기
         om = OptionMapping.objects.filter(option_code=out_of_stock.option_code).first()
+        
         if not om:
-            # (B) "매핑 없음" → 미매칭 (OutOfStockMapping만 존재, detail 없음)
+            # (B) 매핑 없음 => OutOfStockMapping만 존재
             combined_rows.append({
                 "row_type": "outofstock",
-                "row_id":   out_of_stock.id,   # OutOfStockMapping pk
+                "row_id": out_of_stock.id,
                 "option_code": out_of_stock.option_code,
-                "store_name":  out_of_stock.store_name,
+                "store_name": out_of_stock.store_name,
                 "seller_product_name": out_of_stock.seller_product_name,
-                "seller_option_name":  out_of_stock.seller_option_name,
-                "order_product_name":  out_of_stock.order_product_name,
-                "order_option_name":   out_of_stock.order_option_name,
-                "expected_date":       out_of_stock.expected_date,
-                "updated_at":          out_of_stock.updated_at,
-                "is_mapped":           False,
-                "platform_name":       "(미매칭)",
+                "seller_option_name": out_of_stock.seller_option_name,
+                "order_product_name": out_of_stock.order_product_name,
+                "order_option_name": out_of_stock.order_option_name,
+                "expected_date": out_of_stock.expected_date,
+                "updated_at": out_of_stock.updated_at,
+                "is_mapped": False,
+                "platform_name": "(미매칭)",
                 "representative_image": None,
-                "platform_option_id":  None,
-                "stock":               None,
-                "seller_tool_stock":   None,
+                "platform_option_id": None,
+                "stock": None,
+                "seller_tool_stock": None,
+                # (★ 추가) 품절처리시간
+                "out_of_stock_at": out_of_stock.out_of_stock_at,
             })
         else:
             details = om.platform_details.all()
             if not details:
-                # (C1) "매핑은 있지만 detail 없음" → 미매칭
+                # (C1) 매핑은 있지만 detail이 없음 => 미매칭
                 combined_rows.append({
                     "row_type": "outofstock",
-                    "row_id":   out_of_stock.id,  # OutOfStockMapping pk
+                    "row_id": out_of_stock.id,
                     "option_code": om.option_code,
-                    "store_name":  out_of_stock.store_name,
+                    "store_name": out_of_stock.store_name,
                     "seller_product_name": out_of_stock.seller_product_name,
-                    "seller_option_name":  out_of_stock.seller_option_name,
-                    "order_product_name":  out_of_stock.order_product_name,
-                    "order_option_name":   out_of_stock.order_option_name,
-                    "expected_date":       out_of_stock.expected_date,
-                    "updated_at":          out_of_stock.updated_at,
-                    "is_mapped":           False,
-                    "platform_name":       "(미매칭)",
+                    "seller_option_name": out_of_stock.seller_option_name,
+                    "order_product_name": out_of_stock.order_product_name,
+                    "order_option_name": out_of_stock.order_option_name,
+                    "expected_date": out_of_stock.expected_date,
+                    "updated_at": out_of_stock.updated_at,
+                    "is_mapped": False,
+                    "platform_name": "(미매칭)",
                     "representative_image": None,
-                    "platform_option_id":  None,
-                    "stock":               None,
-                    "seller_tool_stock":   None,
+                    "platform_option_id": None,
+                    "stock": None,
+                    "seller_tool_stock": None,
+                    # (★ 추가)
+                    "out_of_stock_at": out_of_stock.out_of_stock_at,
                 })
             else:
                 # (C2) detail 여러 개
                 for d in details:
                     combined_rows.append({
                         "row_type": "detail",
-                        "row_id":   d.id,  # OptionPlatformDetail pk
+                        "row_id": d.id,
                         "option_code": om.option_code,
-                        "store_name":  out_of_stock.store_name,
+                        "store_name": out_of_stock.store_name,
                         "seller_product_name": out_of_stock.seller_product_name,
-                        "seller_option_name":  out_of_stock.seller_option_name,
-                        "order_product_name":  (d.order_product_name or
-                                                out_of_stock.order_product_name),
-                        "order_option_name":   (d.order_option_name or
-                                                out_of_stock.order_option_name),
-                        "expected_date":       out_of_stock.expected_date,
-                        "updated_at":          out_of_stock.updated_at,
-
-                        "is_mapped":         True,
-                        "platform_name":     d.platform_name,
+                        "seller_option_name": out_of_stock.seller_option_name,
+                        "order_product_name": (d.order_product_name
+                                               or out_of_stock.order_product_name),
+                        "order_option_name": (d.order_option_name
+                                              or out_of_stock.order_option_name),
+                        "expected_date": out_of_stock.expected_date,
+                        "updated_at": out_of_stock.updated_at,
+                        "is_mapped": True,
+                        "platform_name": d.platform_name,
                         "representative_image": d.representative_image,
-                        "platform_option_id":  d.platform_option_id,
-                        "stock":             d.stock,
+                        "platform_option_id": d.platform_option_id,
+                        "stock": d.stock,
                         "seller_tool_stock": d.seller_tool_stock,
+                        # (★ 추가) 품절처리시간
+                        "out_of_stock_at": d.out_of_stock_at,
                     })
 
     # 필터 (outofstock/instock/all)
@@ -3025,10 +3034,10 @@ def option_id_stock_update_view(request):
 
 
 def do_out_of_stock_view(request):
-    import logging, json
-    logger = logging.getLogger(__name__)
-
+    import logging
+    import json
     from django.http import JsonResponse
+    from django.utils import timezone  # ← timezone.now() 사용 위해
     from .models import (
         OptionPlatformDetail,
         OutOfStockMapping
@@ -3037,6 +3046,8 @@ def do_out_of_stock_view(request):
         naver_update_option_stock,
         coupang_update_item_stock,
     )
+
+    logger = logging.getLogger(__name__)
 
     if request.method != "POST":
         return JsonResponse({
@@ -3050,20 +3061,21 @@ def do_out_of_stock_view(request):
         return JsonResponse({"success": False, "message": "Invalid JSON body"}, status=400)
 
     raw_list = body.get("detail_ids", [])
+    # 공백 등 제거
     raw_list = [x.strip() for x in raw_list if x.strip()]
     if not raw_list:
         return JsonResponse({"success": False, "message": "선택된 옵션이 없습니다."}, status=400)
 
     updated_count = 0
 
-    # 1) 분리
+    # 1) outofstock_ids / detail_ids 분리
     detail_ids = []
     outofstock_ids = []
 
     for val in raw_list:
         if "-" not in val:
             continue
-        row_type, pk_str = val.split("-",1)
+        row_type, pk_str = val.split("-", 1)
         try:
             pk_val = int(pk_str)
         except ValueError:
@@ -3082,7 +3094,8 @@ def do_out_of_stock_view(request):
             option_id = (d.platform_option_id or "").strip()
             origin_no = (d.origin_product_no or "").strip()
 
-            if platform in ["니뜰리히","수비다","수비다 SUBIDA","노는개최고양","노는 개 최고양","아르빙"]:
+            if platform in ["니뜰리히","수비다","수비다 SUBIDA",
+                            "노는개최고양","노는 개 최고양","아르빙"]:
                 is_ok, msg = naver_update_option_stock(
                     origin_no,
                     option_id,
@@ -3091,10 +3104,12 @@ def do_out_of_stock_view(request):
                 )
                 if is_ok:
                     d.stock = 0
+                    d.out_of_stock_at = timezone.now()  # 품절 시간 기록
                     d.save()
                     updated_count += 1
                 else:
                     logger.warning(f"[NAVER 품절실패] detail.id={d.id}, msg={msg}")
+
             elif platform in ["쿠팡01", "쿠팡02"]:
                 is_ok, msg = coupang_update_item_stock(
                     vendor_item_id=option_id,
@@ -3103,28 +3118,29 @@ def do_out_of_stock_view(request):
                 )
                 if is_ok:
                     d.stock = 0
+                    d.out_of_stock_at = timezone.now()  # 품절 시간 기록
                     d.save()
                     updated_count += 1
                 else:
                     logger.warning(f"[쿠팡 품절실패] detail.id={d.id}, msg={msg}")
+
             else:
                 logger.debug(f"[Unknown Platform] {platform}, skip do_out_of_stock.")
 
-    # 3) outofstock_ids → 미매칭 항목(OutOfStockMapping)
-    #    필요시 여기서도 품절처리(??) or 삭제
+    # 3) outofstock_ids → OutOfStockMapping (미매칭 항목)
     if outofstock_ids:
         out_qs = OutOfStockMapping.objects.filter(id__in=outofstock_ids)
         logger.debug(f"[do_out_of_stock_view] outofstock_ids={outofstock_ids}, qs.count={out_qs.count()}")
-        # 예: out_qs.delete() or pass
-        # updated_count += out_qs.count() if deleting? 
-        pass
+
+        # (★ 여기서 'stock'은 없지만, 품절처리 시점만 기록)
+        count = out_qs.update(out_of_stock_at=timezone.now())
+        updated_count += count
 
     return JsonResponse({
         "success": True,
         "updated_count": updated_count,
         "message": f"{updated_count}건 품절처리 완료."
     })
-
 
 
 def add_stock_9999_view(request):
@@ -3411,3 +3427,112 @@ def update_seller_tool_stock(request):
             "success": False,
             "message": str(e),
         }, status=500)
+    
+
+
+
+def download_out_of_stock_excel_today(request):
+    """
+    OptionPlatformDetail + OutOfStockMapping 에서 
+    오늘 품절처리된(out_of_stock_at이 오늘) 레코드 전부를 
+    '옵션코드, 스토어명, 상품명, 옵션명, 품절처리시간' 형식으로 
+    하나의 엑셀에 담아 다운로드
+    """
+
+    # [1] 오늘 0시 ~ 내일 0시 (KST) 범위
+    now = timezone.localtime()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+
+    # [2] detail 쿼리 (오늘 품절)
+    detail_qs = OptionPlatformDetail.objects.filter(
+        out_of_stock_at__gte=today_start,
+        out_of_stock_at__lt=tomorrow_start
+    )
+
+    # [3] outofstock 쿼리 (오늘 품절)
+    outofstock_qs = OutOfStockMapping.objects.filter(
+        out_of_stock_at__gte=today_start,
+        out_of_stock_at__lt=tomorrow_start
+    )
+
+    logger.debug(f"[download_all_out_of_stock_excel_today] detail.count={detail_qs.count()}, outofstock.count={outofstock_qs.count()}")
+
+    # [4] openpyxl Workbook 생성
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "금일 품절"
+
+    # [5] 헤더 작성
+    headers = ["옵션코드", "스토어명", "상품명", "옵션명", "품절처리시간"]
+    ws.append(headers)
+
+    # [6-A] detail_qs -> 엑셀 행에 추가
+    for d in detail_qs:
+        # 옵션코드
+        option_code = ""
+        if d.option_mapping:
+            option_code = d.option_mapping.option_code or ""
+
+        # 스토어명: platform_name
+        store_name = d.platform_name or ""
+
+        product_name = ""
+        if d.option_mapping:
+            product_name = d.option_mapping.seller_product_name or ""
+
+        option_name = ""
+        if d.option_mapping:
+            option_name = d.option_mapping.seller_option_name or ""    
+
+
+        # 품절처리시간
+        out_of_stock_str = ""
+        if d.out_of_stock_at:
+            out_of_stock_str = d.out_of_stock_at.strftime("%Y-%m-%d %H:%M")
+
+        ws.append([
+            option_code,
+            store_name,
+            product_name,
+            option_name,
+            out_of_stock_str
+        ])
+
+    # [6-B] outofstock_qs -> 엑셀 행에 추가
+    for item in outofstock_qs:
+        # 옵션코드: item.option_code
+        option_code = item.option_code or ""
+        # 스토어명: item.store_name
+        store_name = item.store_name or ""
+        # 상품명: item.seller_product_name
+        product_name = item.seller_product_name or ""
+        # 옵션명: item.seller_option_name
+        option_name = item.seller_option_name or ""
+
+        # 품절처리시간
+        out_of_stock_str = ""
+        if item.out_of_stock_at:
+            out_of_stock_str = item.out_of_stock_at.strftime("%Y-%m-%d %H:%M")
+
+        ws.append([
+            option_code,
+            store_name,
+            product_name,
+            option_name,
+            out_of_stock_str
+        ])
+
+    # [7] 메모리에 저장
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    # [8] 파일 응답
+    filename = "today_out_of_stock.xlsx"
+    response = HttpResponse(
+        output,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

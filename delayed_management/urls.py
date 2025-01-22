@@ -54,5 +54,6 @@ urlpatterns = [
     # (1) 셀러툴 옵션 목록 (GET) - bulk
     path("out-of-stock/update-seller-tool-stock/", views.update_seller_tool_stock, name="update_seller_tool_stock"),
     path('solapi/webhook-message/', views.solapi_webhook_message, name='solapi_webhook_message'),
+    path('download-outofstock-excel-today/', views.download_out_of_stock_excel_today, name='download_out_of_stock_excel_today'),
 
 ]
