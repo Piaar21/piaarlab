@@ -25,8 +25,8 @@ from django.conf import settings
 from django.utils import timezone
 import json
 from django.views.decorators.http import require_POST
-import datetime
 from openpyxl import Workbook
+
 
 
 logger = logging.getLogger(__name__)
