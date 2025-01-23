@@ -337,15 +337,6 @@ def update_restock_from_sheet(request):
     return redirect('restock_management')
 
 
-def post_list_view(request):
-    return render(request, 'delayed_management/post_list.html')
-
-def upload_file_view(request):
-    print("=== DEBUG: upload_file_view 진입 ===")
-    if request.method == 'POST':
-        print("=== DEBUG: upload_file_view POST 요청 ===")
-    return redirect('upload_delayed_orders')
-
 
 
 def upload_store_mapping(request):
@@ -454,31 +445,6 @@ def add_or_update_store_mapping(request):
             messages.error(request, "옵션코드와 스토어명을 모두 입력해주세요.")
     return redirect('upload_store_mapping')
 
-def map_stores_for_shipments(request):
-    """
-    배송지연 목록에서 '스토어 매핑' 버튼을 누르면 실행:
-    DelayedShipment.option_code와 OptionStoreMapping.option_code 매칭 → store_name 업데이트
-    """
-    if request.method == 'POST':
-        shipments = DelayedShipment.objects.all()
-        count_updated = 0
-
-        for ds in shipments:
-            try:
-                mapping = OptionStoreMapping.objects.get(option_code=ds.option_code)
-                # store_name 업데이트
-                ds.store_name = mapping.store_name
-                ds.save()
-                count_updated += 1
-            except OptionStoreMapping.DoesNotExist:
-                # 매핑 없으면 스킵
-                pass
-
-        messages.success(request, f"스토어 매핑 완료: {count_updated}건이 업데이트되었습니다.")
-        return redirect('delayed_shipment_list')
-
-    # GET 요청이면 그냥 목록으로 리다이렉트 (또는 405에러 등)
-    return redirect('delayed_shipment_list')
 
 
 def delayed_shipment_list(request):
@@ -799,13 +765,7 @@ def change_exchangeable_options(request):
     # 아무것도 처리되지 않았다면(None 반환 방지)
     return redirect('delayed_shipment_list')
 
-    
-def delete_delayed_shipment(request, shipment_id):
-    if request.method == 'POST':
-        shipment = get_object_or_404(DelayedShipment, id=shipment_id)
-        shipment.delete()
-        messages.success(request, "삭제가 완료되었습니다.")
-    return redirect('delayed_shipment_list')
+
 
 def delayed_exchange_options_view(request):
 
@@ -868,58 +828,7 @@ def restock_list(request):
         'shipments': shipments,
     })
 
-def restock_update(request):
-    """
-    상태/ETA 조정 폼에서 POST로 수신하는 예시
-    (option_code가 여러 레코드에 중복될 수 있으므로 filter(...)로 일괄 처리)
-    """
-    if request.method == 'POST':
-        option_code = request.POST.get('option_code', '').strip()
-        if not option_code:
-            messages.error(request, "옵션코드가 없습니다.")
-            return redirect('restock_list')
 
-        # 기존: shipment = get_object_or_404(DelayedShipment, option_code=option_code)
-        # 변경: 여러 레코드 filter
-        qs = DelayedShipment.objects.filter(option_code=option_code)
-        if not qs.exists():
-            messages.error(request, f"해당 옵션코드({option_code})를 가진 레코드가 없습니다.")
-            return redirect('restock_list')
-
-        new_status = request.POST.get('status', '').strip()
-        new_eta = request.POST.get('eta', '').strip()
-
-        # (A) 상태 업데이트
-        if new_status:
-            qs.update(status=new_status)
-
-        # (B) ETA(날짜) 업데이트
-        if new_eta:
-            try:
-                y, m, d = new_eta.split('-')
-                parsed_date = date(int(y), int(m), int(d))
-            except ValueError:
-                messages.error(request, "유효한 날짜 형식(YYYY-MM-DD)이 아닙니다.")
-                return redirect('restock_list')
-
-            # 만약 eta 필드가 있다면 (존재한다면)
-            # qs.update(eta=parsed_date)
-            # restock_date도 마찬가지로 필요 시 bulk update 가능
-            #
-            # 혹은 개별 로직이 필요하다면:
-            for shipment in qs:
-                # 예: 기존에 eta가 비어있을 때만 넣겠다
-                if not shipment.eta:
-                    shipment.eta = parsed_date
-                shipment.save()
-
-        updated_count = qs.count()  # 실제 몇 건이 영향을 받았는지
-
-        messages.success(request, f"옵션코드 {option_code}의 {updated_count}건이 업데이트되었습니다.")
-        return redirect('restock_list')
-
-    # GET 등 잘못된 접근은 목록 페이지로 이동
-    return redirect('restock_list')
 
 
 tabs = ["구매된상품들", "배송중", "도착완료", "서류작성", "선적중"]
@@ -1408,6 +1317,11 @@ def solapi_webhook_message(request):
             s.send_type = "KAKAO"
             s.send_status = "SUCCESS"
             logger.debug(f"shipment<{s.id}> => 알림톡 SUCCESS")
+        elif type_ == "ATA" and status_code == "1026":
+            # 문자(LMS) 성공
+            s.send_type = "dupli"
+            s.send_status = "FAIL"
+            logger.debug(f"shipment<{s.id}> => 알림톡 FAIL (duplication)")
         elif type_ == "LMS" and status_code == "4000":
             # 문자(LMS) 성공
             s.send_type = "SMS"
@@ -2129,14 +2043,16 @@ def upload_platform_mapping(request):
 
 
 
-from django.shortcuts import render
-from django.core.paginator import Paginator
-from .models import (
-    OutOfStockMapping,
-    OptionMapping,
-)
+
 
 def out_of_stock_management_view(request):
+    import logging
+    from django.core.paginator import Paginator
+    from django.shortcuts import render
+    from .models import OutOfStockMapping, OptionMapping
+
+    logger = logging.getLogger(__name__)
+
     filter_val = request.GET.get('filter', 'all').strip()
     search_query = request.GET.get('search_query', '').strip()
 
@@ -2144,9 +2060,8 @@ def out_of_stock_management_view(request):
     combined_rows = []
 
     for out_of_stock in outofstock_qs:
-        # (A) option_code로 매핑 찾기
         om = OptionMapping.objects.filter(option_code=out_of_stock.option_code).first()
-        
+
         if not om:
             # (B) 매핑 없음 => OutOfStockMapping만 존재
             combined_rows.append({
@@ -2166,13 +2081,28 @@ def out_of_stock_management_view(request):
                 "platform_option_id": None,
                 "stock": None,
                 "seller_tool_stock": None,
-                # (★ 추가) 품절처리시간
                 "out_of_stock_at": out_of_stock.out_of_stock_at,
+
+                # 기본가/할인가/옵션가/가격차
+                "base_price": None,
+                "discounted_price": None,
+                "option_price": None,
+                "price_gap": None,
             })
         else:
             details = om.platform_details.all()
             if not details:
-                # (C1) 매핑은 있지만 detail이 없음 => 미매칭
+                # (C1) 매핑은 있지만 detail 없음 => 미매칭
+                # base_price / discounted_price 가져오기
+                raw_base_price = om.base_sale_price or 0
+                raw_discount   = om.discounted_price or 0
+
+                # 최종으로 보여줄 "기본가"를 discounted_price가 있으면 그걸로, 없으면 정가
+                if raw_discount > 0:
+                    final_price = raw_discount
+                else:
+                    final_price = raw_base_price
+
                 combined_rows.append({
                     "row_type": "outofstock",
                     "row_id": out_of_stock.id,
@@ -2190,12 +2120,32 @@ def out_of_stock_management_view(request):
                     "platform_option_id": None,
                     "stock": None,
                     "seller_tool_stock": None,
-                    # (★ 추가)
                     "out_of_stock_at": out_of_stock.out_of_stock_at,
+
+                    # (★ 수정) "base_price"를 최종가격으로 보이게
+                    "base_price": final_price,
+                    "discounted_price": raw_discount,
+                    "option_price": None,
+                    "price_gap": raw_base_price - raw_discount,  # 필요 시 유지
                 })
             else:
                 # (C2) detail 여러 개
                 for d in details:
+                    raw_base_price = om.base_sale_price or 0
+                    raw_discount   = om.discounted_price or 0
+                    opt_price      = d.price
+
+                    # 최종 "기본가" = 할인가가 있으면 그것, 없으면 raw_base_price
+                    if raw_discount > 0:
+                        final_price = raw_discount
+                    else:
+                        final_price = raw_base_price
+
+                    # price_gap은 어떻게 계산할지?
+                    # 기존처럼 (base_sale_price - discounted_price)로 유지
+                    price_gap = raw_base_price - raw_discount
+
+
                     combined_rows.append({
                         "row_type": "detail",
                         "row_id": d.id,
@@ -2203,10 +2153,12 @@ def out_of_stock_management_view(request):
                         "store_name": out_of_stock.store_name,
                         "seller_product_name": out_of_stock.seller_product_name,
                         "seller_option_name": out_of_stock.seller_option_name,
-                        "order_product_name": (d.order_product_name
-                                               or out_of_stock.order_product_name),
-                        "order_option_name": (d.order_option_name
-                                              or out_of_stock.order_option_name),
+                        "order_product_name": (
+                            d.order_product_name or out_of_stock.order_product_name
+                        ),
+                        "order_option_name": (
+                            d.order_option_name or out_of_stock.order_option_name
+                        ),
                         "expected_date": out_of_stock.expected_date,
                         "updated_at": out_of_stock.updated_at,
                         "is_mapped": True,
@@ -2215,11 +2167,16 @@ def out_of_stock_management_view(request):
                         "platform_option_id": d.platform_option_id,
                         "stock": d.stock,
                         "seller_tool_stock": d.seller_tool_stock,
-                        # (★ 추가) 품절처리시간
                         "out_of_stock_at": d.out_of_stock_at,
+
+                        # (★ 수정) "base_price"를 최종가격으로 보이게
+                        "base_price": final_price,
+                        "discounted_price": raw_discount,
+                        "option_price": opt_price,
+                        "price_gap": price_gap,
                     })
 
-    # 필터 (outofstock/instock/all)
+    # (D) 필터 (outofstock/instock/all)
     filtered_rows = []
     if filter_val == "outofstock":
         for row in combined_rows:
@@ -2232,7 +2189,7 @@ def out_of_stock_management_view(request):
     else:
         filtered_rows = combined_rows
 
-    # 검색
+    # (E) 검색
     if search_query:
         tmp_results = []
         lower_q = search_query.lower()
@@ -2244,7 +2201,7 @@ def out_of_stock_management_view(request):
                 tmp_results.append(row)
         filtered_rows = tmp_results
 
-    # 페이지네이션
+    # (F) 페이지네이션
     paginator = Paginator(filtered_rows, 100)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
@@ -2261,6 +2218,7 @@ def out_of_stock_management_view(request):
         "search_query": search_query,
     }
     return render(request, "delayed_management/out_of_stock_management.html", context)
+
 
 
 
@@ -2372,149 +2330,6 @@ def out_of_stock_delete_all_view(request):
 
 
 
-# def action_option_mapping(request):
-#     """
-#     하나의 form에서 여러 action(upload_excel, delete_multiple, ST_stock_update 등)을 처리.
-#     여기서는 ST_stock_update 시, 전체 OptionPlatformDetail 에 대해
-#     `seller_tool_stock`를 일괄 업데이트한다.
-#     """
-#     from django.shortcuts import redirect
-#     from django.contrib import messages
-#     import logging
-#     logger = logging.getLogger(__name__)
-
-#     if request.method == "POST":
-#         action = request.POST.get('action','').strip()
-#         logger.debug(f"[action_option_mapping] action={action}")
-
-#         # ─────────────────────────────────────────
-#         # (A) "셀러툴재고 (ST_stock_update)" 버튼
-#         # ─────────────────────────────────────────
-#         if action == 'ST_stock_update':
-#             from .models import OptionPlatformDetail
-#             from .api_clients import get_inventory_by_option_codes
-
-#             # 1) 업데이트 대상: 전체 OptionPlatformDetail (페이지/체크박스 무시)
-#             details_qs = OptionPlatformDetail.objects.select_related('option_mapping').all()
-#             logger.debug(f"[ST_stock_update] details_qs count={details_qs.count()}")
-
-#             if not details_qs.exists():
-#                 messages.warning(request, "업데이트할 OptionPlatformDetail 데이터가 없습니다.")
-#                 return redirect('option_mapping')
-
-#             # 2) 모든 옵션코드(option_mapping.option_code) 수집
-#             code_list = []
-#             for detail_obj in details_qs:
-#                 if detail_obj.option_mapping and detail_obj.option_mapping.option_code:
-#                     code_list.append(detail_obj.option_mapping.option_code)
-#             # 중복제거
-#             code_list = list(set(code_list))
-
-#             logger.debug(f"[ST_stock_update] code_list={code_list}")
-
-#             if not code_list:
-#                 messages.warning(request, "옵션코드가 존재하지 않습니다.")
-#                 return redirect('option_mapping')
-
-#             # 3) 셀러툴 API → 재고 정보 가져오기
-#             stock_map = get_inventory_by_option_codes(code_list)
-#             logger.debug(f"[ST_stock_update] stock_map={stock_map}")
-#             # 예: {"ABC123": 10, "XYZ999": 0, ...}
-
-#             # 4) DB 반영: OptionPlatformDetail 의 `seller_tool_stock` 필드 업데이트
-#             updated_count = 0
-#             for detail_obj in details_qs:
-#                 # detail_obj.option_mapping.option_code 로 셀러툴 측 재고 확인
-#                 if detail_obj.option_mapping:
-#                     code = detail_obj.option_mapping.option_code
-#                     old_stock = getattr(detail_obj, "seller_tool_stock", 0)  # 기존값
-#                     new_stock = stock_map.get(code, 0)                       # API 응답값
-
-#                     if new_stock != old_stock:
-#                         # 바뀐 경우만 update
-#                         detail_obj.seller_tool_stock = new_stock
-#                         detail_obj.save()
-#                         updated_count += 1
-
-#             messages.success(request, f"{updated_count}건의 셀러툴재고가 갱신되었습니다.")
-#             return redirect('option_mapping')
-
-#         # B) 선택 삭제
-#         elif action == 'delete_multiple':
-#             mapping_ids = request.POST.getlist('mapping_ids', [])
-#             logger.debug(f"[delete_multiple] mapping_ids={mapping_ids}")
-            
-#             if not mapping_ids:
-#                 messages.error(request, "삭제할 항목이 선택되지 않았습니다.")
-#                 return redirect('option_mapping')
-
-#             qs = OptionMapping.objects.filter(id__in=mapping_ids)
-#             count = qs.count()
-#             logger.debug(f"[delete_multiple] qs.count={count}")
-#             qs.delete()
-            
-#             messages.success(request, f"{count}건이 삭제되었습니다.")
-#             return redirect('option_mapping')
-
-#         # 그 외 다른 action => 그냥 리다이렉트
-#         messages.warning(request, "알 수 없는 동작입니다.")
-#         return redirect('option_mapping')
-
-#     # GET -> option_mapping 페이지로
-#     return redirect('option_mapping')
-
-
-
-# def option_mapping(request):
-#     """
-#     - 기존 OptionMapping.objects.all() 대신,
-#       OptionPlatformDetail.objects.select_related('option_mapping') 로 목록 구성
-#     - 검색(search_option_code)은 option_mapping__option_code 에 icontains
-#     - 페이지네이션 적용
-#     - 템플릿에 넘길 때는 details로 넘겨주고,
-#       details를 {{ row }} 로 순회하며 row.option_mapping.XXX / row.platform_option_id 등 접근
-#     """
-#     from django.shortcuts import render
-#     from django.core.paginator import Paginator
-#     from .models import OptionPlatformDetail
-
-#     # 검색 파라미터
-#     search_option_code = request.GET.get('search_option_code', '').strip()
-
-#     # 1) QuerySet: platform_details
-#     details_qs = OptionPlatformDetail.objects.select_related('option_mapping').order_by('-updated_at')
-
-#     # 2) 검색 조건: option_mapping__option_code
-#     if search_option_code:
-#         details_qs = details_qs.filter(option_mapping__option_code__icontains=search_option_code)
-
-#     # 3) 페이지네이션
-#     paginator = Paginator(details_qs, 20)
-#     page_number = request.GET.get('page', 1)
-#     page_obj = paginator.get_page(page_number)
-
-#     # elided_page_range
-#     page_range_custom = page_obj.paginator.get_elided_page_range(
-#         page_obj.number, on_each_side=2, on_ends=1
-#     )
-
-#     # 4) 예시: 미매칭 옵션코드 (샘플)
-#     unmatched_options = [
-#         {"option_code": "ABC123", "product_name": "우리상품A"},
-#         {"option_code": "DEF456", "product_name": "우리상품B"},
-#         {"option_code": "GHI789", "product_name": "우리상품C"},
-#     ]
-
-#     context = {
-#         "details": page_obj.object_list,   # ← 페이지 객체의 실제 데이터
-#         "page_obj": page_obj,
-#         "page_range_custom": page_range_custom,
-
-#         "search_option_code": search_option_code,
-#         "unmatched_options": unmatched_options,
-#     }
-#     return render(request, 'delayed_management/option_mapping.html', context)
-
 
 
 def update_naver_product_list(request):
@@ -2531,14 +2346,14 @@ def update_naver_product_list(request):
 
     logger = logging.getLogger(__name__)
 
-    account_name = request.GET.get('account_name', '').strip()
+    account_name = request.GET.get("account_name", "").strip()
     if not account_name:
         return JsonResponse({"error": "account_name이 없습니다."}, status=400)
 
     # 1) 네이버 계정 찾기
     account_info = None
     for acct in NAVER_ACCOUNTS:
-        if account_name in acct['names']:
+        if account_name in acct["names"]:
             account_info = acct
             break
 
@@ -2563,17 +2378,31 @@ def update_naver_product_list(request):
         f"is_ok={is_ok}, detail_list_len={len(detailed_list)}"
     )
 
+    # 전체 detailed_list 로그 (선택)
+    logger.debug(f"[update_naver_product_list] detailed_list dump: {detailed_list}")
+
     flattened_rows = []
 
     # (B) 상세 데이터(ExternalProductItem / ExternalProductOption)
     for idx, prod in enumerate(detailed_list, start=1):
+        logger.debug(f"[update_naver_product_list:RAW] idx={idx}, prod={prod}")
+
         origin_no   = prod.get("originProductNo")
         product_nm  = prod.get("productName", "")
-        rep_img     = prod.get("representativeImage", {})
-        sale_price  = prod.get("salePrice", 0)
+        sale_price  = prod.get("salePrice", 0)         # 정가
+        disc_price  = prod.get("discountedPrice", 0)   # 할인가
         stock_qty   = prod.get("stockQuantity", 0)
-        seller_code_info = prod.get("sellerCodeInfo", {})
 
+        # (★) 여기서 "final_base_price" = 무조건 정가(sale_price)
+        final_base_price = sale_price  
+        logger.debug(
+            f"[update_naver_product_list] idx={idx}, originNo={origin_no}, "
+            f"productName='{product_nm}', salePrice={sale_price}, "
+            f"discountedPrice={disc_price}, final_base_price={final_base_price}"
+        )
+
+        # 대표이미지
+        rep_img = prod.get("representativeImage", {})
         if isinstance(rep_img, dict):
             rep_img_url = rep_img.get("url", "")
         elif isinstance(rep_img, str):
@@ -2581,21 +2410,25 @@ def update_naver_product_list(request):
         else:
             rep_img_url = ""
 
-        seller_mgmt_code = ""
+        # 판매자관리코드
+        seller_code_info = prod.get("sellerCodeInfo", {})
         if isinstance(seller_code_info, dict):
             seller_mgmt_code = seller_code_info.get("sellerManagerCode", "")
         elif isinstance(seller_code_info, str):
             seller_mgmt_code = seller_code_info
+        else:
+            seller_mgmt_code = ""
 
         # (B1) ExternalProductItem upsert
-        product_item, created = ExternalProductItem.objects.update_or_create(
+        #      여기서도 "sale_price" 필드에는 정가만 저장
+        product_item, created_item = ExternalProductItem.objects.update_or_create(
             origin_product_no=origin_no,
             defaults={
-                "product_name": product_nm,
+                "product_name":         product_nm,
                 "representative_image": rep_img_url,
-                "sale_price": sale_price,
-                "stock_quantity": stock_qty,
-                "seller_code_info": seller_mgmt_code,
+                "sale_price":           final_base_price,  # ← 정가
+                "stock_quantity":       stock_qty,
+                "seller_code_info":     seller_mgmt_code,
             }
         )
 
@@ -2603,27 +2436,16 @@ def update_naver_product_list(request):
         option_list = prod.get("optionCombinations", [])
         if not option_list:
             # 옵션 없는 단일상품
-            db_opt, opt_created = ExternalProductOption.objects.update_or_create(
-                product=product_item,
-                option_id=None,
-                defaults={
-                    "store_name": account_name,  # <-- 스토어명 추가
-                    "option_name1": None,
-                    "option_name2": None,
-                    "stock_quantity": 0,
-                    "price": 0,
-                    "seller_manager_code": ""
-                }
-            )
             flattened_rows.append({
-                "option_code": "",      
-                "optionID": "",         
+                "option_code": "",
+                "optionID": "",
                 "representative_image": rep_img_url,
                 "option_name1": "",
                 "option_name2": "",
                 "product_name": product_nm,
                 "option_stock": "",
-                "sale_price": sale_price,
+                "sale_price":   final_base_price,  # 정가
+                "discounted_price": disc_price,
                 "option_price": "",
                 "origin_product_no": origin_no,
             })
@@ -2636,13 +2458,13 @@ def update_naver_product_list(request):
             opt_nm2   = combo.get("optionName2", "")
             opt_stk   = combo.get("stockQuantity", 0)
             opt_price = combo.get("price", 0)
-            opt_code  = combo.get("sellerManagerCode", "")
+            opt_code  = combo.get("sellerManagerCode", "")  
 
             db_opt, created_opt = ExternalProductOption.objects.update_or_create(
                 product=product_item,
                 option_id=opt_id,
                 defaults={
-                    "store_name": account_name,         # <-- 스토어명 추가
+                    "store_name": account_name,
                     "option_name1": opt_nm1,
                     "option_name2": opt_nm2,
                     "stock_quantity": opt_stk,
@@ -2650,7 +2472,10 @@ def update_naver_product_list(request):
                     "seller_manager_code": opt_code
                 }
             )
-            logger.debug(f"      [{combo_idx}/{len(option_list)}] option_id={opt_id}, created={created_opt}")
+            logger.debug(
+                f"  [option {combo_idx}/{len(option_list)}] originNo={origin_no}, "
+                f"opt_id={opt_id}, price={opt_price}, created={created_opt}"
+            )
 
             flattened_rows.append({
                 "option_code": opt_code,
@@ -2660,42 +2485,74 @@ def update_naver_product_list(request):
                 "option_name2": opt_nm2,
                 "product_name": product_nm,
                 "option_stock": opt_stk,
-                "sale_price": sale_price,
+                # 여기서도 sale_price=정가 만 넣음
+                "sale_price":   final_base_price,
+                "discounted_price": disc_price,
                 "option_price": opt_price,
                 "origin_product_no": origin_no,
             })
 
-    # (C) OptionPlatformDetail upsert (동일)
+    # (C) OptionPlatformDetail + OptionMapping 저장
     from .models import OptionPlatformDetail, OptionMapping
-    for row in flattened_rows:
-        code       = row.get("option_code") or ""
-        opt_id     = row.get("optionID") or ""
-        stock_qty  = row.get("option_stock") or 0
-        price_val  = row.get("sale_price") or 0
-        product_nm = row.get("product_name") or ""
 
-        mapping_obj = OptionMapping.objects.filter(option_code=code).first()
-        if not mapping_obj:
+    for row in flattened_rows:
+        code          = row.get("option_code") or ""
+        if not code:
+            # option_code 비어있으면 건너뛴다.
             continue
 
+        opt_id        = row.get("optionID") or ""
+        stock_qty     = row.get("option_stock") or 0
+        price_val     = row.get("option_price") or 0
+        product_nm    = row.get("product_name") or ""
+        final_sale_p  = row.get("sale_price") or 0   # 정가
+        disc_p        = row.get("discounted_price") or 0
+        rep_img       = row.get("representative_image") or ""
+        origin_prodno = row.get("origin_product_no") or ""
+
+        # 1) OptionMapping
+        mapping_obj, created_map = OptionMapping.objects.get_or_create(
+            option_code=code,
+            defaults={
+                "order_product_name": product_nm,
+                "store_name": account_name,
+            }
+        )
+        # (★) 여기가 핵심: base_sale_price = 정가만 저장, discounted_price = disc_p
+        mapping_obj.base_sale_price  = final_sale_p  # 무조건 정가
+        mapping_obj.discounted_price = disc_p        # 할인가(참고용)
+        mapping_obj.save()
+
+        logger.debug(
+            f"[update_naver_product_list:MappingLoop] code={code}, opt_id={opt_id}, "
+            f"base_sale_price={final_sale_p}, discounted_price={disc_p}, price_val={price_val}, "
+            f"created_map={created_map}"
+        )
+
+        # 2) OptionPlatformDetail
         defaults_data = {
             "order_product_name":  product_nm,
             "order_option_name":   f"{row['option_name1']} / {row['option_name2']}".strip(" / "),
             "stock":               stock_qty,
             "price":               price_val,
             "seller_manager_code": code,
-            "representative_image": row.get("representative_image") or "",
-            "origin_product_no":   row.get("origin_product_no") or "",
+            "representative_image": rep_img,
+            "origin_product_no":   origin_prodno,
         }
 
         detail_obj, created_det = OptionPlatformDetail.objects.update_or_create(
             option_mapping     = mapping_obj,
-            platform_name      = account_name,  # 네이버 스토어 이름
+            platform_name      = account_name,
             platform_option_id = str(opt_id),
             defaults={
-                "platform_product_id": str(row["origin_product_no"] or ""),
+                "platform_product_id": str(origin_prodno),
                 **defaults_data
             }
+        )
+        logger.debug(
+            f"[update_naver_product_list:DetailLoop] code={code}, opt_id={opt_id}, "
+            f"final_sale_p={final_sale_p}, discounted_p={disc_p}, price_val={price_val}, "
+            f"created_det={created_det}"
         )
 
     return JsonResponse({
@@ -2703,6 +2560,7 @@ def update_naver_product_list(request):
         "count": len(flattened_rows),
         "products": flattened_rows
     })
+
 
 
 def update_coupang_product_list(request):
@@ -3037,15 +2895,10 @@ def do_out_of_stock_view(request):
     import logging
     import json
     from django.http import JsonResponse
-    from django.utils import timezone  # ← timezone.now() 사용 위해
-    from .models import (
-        OptionPlatformDetail,
-        OutOfStockMapping
-    )
-    from .api_clients import (
-        naver_update_option_stock,
-        coupang_update_item_stock,
-    )
+    from django.utils import timezone
+
+    from .models import OptionPlatformDetail, OutOfStockMapping
+    from .api_clients import naver_update_option_stock, coupang_update_item_stock
 
     logger = logging.getLogger(__name__)
 
@@ -3061,14 +2914,12 @@ def do_out_of_stock_view(request):
         return JsonResponse({"success": False, "message": "Invalid JSON body"}, status=400)
 
     raw_list = body.get("detail_ids", [])
-    # 공백 등 제거
     raw_list = [x.strip() for x in raw_list if x.strip()]
     if not raw_list:
         return JsonResponse({"success": False, "message": "선택된 옵션이 없습니다."}, status=400)
 
     updated_count = 0
 
-    # 1) outofstock_ids / detail_ids 분리
     detail_ids = []
     outofstock_ids = []
 
@@ -3086,7 +2937,7 @@ def do_out_of_stock_view(request):
         elif row_type == "outofstock":
             outofstock_ids.append(pk_val)
 
-    # 2) detail_ids → OptionPlatformDetail
+    # (1) detail_ids → OptionPlatformDetail
     if detail_ids:
         details_qs = OptionPlatformDetail.objects.filter(id__in=detail_ids)
         for d in details_qs:
@@ -3094,23 +2945,40 @@ def do_out_of_stock_view(request):
             option_id = (d.platform_option_id or "").strip()
             origin_no = (d.origin_product_no or "").strip()
 
+            # (A) 옵션 추가금(또는 개별 옵션가)
+            keep_price = d.price or 0
+
+            # (B) 정가(base_sale_price)만 사용
+            base_sale_price = 0
+            if d.option_mapping:
+                base_sale_price = d.option_mapping.base_sale_price or 0
+
+            logger.debug(
+                f"[do_out_of_stock_view] detail.id={d.id}, keep_price={keep_price}, "
+                f"base_sale_price={base_sale_price}, platform={platform}"
+            )
+
             if platform in ["니뜰리히","수비다","수비다 SUBIDA",
                             "노는개최고양","노는 개 최고양","아르빙"]:
+                # 네이버 품절처리 API
                 is_ok, msg = naver_update_option_stock(
-                    origin_no,
-                    option_id,
-                    new_stock=0,
-                    platform_name=platform
+                    origin_no=origin_no,
+                    option_id=option_id,
+                    new_stock=0,            # 재고=0 → 품절
+                    platform_name=platform,
+                    keep_price=keep_price,  # 옵션 추가금
+                    base_sale_price=base_sale_price  # ← 정가
                 )
                 if is_ok:
                     d.stock = 0
-                    d.out_of_stock_at = timezone.now()  # 품절 시간 기록
+                    d.out_of_stock_at = timezone.now()
                     d.save()
                     updated_count += 1
                 else:
                     logger.warning(f"[NAVER 품절실패] detail.id={d.id}, msg={msg}")
 
             elif platform in ["쿠팡01", "쿠팡02"]:
+                # 쿠팡 품절처리
                 is_ok, msg = coupang_update_item_stock(
                     vendor_item_id=option_id,
                     new_stock=0,
@@ -3118,21 +2986,17 @@ def do_out_of_stock_view(request):
                 )
                 if is_ok:
                     d.stock = 0
-                    d.out_of_stock_at = timezone.now()  # 품절 시간 기록
+                    d.out_of_stock_at = timezone.now()
                     d.save()
                     updated_count += 1
                 else:
                     logger.warning(f"[쿠팡 품절실패] detail.id={d.id}, msg={msg}")
-
             else:
                 logger.debug(f"[Unknown Platform] {platform}, skip do_out_of_stock.")
 
-    # 3) outofstock_ids → OutOfStockMapping (미매칭 항목)
+    # (2) outofstock_ids → OutOfStockMapping
     if outofstock_ids:
         out_qs = OutOfStockMapping.objects.filter(id__in=outofstock_ids)
-        logger.debug(f"[do_out_of_stock_view] outofstock_ids={outofstock_ids}, qs.count={out_qs.count()}")
-
-        # (★ 여기서 'stock'은 없지만, 품절처리 시점만 기록)
         count = out_qs.update(out_of_stock_at=timezone.now())
         updated_count += count
 
@@ -3141,6 +3005,7 @@ def do_out_of_stock_view(request):
         "updated_count": updated_count,
         "message": f"{updated_count}건 품절처리 완료."
     })
+
 
 
 def add_stock_9999_view(request):
@@ -3188,26 +3053,50 @@ def add_stock_9999_view(request):
     if detail_ids:
         details_qs = OptionPlatformDetail.objects.filter(id__in=detail_ids)
         for d in details_qs:
-            platform = (d.platform_name or "").strip()
+            platform   = (d.platform_name or "").strip()
+            option_id  = (d.platform_option_id or "").strip()
+            origin_no  = (d.origin_product_no or "").strip()
+
+            # (1) 정가
+            base_sale_price = 0
+            if d.option_mapping:
+                base_sale_price = d.option_mapping.base_sale_price or 0
+
+            # (2) 옵션 추가금(또는 개별가)
+            keep_price = d.price or 0
+
+            logger.debug(
+                f"[add_stock_9999_view] detail.id={d.id}, platform={platform}, "
+                f"base_sale_price={base_sale_price}, keep_price={keep_price}"
+            )
+
             if platform in ["니뜰리히","수비다 SUBIDA","노는 개 최고양","아르빙"]:
+                # (B) put_naver_option_stock_9999 호출
                 is_ok, msg = put_naver_option_stock_9999(
-                    origin_no=d.origin_product_no,
-                    option_id=d.platform_option_id,
-                    platform_name=platform
+                    origin_no=origin_no,
+                    option_id=option_id,
+                    platform_name=platform,
+                    base_sale_price=base_sale_price,
+                    keep_price=keep_price   # ← 옵션가 함께 넘김
                 )
                 if is_ok:
                     d.stock = 9999
                     d.save()
                     updated_count += 1
+                else:
+                    logger.warning(f"[add_stock_9999_view] NAVER 재고 9999 실패: detail.id={d.id}, msg={msg}")
+
             elif platform in ["쿠팡01","쿠팡02"]:
                 is_ok, msg = put_coupang_option_stock_9999(
-                    vendor_item_id=d.platform_option_id,
+                    vendor_item_id=option_id,
                     platform_name=platform
                 )
                 if is_ok:
                     d.stock = 9999
                     d.save()
                     updated_count += 1
+                else:
+                    logger.warning(f"[add_stock_9999_view] 쿠팡 재고 9999 실패: detail.id={d.id}, msg={msg}")
             else:
                 logger.debug(f"[add_stock_9999_view] Unknown platform={platform}")
 
@@ -3216,7 +3105,6 @@ def add_stock_9999_view(request):
         out_qs = OutOfStockMapping.objects.filter(id__in=outofstock_ids)
         logger.debug(f"[add_stock_9999_view] outofstock_ids={outofstock_ids}, qs.count={out_qs.count()}")
         # 필요시 로직(삭제/무시/로그)
-        # updated_count += something if doing an action
         pass
 
     return JsonResponse({
@@ -3228,13 +3116,11 @@ def add_stock_9999_view(request):
 
 def update_seller_tool_and_increase_stock_view(request):
     """
-    1) OutOfStockMapping → option_code들을 모아서,
-    2) OptionPlatformDetail 중 해당 option_code가 있는 항목 전부 찾기
-    3) seller_tool 재고 업데이트 (get_inventory_by_option_codes)
-    4) 차이가 있으면 (새재고 - old재고):
-       - 1~10 증가: 해당만큼 stock+=difference
-       - 11 이상 증가: stock=9999
-    5) 네이버/쿠팡 API 호출도 같이 수행
+    1) OutOfStockMapping → option_code들
+    2) OptionPlatformDetail 중 해당 code가 있는 항목 찾기
+    3) 여러번 나눠서 get_inventory_by_option_codes
+    4) 차이(diff>0) 있으면: <=10 → 재고+diff,  >10 → 9999
+    5) 네이버/쿠팡 API도 같이 (상품가 + 옵션가)
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -3243,14 +3129,19 @@ def update_seller_tool_and_increase_stock_view(request):
 
     from .models import OutOfStockMapping, OptionPlatformDetail
     from .api_clients import (
-        get_inventory_by_option_codes,  # 셀러툴로부터 재고맵을 가져오는 함수 (option_code -> 재고수량)
-        naver_update_option_stock,      # 재고=임의값으로 세팅
-        coupang_update_item_stock,      # 재고=임의값으로 세팅
-        put_naver_option_stock_9999,    # 재고=9999
-        put_coupang_option_stock_9999   # 재고=9999
+        get_inventory_by_option_codes, 
+        naver_update_option_stock,      
+        coupang_update_item_stock,      
+        put_naver_option_stock_9999,    
+        put_coupang_option_stock_9999   
     )
 
-    # 1) OutOfStockMapping 전체 → option_code만 추출
+    # 헬퍼
+    def chunked(seq, size):
+        for i in range(0, len(seq), size):
+            yield seq[i:i+size]
+
+    # (1) OutOfStockMapping 전체 code 수집
     outofstock_list = OutOfStockMapping.objects.all()
     if not outofstock_list.exists():
         messages.warning(request, "OutOfStockMapping(품절관리) 데이터가 없습니다.")
@@ -3260,30 +3151,33 @@ def update_seller_tool_and_increase_stock_view(request):
     for out_item in outofstock_list:
         if out_item.option_code:
             code_list.append(out_item.option_code.strip())
-    code_list = list(set(code_list))  # 중복 제거
+    code_list = list(set(code_list))
 
     if not code_list:
-        messages.warning(request, "옵션코드가 존재하지 않아 셀러툴 재고 업데이트가 불가합니다.")
+        messages.warning(request, "옵션코드가 없어 셀러툴 재고 업데이트 불가.")
         return redirect('out_of_stock_management')
 
     logger.debug(f"[update_seller_tool_and_increase_stock_view] code_list={code_list}")
 
-    # 2) 셀러툴 API를 통해 재고 정보 가져오기
-    stock_map = get_inventory_by_option_codes(code_list)
-    # stock_map 예: { "ABC123": 15, "XYZ777": 999, ... }
+    # (2) 여러번 나눠서 셀러툴 API 조회
+    CHUNK_SIZE = 100
+    stock_map = {}
 
-    # 3) OptionPlatformDetail 중 option_mapping.option_code in code_list
-    #    select_related('option_mapping')로 미리 조인
+    for chunk in chunked(code_list, CHUNK_SIZE):
+        partial_map = get_inventory_by_option_codes(chunk)
+        stock_map.update(partial_map)
+
+    # (3) 해당 code가 있는 OptionPlatformDetail 조회
     details_qs = OptionPlatformDetail.objects.select_related('option_mapping')\
                     .filter(option_mapping__option_code__in=code_list)
     if not details_qs.exists():
-        messages.warning(request, "해당 옵션코드(OutOfStockMapping)와 일치하는 OptionPlatformDetail 데이터가 없습니다.")
+        messages.warning(request, "해당 옵션코드와 일치하는 OptionPlatformDetail가 없습니다.")
         return redirect('out_of_stock_management')
 
     logger.debug(f"[update_seller_tool_and_increase_stock_view] details_qs.count={details_qs.count()}")
 
-    updated_st_count = 0  # 셀러툴재고 수정된 갯수
-    action_count = 0      # 실제 옵션ID재고 증가/9999 처리된 횟수
+    updated_st_count = 0
+    action_count = 0
 
     for detail_obj in details_qs:
         if not detail_obj.option_mapping:
@@ -3291,78 +3185,82 @@ def update_seller_tool_and_increase_stock_view(request):
 
         code = detail_obj.option_mapping.option_code.strip()
         old_seller_tool = detail_obj.seller_tool_stock
-        new_seller_tool = stock_map.get(code, 0)
+        new_seller_tool = stock_map.get(code, 0)  # 셀러툴 재고
 
-        # 3A) "셀러툴재고" 업데이트 (만약 값이 바뀌었다면)
+        # (A) 셀러툴재고 업데이트
         if new_seller_tool != old_seller_tool:
             detail_obj.seller_tool_stock = new_seller_tool
             detail_obj.save()
             updated_st_count += 1
 
-            # 증가 폭 계산
             diff = new_seller_tool - old_seller_tool
             logger.debug(f"[seller_tool diff] code={code}, old={old_seller_tool}, new={new_seller_tool}, diff={diff}")
 
-            # (a) diff>0 이면 옵션ID재고 증가 로직
+            # (B) diff>0 → 실제 옵션 재고 늘림
             if diff > 0:
                 platform = (detail_obj.platform_name or "").strip()
                 origin_no_or_vendor = (detail_obj.origin_product_no or "").strip()
                 opt_id = (detail_obj.platform_option_id or "").strip()
 
+                # (★) "상품 정가" + "옵션 추가금" 가져오기
+                base_sale_price = 0
+                keep_price      = 0
+                if detail_obj.option_mapping:
+                    base_sale_price = detail_obj.option_mapping.base_sale_price or 0
+                keep_price = detail_obj.price or 0  # detail_obj.price = 옵션 추가금
+
                 if diff <= 10:
-                    # (a1) diff <= 10 -> 기존 stock += diff
+                    # (B1) diff <=10 => 재고 += diff
                     new_local_stock = (detail_obj.stock or 0) + diff
-                    # 외부 API update
                     if platform in ["니뜰리히","수비다 SUBIDA","노는 개 최고양","아르빙"]:
-                        # 네이버 update
-                        success, msg = naver_update_option_stock(
+                        ok, msg = naver_update_option_stock(
                             origin_no=origin_no_or_vendor,
                             option_id=opt_id,
                             new_stock=new_local_stock,
-                            platform_name=platform
+                            platform_name=platform,
+                            keep_price=keep_price,        # 옵션 추가금
+                            base_sale_price=base_sale_price  # 정가
                         )
-                        if success:
+                        if ok:
                             detail_obj.stock = new_local_stock
                             detail_obj.save()
                             action_count += 1
 
                     elif platform in ["쿠팡01","쿠팡02"]:
-                        # 쿠팡 update
-                        success, msg = coupang_update_item_stock(
+                        ok, msg = coupang_update_item_stock(
                             vendor_item_id=opt_id,
                             new_stock=new_local_stock,
                             platform_name=platform
                         )
-                        if success:
+                        if ok:
                             detail_obj.stock = new_local_stock
                             detail_obj.save()
                             action_count += 1
 
                 else:
-                    # (a2) diff >= 11 -> 옵션ID재고=9999
+                    # (B2) diff >= 11 => 재고=9999
                     if platform in ["니뜰리히","수비다 SUBIDA","노는 개 최고양","아르빙"]:
-                        # 네이버 9999
-                        success, msg = put_naver_option_stock_9999(
+                        ok, msg = put_naver_option_stock_9999(
                             origin_no=origin_no_or_vendor,
                             option_id=opt_id,
-                            platform_name=platform
+                            platform_name=platform,
+                            base_sale_price=base_sale_price,
+                            keep_price=keep_price
                         )
-                        if success:
+                        if ok:
                             detail_obj.stock = 9999
                             detail_obj.save()
                             action_count += 1
 
                     elif platform in ["쿠팡01","쿠팡02"]:
-                        # 쿠팡 9999
-                        success, msg = put_coupang_option_stock_9999(
+                        ok, msg = put_coupang_option_stock_9999(
                             vendor_item_id=opt_id,
                             platform_name=platform
                         )
-                        if success:
+                        if ok:
                             detail_obj.stock = 9999
                             detail_obj.save()
                             action_count += 1
-            # else: diff <= 0 이면 감소하거나 동일 -> 아무 처리X
 
     messages.success(request,
         f"셀러툴재고 {updated_st_count}건 업데이트 완료! "
@@ -3370,63 +3268,102 @@ def update_seller_tool_and_increase_stock_view(request):
     )
     return redirect('out_of_stock_management')
 
+
+
 @require_POST
 def update_seller_tool_stock(request):
     """
-    (1) OptionPlatformDetail 전체(or 필요한 범위)의 option_code들 모으기
-    (2) 셀러툴 API → 재고조회
-    (3) seller_tool_stock 필드 갱신
-    (4) JSON 응답
+    (1) OutOfStockMapping에서 option_code를 수집
+    (2) 해당 code로 OptionPlatformDetail만 조회
+    (3) code_list를 100개씩 나눠서 셀러툴API 조회
+    (4) seller_tool_stock 갱신
+    (5) 결과: “업데이트 완료 X건, 변경없음 Y건” 표시
     """
+    import logging, json
+    from django.http import JsonResponse
+    from django.views.decorators.http import require_POST
+
+    from .models import OutOfStockMapping, OptionPlatformDetail
+    from .api_clients import get_inventory_by_option_codes
+
+    logger = logging.getLogger(__name__)
+
     try:
-        # 1) 전체(혹은 특정 조건) OptionPlatformDetail
-        details_qs = OptionPlatformDetail.objects.select_related('option_mapping').all()
-        if not details_qs.exists():
+        # (A) out_of_stock_management_view에 표시될 code들
+        outofstock_qs = OutOfStockMapping.objects.all()
+        if not outofstock_qs.exists():
             return JsonResponse({
                 "success": False,
-                "message": "OptionPlatformDetail 데이터가 없습니다."
-            })
+                "message": "OutOfStockMapping 데이터가 없어 업데이트할 항목이 없습니다."
+            }, status=400)
 
-        # 2) option_code 수집
         code_list = []
-        for detail in details_qs:
-            if detail.option_mapping and detail.option_mapping.option_code:
-                code_list.append(detail.option_mapping.option_code)
+        for o in outofstock_qs:
+            code = (o.option_code or "").strip()
+            if code:
+                code_list.append(code)
         code_list = list(set(code_list))  # 중복 제거
 
         if not code_list:
             return JsonResponse({
                 "success": False,
-                "message": "옵션코드가 없어 업데이트 불가"
-            })
+                "message": "OutOfStockMapping에 option_code가 없어 업데이트 불가"
+            }, status=400)
 
-        # 3) 셀러툴 API 호출
-        #    예: get_inventory_by_option_codes(["ABC123",...]) → { "ABC123":10, ... }
-        from .api_clients import get_inventory_by_option_codes
-        stock_map = get_inventory_by_option_codes(code_list)
+        # (B) OptionPlatformDetail: 이 code들만
+        details_qs = OptionPlatformDetail.objects.select_related('option_mapping')\
+            .filter(option_mapping__option_code__in=code_list)
 
-        # 4) 갱신
+        if not details_qs.exists():
+            return JsonResponse({
+                "success": False,
+                "message": "해당 option_code와 매핑된 OptionPlatformDetail이 없습니다."
+            }, status=400)
+
+        # (C) 여러번 나눠서 셀러툴 API 호출
+        CHUNK_SIZE = 100
+        stock_map = {}
+
+        def chunked(seq, size):
+            for i in range(0, len(seq), size):
+                yield seq[i : i + size]
+
+        for chunk in chunked(code_list, CHUNK_SIZE):
+            partial_map = get_inventory_by_option_codes(chunk)
+            stock_map.update(partial_map)
+
+        # (D) 갱신
         updated_count = 0
+        unchanged_count = 0  # 변경 없음
+
         for detail in details_qs:
             if detail.option_mapping:
                 code = detail.option_mapping.option_code
-                old_val = detail.seller_tool_stock or 0  # 필드명 가정
+                old_val = detail.seller_tool_stock or 0
                 new_val = stock_map.get(code, 0)
+
                 if new_val != old_val:
                     detail.seller_tool_stock = new_val
                     detail.save()
                     updated_count += 1
+                else:
+                    unchanged_count += 1
 
         return JsonResponse({
             "success": True,
-            "message": f"셀러툴 재고 업데이트 완료! ({updated_count}건 갱신)"
+            "message": (
+                f"[update_seller_tool_stock] 셀러툴 재고 업데이트 완료! "
+                f"(업데이트: {updated_count}건, 변경없음: {unchanged_count}건)"
+            )
         })
 
     except Exception as e:
+        logger.exception("[update_seller_tool_stock] 예외발생")
         return JsonResponse({
             "success": False,
             "message": str(e),
         }, status=500)
+
     
 
 

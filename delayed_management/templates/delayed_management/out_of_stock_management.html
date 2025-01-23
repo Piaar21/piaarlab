@@ -202,6 +202,8 @@
               <th>셀러툴상품명</th>
               <th>셀러툴옵션명</th>
               <th>옵션코드</th>
+              <th>기본가</th>
+              <th>옵션가</th>
               <th>품절처리시간</th>
             </tr>
           </thead>
@@ -238,6 +240,8 @@
               <td>{{ row.seller_product_name }}</td>
               <td>{{ row.seller_option_name }}</td>
               <td>{{ row.option_code }}</td>
+              <td>{{ row.base_price }}</td>
+              <td>{{ row.option_price }}</td>
               <td>
                 {% if row.out_of_stock_at %}
                   {{ row.out_of_stock_at|date:"Y-m-d H:i" }}

@@ -459,6 +459,14 @@ def fetch_naver_products_with_details(account_info):
         if ch_products:
             product_name = ch_products[0].get("name", "(상품명없음)")
 
+        # (2) ★ 여기서 discountedPrice 추출!
+        discounted_price_api = 0
+        if ch_products:
+            discounted_price_api = ch_products[0].get("discountedPrice", 0)
+            # 만약 mobileDiscountedPrice를 우선 사용하고 싶다면:
+            # discounted_price_api = ch_products[0].get("mobileDiscountedPrice", 0) or ch_products[0].get("discountedPrice", 0)
+        
+        
         if not origin_no:
             # 상품번호가 없으면 skip
             continue
@@ -475,6 +483,7 @@ def fetch_naver_products_with_details(account_info):
             "productName": product_name,
             "representativeImage": detail_info.get("representativeImage"),
             "salePrice": detail_info.get("salePrice"),
+            "discountedPrice": discounted_price_api,   # ★ NEW
             "stockQuantity": detail_info.get("stockQuantity"),
             "sellerCodeInfo": detail_info.get("sellerCodeInfo"),
             "optionCombinations": detail_info.get("optionCombinations", []),
@@ -980,7 +989,14 @@ def get_coupang_item_inventories(account_info, vendor_item_id):
         return False, str(e)
 
 
-def naver_update_option_stock(origin_no, option_id, new_stock=0, platform_name=None):
+def naver_update_option_stock(
+    origin_no,
+    option_id,
+    new_stock=0,
+    platform_name=None,
+    keep_price=0,
+    base_sale_price=0
+):
     """
     네이버 옵션 재고=0 (품절) 
     → 'price' 필드를 제거하고, stockQuantity만 업데이트.
@@ -1013,17 +1029,27 @@ def naver_update_option_stock(origin_no, option_id, new_stock=0, platform_name=N
     #    - 여기서는 "변경 X"를 가정하되, API는 필수 필드이므로
     #      일단 10000으로 예시.
     #    - 실제로는 원본 상품 조회 -> 해당 상품의 salePrice를 넣으면 안전합니다.
+
+    if keep_price is None:
+        # (선택) 만약 DB 값이 없으면, 안전하게 네이버 GET API로 상품을 조회해서 가져오거나,
+        #        기본값(예: 10000)이라도 넣는 방식이 필요할 수 있음
+        keep_price = 10000
+
     body = {
-      "optionInfo": {
-        "optionCombinations": [
-          {
-            "id": int(option_id),
-            # "price": 0   # ← 제거! 가격은 건드리지 않는다
-            "stockQuantity": new_stock
-          }
-        ]
-      }
+        "productSalePrice": {
+            "salePrice": base_sale_price  # 상품 기본가(정가 or 할인가)
+        },
+        "optionInfo": {
+            "optionCombinations": [
+                {
+                    "id": int(option_id),
+                    "price": keep_price,      # 이 옵션의 추가금(혹은 단독가)
+                    "stockQuantity": new_stock
+                }
+            ]
+        }
     }
+    logger.debug(f"[naver_update_option_stock] body={body}")
 
     url = f"https://api.commerce.naver.com/external/v1/products/origin-products/{origin_no}/option-stock"
     headers = {
@@ -1126,7 +1152,7 @@ def coupang_update_item_stock(vendor_item_id, new_stock=0, platform_name=None):
         return False, str(e)
 
 
-def put_naver_option_stock_9999(origin_no, option_id, platform_name=None):
+def put_naver_option_stock_9999(origin_no, option_id, platform_name=None,base_sale_price=0,keep_price=0):
     """
     네이버 옵션 재고를 9999로 (가득 채우는) 예시.
     PUT /v1/products/origin-products/{originNo}/option-stock
@@ -1159,12 +1185,15 @@ def put_naver_option_stock_9999(origin_no, option_id, platform_name=None):
     if not access_token:
         return False, "[put_naver_option_stock_9999] 토큰 발급 실패"
 
-    # (C) API 요청 바디: 재고만 9999로 설정, 가격은 변경 안 함
     body = {
+        "productSalePrice": {
+            "salePrice": base_sale_price
+        },
         "optionInfo": {
             "optionCombinations": [
                 {
                     "id": int(option_id),
+                    "price": keep_price,       # 옵션 추가금
                     "stockQuantity": 9999
                 }
             ]

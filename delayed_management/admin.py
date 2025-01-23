@@ -1,4 +1,5 @@
 # delayed_management/admin.py
+
 from django.contrib import admin
 from .models import (
     ExternalProductItem,
@@ -23,7 +24,7 @@ class ExternalProductItemAdmin(admin.ModelAdmin):
     inlines = [ExternalProductOptionInline]
 
     list_display = (
-        "id",                     # Django 기본 PK
+        "id",                    
         "origin_product_no",
         "product_name",
         "representative_image",
@@ -42,8 +43,7 @@ class ExternalProductItemAdmin(admin.ModelAdmin):
 @admin.register(ExternalProductOption)
 class ExternalProductOptionAdmin(admin.ModelAdmin):
     """
-    만약 ExternalProductOption을 독립적으로도 보고 싶다면 등록
-    (Inline만 쓰고, 여기선 굳이 안 써도 되긴 함)
+    ExternalProductOption 모델을 독립적으로도 표시
     """
     list_display = (
         "id",
@@ -54,12 +54,15 @@ class ExternalProductOptionAdmin(admin.ModelAdmin):
         "stock_quantity",
         "price",
         "seller_manager_code",
+        "seller_tool_stock",   # ★ 추가 표시
+        "store_name",          # ★ 추가 표시
     )
     search_fields = (
         "option_id",
         "option_name1",
         "option_name2",
         "seller_manager_code",
+        "store_name",
     )
 
 
@@ -88,6 +91,9 @@ class OptionMappingAdmin(admin.ModelAdmin):
         "expected_date",
         "expected_start",
         "expected_end",
+        # ★ 추가
+        "base_sale_price",
+        "discounted_price",
         "updated_at",
     )
     search_fields = (
@@ -109,7 +115,7 @@ class OptionPlatformDetailAdmin(admin.ModelAdmin):
     """
     list_display = (
         "id",
-        "option_mapping",       # FK
+        "option_mapping",       
         "platform_name",
         "platform_product_id",
         "platform_option_id",
@@ -121,6 +127,8 @@ class OptionPlatformDetailAdmin(admin.ModelAdmin):
         "representative_image",
         "origin_product_no",
         "updated_at",
+        "seller_tool_stock",   # 이미 포함되어 있다면 생략
+        "out_of_stock_at",
     )
     search_fields = (
         "platform_name",
@@ -136,7 +144,6 @@ class OptionPlatformDetailAdmin(admin.ModelAdmin):
 
 @admin.register(DelayedShipment)
 class DelayedShipmentAdmin(admin.ModelAdmin):
-    # ① 리스트 화면에서 보여줄 필드들
     list_display = (
         'id',
         'order_number_1',
@@ -145,11 +152,7 @@ class DelayedShipmentAdmin(admin.ModelAdmin):
         'customer_name',
         'status',
         'send_status',
-        'token',   # <- token 필드를 리스트에 표시
+        'token',  
     )
-    
-    # ② 필터 기능(필요하다면)
     list_filter = ('status', 'send_status', 'store_name')
-
-    # ③ 검색 기능(필요하다면)
     search_fields = ('order_number_1', 'option_code', 'customer_name', 'token')
