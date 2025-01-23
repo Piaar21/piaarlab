@@ -2362,7 +2362,6 @@ def update_naver_product_list(request):
         logger.warning(msg)
         return JsonResponse({"error": msg}, status=400)
 
-    logger.info(f"[update_naver_product_list] Found account_info: {account_info}")
 
     # 2) 네이버 상품/옵션 목록 가져오기
     is_ok, detailed_list = fetch_naver_products_with_details(account_info)
@@ -2373,19 +2372,19 @@ def update_naver_product_list(request):
             status=400
         )
 
-    logger.debug(
-        f"[update_naver_product_list] fetch_naver_products_with_details → "
-        f"is_ok={is_ok}, detail_list_len={len(detailed_list)}"
-    )
+    # logger.debug(
+    #     f"[update_naver_product_list] fetch_naver_products_with_details → "
+    #     f"is_ok={is_ok}, detail_list_len={len(detailed_list)}"
+    # )
 
     # 전체 detailed_list 로그 (선택)
-    logger.debug(f"[update_naver_product_list] detailed_list dump: {detailed_list}")
+    # logger.debug(f"[update_naver_product_list] detailed_list dump: {detailed_list}")
 
     flattened_rows = []
 
     # (B) 상세 데이터(ExternalProductItem / ExternalProductOption)
     for idx, prod in enumerate(detailed_list, start=1):
-        logger.debug(f"[update_naver_product_list:RAW] idx={idx}, prod={prod}")
+        # logger.debug(f"[update_naver_product_list:RAW] idx={idx}, prod={prod}")
 
         origin_no   = prod.get("originProductNo")
         product_nm  = prod.get("productName", "")
@@ -2395,11 +2394,11 @@ def update_naver_product_list(request):
 
         # (★) 여기서 "final_base_price" = 무조건 정가(sale_price)
         final_base_price = sale_price  
-        logger.debug(
-            f"[update_naver_product_list] idx={idx}, originNo={origin_no}, "
-            f"productName='{product_nm}', salePrice={sale_price}, "
-            f"discountedPrice={disc_price}, final_base_price={final_base_price}"
-        )
+        # logger.debug(
+        #     f"[update_naver_product_list] idx={idx}, originNo={origin_no}, "
+        #     f"productName='{product_nm}', salePrice={sale_price}, "
+        #     f"discountedPrice={disc_price}, final_base_price={final_base_price}"
+        # )
 
         # 대표이미지
         rep_img = prod.get("representativeImage", {})
@@ -2472,10 +2471,10 @@ def update_naver_product_list(request):
                     "seller_manager_code": opt_code
                 }
             )
-            logger.debug(
-                f"  [option {combo_idx}/{len(option_list)}] originNo={origin_no}, "
-                f"opt_id={opt_id}, price={opt_price}, created={created_opt}"
-            )
+            # logger.debug(
+            #     f"  [option {combo_idx}/{len(option_list)}] originNo={origin_no}, "
+            #     f"opt_id={opt_id}, price={opt_price}, created={created_opt}"
+            # )
 
             flattened_rows.append({
                 "option_code": opt_code,
@@ -2523,11 +2522,11 @@ def update_naver_product_list(request):
         mapping_obj.discounted_price = disc_p        # 할인가(참고용)
         mapping_obj.save()
 
-        logger.debug(
-            f"[update_naver_product_list:MappingLoop] code={code}, opt_id={opt_id}, "
-            f"base_sale_price={final_sale_p}, discounted_price={disc_p}, price_val={price_val}, "
-            f"created_map={created_map}"
-        )
+        # logger.debug(
+        #     f"[update_naver_product_list:MappingLoop] code={code}, opt_id={opt_id}, "
+        #     f"base_sale_price={final_sale_p}, discounted_price={disc_p}, price_val={price_val}, "
+        #     f"created_map={created_map}"
+        # )
 
         # 2) OptionPlatformDetail
         defaults_data = {
@@ -2549,11 +2548,11 @@ def update_naver_product_list(request):
                 **defaults_data
             }
         )
-        logger.debug(
-            f"[update_naver_product_list:DetailLoop] code={code}, opt_id={opt_id}, "
-            f"final_sale_p={final_sale_p}, discounted_p={disc_p}, price_val={price_val}, "
-            f"created_det={created_det}"
-        )
+        # logger.debug(
+        #     f"[update_naver_product_list:DetailLoop] code={code}, opt_id={opt_id}, "
+        #     f"final_sale_p={final_sale_p}, discounted_p={disc_p}, price_val={price_val}, "
+        #     f"created_det={created_det}"
+        # )
 
     return JsonResponse({
         "message": f"{account_name} 상품목록(옵션별 행) 업데이트 & DB 저장 완료",
@@ -2700,9 +2699,9 @@ def update_coupang_product_list(request):
                 "origin_product_no":    row.get("originProductNo", "") or row.get("sellerProductId", ""),
             })
 
-    logger.info(
-        f"[update_coupang_product_list] 최종 Flattened={len(grand_flattened)} rows 저장 완료."
-    )
+    # logger.info(
+    #     f"[update_coupang_product_list] 최종 Flattened={len(grand_flattened)} rows 저장 완료."
+    # )
 
     return JsonResponse({
         "message": f"{account_name} 상품목록(옵션별 행) 업데이트 & DB 저장 완료",
