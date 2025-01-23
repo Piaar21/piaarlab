@@ -47,6 +47,7 @@ SEND_TYPE_CHOICES = [
     ('sms', '문자'),
     ('kakao', '알림톡'),
     ('webhook','대기중'),
+    ('dupli','중복'),
 ]
 
 SEND_STATUS_CHOICES = [
@@ -240,6 +241,8 @@ class OptionMapping(models.Model):
     expected_start      = models.DateField(null=True, blank=True)
     expected_end        = models.DateField(null=True, blank=True)
     updated_at          = models.DateTimeField(auto_now=True)
+    base_sale_price     = models.IntegerField(default=0, blank=True, null=True)
+    discounted_price    = models.IntegerField(default=0, blank=True, null=True)
 
     def __str__(self):
         return f"{self.option_code}"
