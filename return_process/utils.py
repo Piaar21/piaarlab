@@ -60,7 +60,7 @@ def update_returns_logic():
             continue
 
         for return_data in naver_returns:
-            logger.info("네이버 API로부터 받은 원본 데이터(JSON):")
+            # logger.info("네이버 API로부터 받은 원본 데이터(JSON):")
             logger.info(json.dumps(return_data, ensure_ascii=False, indent=4))
 
             product_order = return_data.get('productOrder', {})
