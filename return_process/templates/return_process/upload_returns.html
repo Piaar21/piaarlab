@@ -1,9 +1,0 @@
-<!-- templates/return_process/upload_returns.html -->
-{% extends 'return_process_base.html' %} {% block content %}
-<h2>반품 데이터 업로드</h2>
-<form method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    <input type="file" name="excel_file">
-    <button type="submit">업로드</button>
-</form>
-{% endblock %}
