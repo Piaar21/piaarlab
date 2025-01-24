@@ -259,7 +259,7 @@ def fetch_naver_products(account_info):
         "searchKeywordType": "SELLER_CODE",
         "productStatusTypes": ["SALE","OUTOFSTOCK"],
         "page": 1,
-        "size": 1,
+        "size": 100,
         "orderType": "NO",
     }
 
