@@ -2378,7 +2378,7 @@ def update_naver_product_list(request):
     # )
 
     # 전체 detailed_list 로그 (선택)
-    logger.debug(f"[update_naver_product_list] detailed_list dump: {detailed_list}")
+    # logger.debug(f"[update_naver_product_list] detailed_list dump: {detailed_list}")
 
     flattened_rows = []
 

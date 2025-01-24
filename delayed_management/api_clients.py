@@ -259,7 +259,7 @@ def fetch_naver_products(account_info):
         "searchKeywordType": "SELLER_CODE",
         "productStatusTypes": ["SALE","OUTOFSTOCK"],
         "page": 1,
-        "size": 100,
+        "size": 1,
         "orderType": "NO",
     }
 
@@ -409,10 +409,10 @@ def get_naver_minimal_product_info(account_info, origin_product_no):
                     "sellerManagerCode": seller_mgmt_code
                 }
 
-                logger.debug(
-                    "[DEBUG get_naver_minimal_product_info] originNo=%s -> result=%s",
-                    origin_product_no, result
-                )
+                # logger.debug(
+                #     "[DEBUG get_naver_minimal_product_info] originNo=%s -> result=%s",
+                #     origin_product_no, result
+                # )
 
                 return True, result
 
@@ -493,10 +493,10 @@ def fetch_naver_products_with_details(account_info):
 
         detailed_list.append(merged)
 
-        logger.debug(
-            "[DEBUG fetch_naver_products_with_details] item=%s => merged=%s",
-            item, merged
-        )
+        # logger.debug(
+        #     "[DEBUG fetch_naver_products_with_details] item=%s => merged=%s",
+        #     item, merged
+        # )
 
         # 각 상품 조회 후 1초 쉬기 (429 방지)
         time.sleep(1)
