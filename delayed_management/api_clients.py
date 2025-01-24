@@ -255,14 +255,13 @@ def fetch_naver_products(account_info):
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
-    for page_num in range(1, max_page+1):
-        payload = {
-            "searchKeywordType": "SELLER_CODE",
-            "productStatusTypes": ["SALE","OUTOFSTOCK"],
-            "page": page_num,
-            "size": 50,  # <- 50 단위씩 요청
-            "orderType": "NO",
-        }
+    payload = {
+        "searchKeywordType": "SELLER_CODE",
+        "productStatusTypes": ["SALE","OUTOFSTOCK"],
+        "page": 1,
+        "size": 100,
+        "orderType": "NO",
+    }
 
     MAX_RETRIES = 3
     retry_count = 0
@@ -272,6 +271,7 @@ def fetch_naver_products(account_info):
             resp = requests.post(url, headers=headers, json=payload, timeout=30)
             logger.debug(f"[fetch_naver_products] status_code={resp.status_code}")
             logger.debug(f"[fetch_naver_products] response snippet => {resp.text[:300]}")
+
             # 1) 응답 헤더에서 남은 호출 횟수 확인
             remain_str = resp.headers.get("GNCP-GW-RateLimit-Remaining")
             if remain_str is not None:
