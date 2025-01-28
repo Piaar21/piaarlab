@@ -7,6 +7,7 @@ from .models import (
     OptionMapping,
     OptionPlatformDetail,
     DelayedShipment,
+    OutOfStock,
 )
 
 ## 1) ExternalProductOption: Inline
@@ -156,3 +157,35 @@ class DelayedShipmentAdmin(admin.ModelAdmin):
     )
     list_filter = ('status', 'send_status', 'store_name')
     search_fields = ('order_number_1', 'option_code', 'customer_name', 'token')
+
+
+@admin.register(OutOfStock)
+class OutOfStockAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'platform_name',
+        # 'representative_image',
+        'product_id',
+        'option_id',
+        'option_id_stock',
+        'order_product_name',
+        'order_option_name_01',
+        'order_option_name_02',
+        'option_code',
+        'original_price',
+        'sale_price',
+        'add_option_price',
+        'out_of_stock_at',
+        'updated_at',
+    )
+    list_filter = ('platform_name',)  # 필요 시 다른 필드 추가
+    search_fields = (
+        'platform_name',          # 플랫폼명으로 검색
+        'option_code',            # 옵션코드로 검색
+        'product_id',
+        'option_id',
+        'order_product_name',
+        'order_option_name_01',
+        'order_option_name_02',
+    )
+    ordering = ('-id',)

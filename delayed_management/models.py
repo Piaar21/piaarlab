@@ -296,3 +296,30 @@ class OutOfStockMapping(models.Model):
 
     def __str__(self):
         return f"[OutOfStock] {self.option_code}"
+    
+class OutOfStock(models.Model):
+    status = models.IntegerField(default=0, verbose_name="표시상태")
+    platform_name = models.CharField(max_length=100, verbose_name='플랫폼명')
+    representative_image = models.URLField(max_length=500, blank=True, null=True, verbose_name='대표이미지')
+    product_id = models.CharField(max_length=50, verbose_name='상품ID')
+    option_id = models.CharField(max_length=50, unique=True, verbose_name='옵션ID')
+    option_id_stock = models.IntegerField(default=0, verbose_name='옵션ID재고')
+    seller_tool_stock = models.IntegerField(default=0, verbose_name='셀러툴재고')
+    expected_restock_date = models.DateTimeField(blank=True, null=True, verbose_name='예상날짜')
+    order_product_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='주문상품명')
+    order_option_name_01 = models.CharField(max_length=200, blank=True, null=True, verbose_name='주문옵션명01')
+    order_option_name_02 = models.CharField(max_length=200, blank=True, null=True, verbose_name='주문옵션명02')
+    seller_product_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='셀러툴상품명')
+    seller_option_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='셀러툴옵션명')
+    option_code = models.CharField(max_length=100, blank=True, null=True, verbose_name='옵션코드')
+    original_price = models.IntegerField(default=0, verbose_name='정가')
+    sale_price     = models.IntegerField(default=0, verbose_name='할인가')
+    add_option_price = models.IntegerField(default=0, verbose_name='추가옵션가')
+    out_of_stock_at = models.DateTimeField(blank=True, null=True, verbose_name='품절처리시간')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='업데이트시간')
+    class Meta:
+        verbose_name = '재고품절'
+        verbose_name_plural = '재고품절 목록'
+    def __str__(self): return f"[{self.platform_name}] {self.product_id} (옵션ID={self.option_id})"
+
+
