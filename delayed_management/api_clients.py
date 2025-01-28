@@ -243,7 +243,6 @@ def get_access_token(account_info):
 
 
 def fetch_naver_products(account_info):
-    
 
     access_token = fetch_naver_access_token(account_info)
     if not access_token:
@@ -255,67 +254,97 @@ def fetch_naver_products(account_info):
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "searchKeywordType": "SELLER_CODE",
-        "productStatusTypes": ["SALE","OUTOFSTOCK"],
-        "page": 1,
-        "size": 100,
-        "orderType": "NO",
-    }
 
+    # 페이지네이션 설정
+    PAGE_SIZE = 50   # 1회당 가져올 상품 개수
     MAX_RETRIES = 3
-    retry_count = 0
 
-    while retry_count < MAX_RETRIES:
-        try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=30)
-            logger.debug(f"[fetch_naver_products] status_code={resp.status_code}")
-            logger.debug(f"[fetch_naver_products] response snippet => {resp.text[:300]}")
+    all_products = []  # 모든 페이지에서 가져온 상품 누적 리스트
+    current_page = 1
+    total_pages = 1    # 일단 1로 시작 (실제 API 응답에서 totalElements 활용 가능)
+    
+    while True:
+        payload = {
+            "searchKeywordType": "SELLER_CODE",
+            "productStatusTypes": ["SALE","OUTOFSTOCK"],
+            "page": current_page,
+            "size": PAGE_SIZE,
+            "orderType": "NO",
+        }
 
-            # 1) 응답 헤더에서 남은 호출 횟수 확인
-            remain_str = resp.headers.get("GNCP-GW-RateLimit-Remaining")
-            if remain_str is not None:
-                remain = int(remain_str)
-            else:
-                remain = -1  # 알 수 없을 때는 -1로 설정
+        logger.debug(f"[fetch_naver_products] Request(page={current_page}) => {url}, payload={payload}")
 
-            if resp.status_code == 429:
-                logger.warning("Rate Limit 발생! 10초 후 재시도...")
-                time.sleep(10)
-                retry_count += 1
-                continue
+        retry_count = 0
+        while retry_count < MAX_RETRIES:
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=30)
+                logger.debug(f"[fetch_naver_products] status_code={resp.status_code}")
+                logger.debug(f"[fetch_naver_products] response snippet => {resp.text[:300]}")
 
-            elif resp.status_code == 200:
-                data = resp.json()
-                products = data.get("contents", [])
-                total_el = data.get("totalElements")
-                
-                logger.info(
-                    f"{account_info['names'][0]} 상품 {len(products)}개 / totalElements={total_el}개 수집 완료 "
-                    f"(남은 호출횟수={remain})"
-                )
+                # 1) 응답 헤더에서 남은 호출 횟수 확인 (없으면 -1)
+                remain_str = resp.headers.get("GNCP-GW-RateLimit-Remaining")
+                remain = int(remain_str) if remain_str else -1
 
-                # ▼ 남은 호출 횟수가 0에 가까우면 잠깐 대기
-                if remain >= 0 and remain < 1:
-                    logger.info(f"남은 호출 횟수가 {remain}, 1초 대기")
-                    time.sleep(0.5)
+                if resp.status_code == 429:
+                    logger.warning("Rate Limit 발생! 10초 후 재시도...")
+                    time.sleep(10)
+                    retry_count += 1
+                    continue
 
-                return True, products
+                elif resp.status_code == 200:
+                    data = resp.json()
+                    
+                    # 이번 페이지 상품 목록
+                    products = data.get("contents", [])
+                    total_el = data.get("totalElements", 0)  # 전체 상품 수
 
-            else:
-                detail_msg = f"{resp.status_code}, {resp.text}"
-                logger.error(f"{account_info['names'][0]} 상품목록 조회 실패: {detail_msg}")
-                return False, detail_msg
+                    # 누적
+                    all_products.extend(products)
 
-        except requests.exceptions.RequestException as e:
-            msg = f"{account_info['names'][0]} 상품목록 조회 중 예외 발생: {str(e)}"
+                    logger.info(
+                        f"[{account_info['names'][0]}] page={current_page}, "
+                        f"got {len(products)} products, totalElements={total_el} "
+                        f"(남은 호출횟수={remain})"
+                    )
+
+                    # 남은 호출 횟수가 0에 가까우면 잠깐 대기
+                    if remain >= 0 and remain < 1:
+                        logger.info(f"남은 호출 횟수가 {remain}, 1초 대기")
+                        time.sleep(1)
+
+                    # 다음 페이지로 넘어갈지 여부 결정
+                    # (예) 이번 페이지에 상품이 PAGE_SIZE 미만이면 더 이상 페이지 없음
+                    #     또는 total_el를 기준으로, 현재까지 누적 개수가 total_el 이상이면 중단
+                    if len(products) < PAGE_SIZE or len(all_products) >= total_el:
+                        # 모든 페이지 요청 완료
+                        return True, all_products
+                    else:
+                        # 다음 페이지로 이동
+                        current_page += 1
+                        break  # inner while(재시도 루프) 를 탈출, 바깥 while 로 돌아감
+
+                else:
+                    # 200, 429 외의 상태코드
+                    detail_msg = f"{resp.status_code}, {resp.text}"
+                    logger.error(f"{account_info['names'][0]} 상품목록 조회 실패: {detail_msg}")
+                    return False, detail_msg
+
+            except requests.exceptions.RequestException as e:
+                # 네트워크 예외, 타임아웃 등
+                msg = f"{account_info['names'][0]} 상품목록 조회 중 예외 발생: {str(e)}"
+                logger.error(msg)
+                return False, msg
+        
+        # retry_count가 MAX_RETRIES에 도달하면 에러 처리
+        if retry_count >= MAX_RETRIES:
+            msg = f"{account_info['names'][0]} 429 재시도 {MAX_RETRIES}회 초과, 목록 조회 중단"
             logger.error(msg)
             return False, msg
 
-    msg = f"{account_info['names'][0]} 429 재시도 {MAX_RETRIES}회 초과, 목록 조회 중단"
-    logger.error(msg)
-    return False, msg
-    
+
+
+
+
 def get_naver_minimal_product_info(account_info, origin_product_no):
     """
     네이버 원상품(OriginProduct) 상세 정보를 조회하고,
@@ -329,7 +358,6 @@ def get_naver_minimal_product_info(account_info, origin_product_no):
     access_token = fetch_naver_access_token(account_info)
     if not access_token:
         msg = f"{account_info['names'][0]}: 액세스 토큰 발급 실패!"
-        logger.error(msg)
         return False, msg
 
     url = f"https://api.commerce.naver.com/external/v2/products/origin-products/{origin_product_no}"
@@ -346,41 +374,32 @@ def get_naver_minimal_product_info(account_info, origin_product_no):
             resp = requests.get(url, headers=headers, timeout=30)
 
             if resp.status_code == 429:
-                logger.warning(
-                    f"[get_naver_minimal_product_info] originNo={origin_product_no} "
-                    "→ Rate Limit 발생! 10초 후 재시도..."
-                )
+                # 재시도
                 time.sleep(10)
                 retry_count += 1
                 continue
 
             elif resp.status_code == 200:
                 data = resp.json()
-                # logger.debug(f"[DETAIL] originNo={origin_product_no} response data: {data}")
-
-                # (1) result 딕셔너리 미리 선언
-                result = {}
-
-                # (2) 원상품 정보 추출
-                origin_prod = data.get("originProduct", {})
-
+                # ↓↓↓ JSON을 예쁘게 정렬하여 출력
                 logger.debug(
-                    "[DEBUG] originNo=%s salePrice=%s stockQty=%s repImg=%s",
+                    "[DETAIL] originNo=%s response data:\n%s",
                     origin_product_no,
-                    origin_prod.get("salePrice"),
-                    origin_prod.get("stockQuantity"),
-                    origin_prod.get("images", {}).get("representativeImage", {})
+                    json.dumps(data, ensure_ascii=False, indent=2)  # 여기서 JSON 예쁘게 정렬
                 )
 
-                sale_price = origin_prod.get("salePrice")     # 예: 361200
-                stock_qty  = origin_prod.get("stockQuantity") # 예: 443
+                result = {}
+                origin_prod = data.get("originProduct", {})
+
+                sale_price = origin_prod.get("salePrice")
+                stock_qty  = origin_prod.get("stockQuantity")
 
                 images_part = origin_prod.get("images", {})
                 rep_img_dict = images_part.get("representativeImage", {})
 
                 detail_attr = origin_prod.get("detailAttribute", {})
 
-                # (3) 옵션 정보 파싱
+                # 옵션 정보 파싱
                 option_info   = detail_attr.get("optionInfo", {})
                 option_combos = option_info.get("optionCombinations", [])
 
@@ -396,44 +415,35 @@ def get_naver_minimal_product_info(account_info, origin_product_no):
                     }
                     option_rows.append(row)
 
-                # (4) sellerCodeInfo(판매자 관리 코드) 파싱
+                # sellerCodeInfo 파싱
                 seller_code_dict = detail_attr.get("sellerCodeInfo", {})
                 seller_mgmt_code = seller_code_dict.get("sellerManagerCode", "")
 
-                # (5) result에 담기
-                result["representativeImage"] = rep_img_dict  # dict or {"url": "..."}
-                result["salePrice"]          = sale_price     # int or None
-                result["stockQuantity"]      = stock_qty      # int or None
-                result["optionCombinations"] = option_rows    # list of dict
+                # 최종 결과
+                result["representativeImage"] = rep_img_dict
+                result["salePrice"]          = sale_price
+                result["stockQuantity"]      = stock_qty
+                result["optionCombinations"] = option_rows
                 result["sellerCodeInfo"]     = {
                     "sellerManagerCode": seller_mgmt_code
                 }
 
-                # logger.debug(
-                #     "[DEBUG get_naver_minimal_product_info] originNo=%s -> result=%s",
-                #     origin_product_no, result
-                # )
-
                 return True, result
 
             else:
-                # 200이 아닌 경우 → 실패
                 msg = (
                     f"[get_naver_minimal_product_info] 원상품 조회 실패 "
                     f"originNo={origin_product_no}: {resp.status_code}, {resp.text}"
                 )
-                logger.error(msg)
                 return False, msg
 
         except requests.exceptions.RequestException as e:
             msg = f"[get_naver_minimal_product_info] 요청 중 예외 발생 originNo={origin_product_no}: {str(e)}"
-            logger.error(msg)
             return False, msg
 
-    # 여기까지 오면 429 재시도 초과
     msg = f"[get_naver_minimal_product_info] 429 재시도 {MAX_RETRIES}회 초과, originNo={origin_product_no} 요청 중단"
-    logger.error(msg)
     return False, msg
+
 
 
 
@@ -536,11 +546,6 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
     쿠팡 등록상품 목록 '페이징' 조회.
     '최신 10개'만 가져오려면, 아래에서 all_products -> slice
     """
-    import time, urllib, requests
-    import logging
-    
-    logger = logging.getLogger(__name__)
-
     method = 'GET'
     url_path = "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products"
     vendor_id = account_info.get('vendor_id')
@@ -577,7 +582,8 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
         encoded_query = urllib.parse.urlencode(sorted_params, safe='~')
         endpoint = f"https://api-gateway.coupang.com{url_path}?{encoded_query}"
 
-        logger.debug(f"[fetch_coupang_all_seller_products] endpoint={endpoint}")
+        # 기존의 상세 endpoint 로그는 주석 처리
+        # logger.debug(f"[fetch_coupang_all_seller_products] endpoint={endpoint}")
         retry_count = 0
 
         while True:
@@ -587,7 +593,7 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
                 if retry_count < max_retries:
                     retry_count += 1
                     logger.warning(f"[fetch_coupang_all_seller_products] Timeout → 재시도 {retry_count}/{max_retries}")
-                    time.sleep(2)
+                    time.sleep(0.1)
                     continue
                 else:
                     msg = f"[fetch_coupang_all_seller_products] Timeout {max_retries}회 초과"
@@ -600,6 +606,13 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
 
             if resp.status_code == 200:
                 data_json = resp.json()
+
+                # ★★ 여기서 “API로 받아온 JSON”만 이쁘게 로그로 출력 ★★
+                # logger.debug(
+                #     "[fetch_coupang_all_seller_products] Response JSON:\n%s",
+                #     json.dumps(data_json, ensure_ascii=False, indent=2)
+                # )
+
                 code = data_json.get("code")
                 if code != "SUCCESS":
                     msg = f"[fetch_coupang_all_seller_products] code != SUCCESS, raw={data_json}"
@@ -608,25 +621,26 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
 
                 data_list = data_json.get("data", [])
                 all_products.extend(data_list)
-                logger.debug(
-                    f"[fetch_coupang_all_seller_products] 이번 페이지 상품 수={len(data_list)}, "
-                    f"누적={len(all_products)}"
-                )
+
+                # 기존의 페이지 수/누적 개수 로그는 주석 처리
+                # logger.debug(
+                #     f"[fetch_coupang_all_seller_products] 이번 페이지 상품 수={len(data_list)}, "
+                #     f"누적={len(all_products)}"
+                # )
 
                 next_token = data_json.get("nextToken", "")
                 if not next_token:
-                    logger.debug("[fetch_coupang_all_seller_products] nextToken이 없어 종료.")
+                    # logger.debug("[fetch_coupang_all_seller_products] nextToken이 없어 종료.")
                     break
                 else:
-                    logger.debug(f"[fetch_coupang_all_seller_products] nextToken={next_token} → 다음 페이지 조회")
-                    # break to outer while
+                    # logger.debug(f"[fetch_coupang_all_seller_products] nextToken={next_token} → 다음 페이지 조회")
                     break
             else:
                 try:
                     err_json = resp.json()
                 except:
                     err_json = {}
-                msg = f"[fetch_coupang_all_seller_products] HTTP {resp.status_code}, text={resp.text}"
+                # msg = f"[fetch_coupang_all_seller_products] HTTP {resp.status_code}, text={resp.text}"
                 logger.error(msg)
                 return False, msg
 
@@ -635,15 +649,12 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
             break
 
         # Rate limit 고려
-        time.sleep(0.5)
+        time.sleep(0.1)
 
-    logger.info(f"[fetch_coupang_all_seller_products] 최종 상품 수={len(all_products)}")
+    # logger.info(f"[fetch_coupang_all_seller_products] 최종 상품 수={len(all_products)}")
 
-    # (C) '최근 상품' 10개만 slice
-    # → 쿠팡 API가 어떤 순서로 리턴하는지에 따라 다름 (가장 최신이 앞에 오는지? 뒤에 오는지?)
-    # 여기서는 예: 앞에서 10개만
+    # (C) '최근 상품' 10개만 slice → 여기서는 5개만 예시
     recent_10 = all_products[:1000]
-
     return True, recent_10
 
 
@@ -661,12 +672,16 @@ def get_coupang_seller_product(account_info, seller_product_id):
 
     method = "GET"
     url_path = f"/v2/providers/seller_api/apis/api/v1/marketplace/seller-products/{seller_product_id}"
-    query_params = {}  # 필요 시 여기에 추가
+    query_params = {}
 
-    signature, datetime_now = generate_coupang_signature(method, url_path, query_params, secret_key)
+    signature, datetime_now = generate_coupang_signature(
+        method, url_path, query_params, secret_key
+    )
 
     host = "https://api-gateway.coupang.com"
-    canonical_query = '&'.join([f"{k}={urllib.parse.quote(str(v), safe='~')}" for k,v in query_params.items()])
+    canonical_query = '&'.join([
+        f"{k}={urllib.parse.quote(str(v), safe='~')}" for k,v in query_params.items()
+    ])
     endpoint = f"{host}{url_path}"
     if canonical_query:
         endpoint += f"?{canonical_query}"
@@ -679,34 +694,39 @@ def get_coupang_seller_product(account_info, seller_product_id):
         ),
     }
 
-    logger.debug(f"[get_coupang_seller_product] GET {endpoint}")
+    # 기존의 endpoint 로그는 주석 처리
+    # logger.debug(f"[get_coupang_seller_product] GET {endpoint}")
 
     try:
         resp = requests.get(endpoint, headers=headers, timeout=30)
         if resp.status_code == 200:
             data = resp.json()
-            # logger.debug(f"[get_coupang_seller_product] resp.json()={data}")
+
+            # ★★ 여기서 “API로 받아온 JSON”만 이쁘게 로그로 출력 ★★
+            # logger.debug(
+            #     "[get_coupang_seller_product] Response JSON:\n%s",
+            #     json.dumps(data, ensure_ascii=False, indent=2)
+            # )
+
             code = data.get("code")
             if code != "SUCCESS":
                 msg = f"[get_coupang_seller_product] code != SUCCESS, raw={data}"
                 logger.error(msg)
                 return False, msg
-            
+
             product_info = data.get("data", {})
-            logger.info(f"[get_coupang_seller_product] seller_product_id={seller_product_id} 조회완료.")
-            # 추가 로그: 어떤 필드들이 있는지 확인
-            logger.debug(f"[get_coupang_seller_product] product_info keys={list(product_info.keys())}")
-            # 예: product_info 내부에 'items' 배열이 있는지
-            items = product_info.get("items", [])
-            logger.debug(f"[get_coupang_seller_product] items.len={len(items)}")
+            # logger.info(f"[get_coupang_seller_product] seller_product_id={seller_product_id} 조회완료.")
+            # logger.debug(f"[get_coupang_seller_product] product_info keys={list(product_info.keys())}")
+            # items = product_info.get("items", [])
+            # logger.debug(f"[get_coupang_seller_product] items.len={len(items)}")
 
             return True, product_info
-        
+
         elif resp.status_code == 404:
             msg = f"[get_coupang_seller_product] 404 Not Found: seller_product_id={seller_product_id}"
             logger.warning(msg)
             return False, msg
-        
+
         else:
             msg = f"[get_coupang_seller_product] status={resp.status_code}, text={resp.text}"
             logger.error(msg)
@@ -716,7 +736,6 @@ def get_coupang_seller_product(account_info, seller_product_id):
         msg = f"[get_coupang_seller_product] 요청 예외: {str(e)}"
         logger.error(msg)
         return False, msg
-
 
 def get_coupang_item_inventories(account_info, vendor_item_id):
     """
@@ -785,30 +804,52 @@ def get_coupang_item_inventories(account_info, vendor_item_id):
 
 def fetch_coupang_seller_product_with_options(account_info, seller_product_id):
     """
-    1) 쿠팡의 등록상품ID(seller_product_id)로 상품 상세(get_coupang_seller_product) 조회
-    2) 해당 상품의 items 배열(=옵션 목록) 각각에 대해 재고/가격(get_coupang_item_inventories) 조회
-    3) Flatten (네이버 형식과 유사) → 최종 리턴
+    1) 쿠팡 get_coupang_seller_product() 호출 → 상품 상세 정보 조회
+    2) items[...] 각 옵션에 대해:
+       - vendorItemId: top-level → marketplaceItemData (rocketGrowth 무시)
+       - externalVendorSku: top-level → marketplaceItemData → rocketGrowthItemData
+         (마지막까지 없으면 "미매칭")
+       - 재고/가격(get_coupang_item_inventories) 조회
+       - Flatten
+    3) 최종 flattened_list 반환
     """
+    import json
+
+    # 1) 상품 상세 조회
     is_ok, product_info = get_coupang_seller_product(account_info, seller_product_id)
     if not is_ok:
-        return False, product_info  # 에러 메시지
+        # 실패 시 그대로 반환
+        return False, product_info
 
     seller_product_name = product_info.get("displayProductName", "(상품명없음)")
     items = product_info.get("items", [])
 
     flattened_list = []
-    for item in items:
-        # A) 기본 필드
-        vendor_item_id   = item.get("vendorItemId")           # 쿠팡 옵션ID (정수)
-        external_sku     = item.get("externalVendorSku", "")   # 우리 내부코드(문자열) 없을 수도
-        item_name        = item.get("itemName", "(옵션명없음)")
-        seller_item_id   = item.get("sellerProductItemId")     # 단일옵션ID (주문 시 참조 가능)
-        
-        # B) 대표이미지
+
+    for idx, item in enumerate(items, start=1):
+        # (A) vendorItemId (top-level) 없으면 marketplaceItemData에서 fallback
+        vendor_item_id = item.get("vendorItemId")
+        if not vendor_item_id:
+            vendor_item_id = item.get("marketplaceItemData", {}).get("vendorItemId")
+
+        # 없으면 skip
+        if not vendor_item_id:
+            logger.warning(
+                "[fetch_coupang_seller_product_with_options] No vendorItemId in top-level or marketplaceItemData "
+                "→ skip itemName=%s (index=%d)",
+                item.get("itemName"), idx
+            )
+            continue
+
+        # (B) 대표이미지
         rep_image_url = ""
         image_list = item.get("images", [])
         if image_list:
-            repr_img = next((img for img in image_list if img.get("imageType") == "REPRESENTATION"), None)
+            # 대표이미지(REPRESENTATION) 우선
+            repr_img = next(
+                (img for img in image_list if img.get("imageType") == "REPRESENTATION"),
+                None
+            )
             if repr_img:
                 rep_image_url = repr_img.get("cdnPath", "")
             else:
@@ -816,36 +857,50 @@ def fetch_coupang_seller_product_with_options(account_info, seller_product_id):
             if rep_image_url:
                 rep_image_url = "https://img1a.coupangcdn.com/" + rep_image_url
 
-        # C) 재고 / 가격 조회
+        # (C) 재고/가격 조회
         is_ok2, inv_data = get_coupang_item_inventories(account_info, vendor_item_id)
         if not is_ok2:
             logger.warning(
-                f"[fetch_coupang_seller_product_with_options] vendorItemId={vendor_item_id} 재고조회 실패 → skip"
+                "[fetch_coupang_seller_product_with_options] 재고조회 실패 vendorItemId=%s → skip itemName=%s",
+                vendor_item_id, item.get("itemName")
             )
             continue
-        stock_qty = inv_data.get("amountInStock", 0)
+
+        stock_qty  = inv_data.get("amountInStock", 0)
         sale_price = inv_data.get("salePrice", 0)
 
-        # D) Flatten
-        flattened_row = {
-            # JS에서 item.optionID, item.vendorItemId 등으로 접근
-            "optionID":           vendor_item_id,      # key: "optionID"
-            "vendorItemId":       vendor_item_id,      # 만약 JS에서 vendorItemId도 쓰면
-            "optionSellerCode":   external_sku if external_sku else str(vendor_item_id),
-            "representativeImage": rep_image_url,       # JS에서 item.representativeImage
-            "optionName1":        item_name,            # JS에서 item.optionName1
-            "optionName2":        item_name,            # 동일 처리
-            "productName":        seller_product_name,  # JS에서 item.productName
-            "optionStock":        stock_qty,            # JS에서 item.optionStock
-            "salePrice":          sale_price,           # JS에서 item.salePrice
-            "optionPrice":        sale_price,           # 동등 처리
-            "originProductNo":    seller_item_id,       # JS에서 item.originProductNo
-        }
-        logger.debug(f"   └─ flattened_row={flattened_row}")
-        flattened_list.append(flattened_row)
+        # (D) externalVendorSku Fallback: top-level → marketplaceItemData → rocketGrowthItemData
+        external_sku = item.get("externalVendorSku")
+        if not external_sku:
+            external_sku = item.get("marketplaceItemData", {}).get("externalVendorSku")
+        if not external_sku:
+            external_sku = item.get("rocketGrowthItemData", {}).get("externalVendorSku")
+        if not external_sku:
+            external_sku = "미매칭"
 
-    logger.debug(f"[fetch_coupang_seller_product_with_options] Flattened count={len(flattened_list)}")
+        # (E) Flattened dict
+        item_name = item.get("itemName") or ""
+        flattened_list.append({
+            "optionID":            vendor_item_id,         # 최종 vendorItemId
+            "optionSellerCode":    external_sku,           # externalVendorSku (fallback 적용)
+            "representativeImage": rep_image_url,
+            "optionName1":         item_name,
+            "optionName2":         item_name,
+            "productName":         seller_product_name,
+            "optionStock":         stock_qty,
+            "salePrice":           sale_price,
+            "optionPrice":         sale_price,
+            "originProductNo":     item.get("sellerProductItemId"),
+        })
+
+    logger.debug(
+        f"[fetch_coupang_seller_product_with_options] Flattened count={len(flattened_list)}"
+    )
     return True, flattened_list
+
+
+
+
 
 
 def fetch_naver_option_stock(account_info, origin_product_no):
@@ -972,14 +1027,14 @@ def get_coupang_item_inventories(account_info, vendor_item_id):
         resp = requests.get(endpoint, headers=headers, timeout=20)
         if resp.status_code == 200:
             data = resp.json()
-            logger.debug(f"[get_coupang_item_inventories] resp.json={data}")
+            # logger.debug(f"[get_coupang_item_inventories] resp.json={data}")
             code = data.get("code")
             if code != "SUCCESS":
                 return False, data
 
             # ▼ (예시) 성공 시 0.5초 정도 대기
             # (쿠팡에서 RateLimit 헤더를 지원한다면, 여기서도 remain<1이면 sleep)
-            time.sleep(0.5)
+            time.sleep(0.1)
 
             return True, data.get("data", {})
 
@@ -1305,3 +1360,108 @@ def put_coupang_option_stock_9999(vendor_item_id, platform_name=None):
         logger.error(f"[put_coupang_option_stock_9999] 예외: {e}")
         return False, str(e)
 
+
+def get_coupang_seller_product_info(account_info, seller_product_id):
+    """
+    등록상품ID(seller_product_id)로 쿠팡 상품 정보를 조회.
+    (GET /v2/providers/seller_api/apis/api/v1/marketplace/seller-products/{sellerProductId})
+
+    :param account_info: 쿠팡 API 계정 딕셔너리 (access_key, secret_key, names 등)
+    :param seller_product_id: 등록상품ID (int or str)
+    :return: (True, product_data) or (False, 에러메시지)
+    
+    Response 예시:
+    {
+      "code": "SUCCESS",
+      "message": "",
+      "data": {
+        "sellerProductId": 1234567,
+        "statusName": "승인완료",
+        "displayCategoryCode": 115721,
+        "sellerProductName": "예시 상품명",
+        "vendorId": "A1234",
+        "saleStartedAt": "2021-01-01T00:00:00",
+        "saleEndedAt": "2099-12-31T23:59:59",
+        "displayProductName": "노출상품명",
+        "brand": "브랜드명",
+        "generalProductName": "기본 상품명",
+        "productGroup": "상품군",
+        "deliveryMethod": "SEQUENCIAL",
+        ...
+        "items": [
+          {
+            "sellerProductItemId": 123456789,
+            "vendorItemId": 987654321,  # 옵션ID
+            "itemName": "옵션명",
+            "salePrice": 19900,
+            "maximumBuyCount": 100,
+            ...
+          },
+          ...
+        ]
+      }
+    }
+    """
+    import logging, requests
+    from .api_clients import generate_coupang_signature
+
+    logger = logging.getLogger(__name__)
+
+    access_key = account_info.get('access_key')
+    secret_key = account_info.get('secret_key')
+    if not (access_key and secret_key):
+        msg = f"{account_info['names'][0]}: Coupang API 계정(access_key/secret_key) 누락!"
+        logger.error(msg)
+        return False, msg
+
+    method = "GET"
+    url_path = f"/v2/providers/seller_api/apis/api/v1/marketplace/seller-products/{seller_product_id}"
+    query_params = {}
+
+    # 시그니처 생성
+    signature, datetime_now = generate_coupang_signature(method, url_path, query_params, secret_key)
+
+    host = "https://api-gateway.coupang.com"
+    endpoint = f"{host}{url_path}"  # query_params가 없으므로 단순 URL
+
+    headers = {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Authorization": (
+            f"CEA algorithm=HmacSHA256, access-key={access_key}, "
+            f"signed-date={datetime_now}, signature={signature}"
+        ),
+    }
+
+    logger.debug(f"[get_coupang_seller_product_info] GET {endpoint}")
+
+    try:
+        resp = requests.get(endpoint, headers=headers, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            code = data.get("code")
+            if code != "SUCCESS":
+                msg = f"[get_coupang_seller_product_info] code != SUCCESS, raw={data}"
+                logger.error(msg)
+                return False, msg
+            
+            product_data = data.get("data", {})
+            logger.info(
+                f"[get_coupang_seller_product_info] sellerProductId={seller_product_id}, "
+                f"statusName={product_data.get('statusName')}, items.len={len(product_data.get('items', []))}"
+            )
+            return True, product_data
+        
+        elif resp.status_code == 404:
+            msg = f"[get_coupang_seller_product_info] 404 Not Found: seller_product_id={seller_product_id}"
+            logger.warning(msg)
+            return False, msg
+        
+        else:
+            msg = f"[get_coupang_seller_product_info] status={resp.status_code}, text={resp.text}"
+            logger.error(msg)
+            return False, msg
+
+    except requests.exceptions.RequestException as e:
+        msg = f"[get_coupang_seller_product_info] 요청 예외: {str(e)}"
+        logger.error(msg)
+        return False, msg
