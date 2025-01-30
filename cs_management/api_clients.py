@@ -6,7 +6,7 @@ import json
 from urllib.parse import quote
 from decouple import config
 import logging
-from datetime import datetime, timedelta, timezone  # timezone 추가
+from datetime import datetime, timedelta, timezone
 import base64
 import bcrypt
 import urllib.parse
@@ -16,6 +16,7 @@ import openai
 import os
 from dateutil import parser
 from .models import CenterInquiry
+import pytz
 
 
 
@@ -315,15 +316,11 @@ def fetch_coupang_inquiries(
     - 반환: (True, merged_data) / (False, "에러메시지")
       merged_data = { "contents":[...], "partial_errors":[...]}
     """
-    import requests, time, json, urllib
-    from datetime import datetime
-    from .api_clients import COUPANG_ACCOUNTS, generate_coupang_signature  # 예: 위치 맞춰 import
-    # (또는 현재 파일 상단에서 import)
+
 
     if not start_date or not end_date:
         # 기본 7일 전 ~ 오늘
-        from datetime import datetime, timedelta
-        import pytz
+
         kst = pytz.timezone("Asia/Seoul")
         now_kst = datetime.now(kst)
         if not end_date:
@@ -455,9 +452,7 @@ def fetch_coupang_order_sheet_save(account_info, order_id):
     """
     쿠팡 발주서 단건 조회 API 호출 -> 받은 data를 CoupangOrderSheet 모델에 그대로 저장
     """
-    import requests, time, hmac, hashlib, urllib.parse, json
-    from datetime import datetime
-    from django.utils import timezone
+
 
     method = "GET"
     vendor_id = account_info.get("vendor_id")
@@ -516,7 +511,6 @@ def fetch_coupang_order_sheet_save(account_info, order_id):
                         """
                         if dt_str:
                             try:
-                                from dateutil import parser
                                 dt_naive = parser.parse(dt_str)  # e.g. 2025-01-20 12:11:15
                                 # localize (settings.TIME_ZONE), or Asia/Seoul if KST
                                 dt_aware = timezone.make_aware(dt_naive, timezone.get_default_timezone())
@@ -613,8 +607,7 @@ def save_naver_inquiries_to_db(data):
         create_date_str = item.get("createDate")
         account_name = item.get("accountName", "NAVER")  # <--- ★
 
-        from dateutil import parser
-        from django.utils import timezone
+  
         created_dt = None
         if create_date_str:
             try:
@@ -656,10 +649,7 @@ def save_coupang_inquiries_to_db(merged_data):
 
     :param merged_data: {"contents": [{..., "accountName": "A00291106"}, ...]}
     """
-    from .api_clients import COUPANG_ACCOUNTS, fetch_coupang_seller_product
-    from .models import Inquiry
-    from dateutil import parser
-    from django.utils import timezone
+
 
     contents = merged_data.get("contents", [])
     saved_objs = []
@@ -787,12 +777,7 @@ def fetch_coupang_seller_product(account_info, seller_product_id):
     :param seller_product_id: 등록상품ID
     :return: (True, product_info_dict) or (False, "오류메시지")
     """
-    import requests
-    import json
-    import time
-    import hmac
-    import hashlib
-    import urllib.parse
+
 
     access_key = account_info.get("access_key")
     secret_key = account_info.get("secret_key")
@@ -860,7 +845,6 @@ def fetch_coupang_seller_product(account_info, seller_product_id):
 
 
 def put_coupang_inquiry_answer(account_info, inquiry_id, content, reply_by=None):
-    import requests, time, json, hmac, hashlib, urllib.parse
 
     vendor_id = account_info.get('vendor_id')
     access_key = account_info.get('access_key')
@@ -994,8 +978,7 @@ def fetch_naver_center_inquiries(
 
     # 1) 날짜 디폴트
     if not start_date or not end_date:
-        from datetime import datetime, timedelta
-        from django.utils import timezone
+
         kst = timezone.get_default_timezone()  # 예: Asia/Seoul
         now_kst = datetime.now(kst)
         if not end_date:
@@ -1014,8 +997,6 @@ def fetch_naver_center_inquiries(
     if answered is not None:
         base_params["answered"] = "true" if answered else "false"
 
-    import requests
-    from .api_clients import NAVER_ACCOUNTS, fetch_naver_access_token
     all_contents = []
     partial_errors = []
 
@@ -1106,13 +1087,11 @@ def fetch_coupang_center_inquiries(
       (False, "에러메시지")
     """
 
-    import requests, time
-    from .api_clients import COUPANG_ACCOUNTS, generate_coupang_signature
+    
 
     # 1) 날짜 기본
     if not start_date or not end_date:
-        from datetime import datetime, timedelta
-        from django.utils import timezone
+
         now_kst = timezone.now()
         if not end_date:
             end_date = now_kst.strftime('%Y-%m-%d')
@@ -1302,9 +1281,7 @@ def save_center_naver_inquiries_to_db(data):
 
     return saved_list
 
-from dateutil import parser
-from django.utils import timezone
-from .models import CenterInquiry
+
 
 def save_center_coupang_inquiries_to_db(data):
     """
