@@ -163,3 +163,36 @@ class CoupangOrderSheet(models.Model):
 
     def __str__(self):
         return f"[CoupangOrderSheet] orderId={self.order_id}, boxId={self.shipment_box_id}"
+    
+
+
+class CenterInquiry(models.Model):
+    inquiry_id = models.BigIntegerField(null=True, blank=True)
+    inquiry_title = models.CharField(max_length=255, null=True, blank=True)
+    inquiry_content = models.TextField(null=True, blank=True)
+    created_at_utc = models.DateTimeField(null=True, blank=True)
+    category = models.CharField(max_length=100, null=True, blank=True)
+    answered = models.BooleanField(default=False)
+    answer_content = models.TextField(null=True, blank=True)
+    orderId01 = models.CharField(max_length=100, null=True, blank=True)
+    product_id = models.CharField(max_length=100, null=True, blank=True)
+    product_name = models.CharField(max_length=255, null=True, blank=True)
+    option_name = models.CharField(max_length=255, null=True, blank=True)
+    author = models.CharField(max_length=100, null=True, blank=True)
+    customer_name = models.CharField(max_length=100, null=True, blank=True)
+    store_name = models.CharField(max_length=255, null=True, blank=True)
+    orderId02 = models.CharField(max_length=100, null=True, blank=True)
+    answer_date = models.DateTimeField(null=True, blank=True)
+    representative_image = models.CharField(max_length=255, null=True, blank=True)
+    ordered_at = models.DateTimeField(null=True, blank=True)
+    platform = models.CharField(max_length=50, null=True, blank=True)
+    answered_at = models.DateTimeField(null=True, blank=True)
+    answer_updated_at = models.DateTimeField(null=True, blank=True)
+    gpt_summary = models.TextField(null=True, blank=True)
+    gpt_recommendation_1 = models.TextField(null=True, blank=True)
+    gpt_recommendation_2 = models.TextField(null=True, blank=True)
+    gpt_confidence_score = models.FloatField(null=True, blank=True)
+    gpt_used_answer_index = models.IntegerField(null=True, blank=True)
+
+    def __str__(self):
+        return f"CenterInquiry #{self.inquiry_id} - {self.inquiry_title or 'No Title'}"

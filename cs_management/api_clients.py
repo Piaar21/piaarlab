@@ -14,6 +14,9 @@ from urllib.parse import urlencode
 from .models import Inquiry,CoupangOrderSheet
 import openai
 import os
+from dateutil import parser
+from .models import CenterInquiry
+
 
 
 logger = logging.getLogger(__name__)
@@ -158,7 +161,7 @@ def fetch_naver_qna_templates(
     if not from_date or not to_date:
         kst = timezone(timedelta(hours=9))
         end_dt = datetime.now(tz=kst)
-        start_dt = end_dt - timedelta(days=7)
+        start_dt = end_dt - timedelta(days=1)
         if not from_date:
             from_date = start_dt.isoformat(timespec='milliseconds')
         if not to_date:
@@ -327,7 +330,7 @@ def fetch_coupang_inquiries(
             end_date = now_kst.strftime('%Y-%m-%d')
         if not start_date:
             # 6일 전 => 총 7일 범위
-            start_dt = now_kst - timedelta(days=6)
+            start_dt = now_kst - timedelta(days=1)
             start_date = start_dt.strftime('%Y-%m-%d')
 
     all_contents = []      # 모든 계정에서 받은 문의 총합
@@ -962,3 +965,639 @@ def fetch_gpt_recommendation(inquiry_text, max_tokens=200):
         return True, choice.strip()
     except openai.error.OpenAIError as e:
         return False, f"GPT API 오류: {str(e)}"
+    
+
+
+
+#고객센터문의 시작
+def fetch_naver_center_inquiries(
+    start_date=None,  # YYYY-MM-DD
+    end_date=None,    # YYYY-MM-DD
+    answered=None,    # True->"true", False->"false", None->all
+    page=1,
+    size=50
+):
+    """
+    네이버 “플랫폼센터 문의” API:
+      GET /v1/pay-user/inquiries
+    (multi-account 방식)
+    
+    파라미터:
+      start_date, end_date (둘 다 필수, 없으면 기본 7일 전 ~ 오늘)
+      answered -> "true"/"false"
+      page, size => 초기 요청용 (페이지네이션)
+    
+    반환:
+      (True, {"contents":[{...}, ...], "partial_errors":[...optional...]})
+      (False, "에러메시지")
+    """
+
+    # 1) 날짜 디폴트
+    if not start_date or not end_date:
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        kst = timezone.get_default_timezone()  # 예: Asia/Seoul
+        now_kst = datetime.now(kst)
+        if not end_date:
+            end_date = now_kst.strftime('%Y-%m-%d')
+        if not start_date:
+            start_dt = now_kst - timedelta(days=7)
+            start_date = start_dt.strftime('%Y-%m-%d')
+
+    # 2) 쿼리 파라미터(기본)
+    base_params = {
+        "startSearchDate": start_date,  # yyyy-MM-dd
+        "endSearchDate": end_date,
+        "page": page,
+        "size": size
+    }
+    if answered is not None:
+        base_params["answered"] = "true" if answered else "false"
+
+    import requests
+    from .api_clients import NAVER_ACCOUNTS, fetch_naver_access_token
+    all_contents = []
+    partial_errors = []
+
+    # (A) 모든 NAVER 계정 루프
+    for acc_info in NAVER_ACCOUNTS:
+        acc_name = acc_info['names'][0] if acc_info.get('names') else "NAVER_Center"
+        
+        # (A1) 토큰
+        token = fetch_naver_access_token(acc_info)
+        if not token:
+            msg = f"{acc_name} => 토큰 발급 실패!"
+            partial_errors.append(msg)
+            continue
+        
+        headers = {
+            "Authorization": f"Bearer {token}"
+        }
+        # (A2) 페이징
+        current_page = page
+        success_for_acc = False
+        account_all_contents = []
+        while True:
+            params = dict(base_params)
+            params["page"] = current_page  # 현재 페이지
+            try:
+                url = "https://api.commerce.naver.com/external/v1/pay-user/inquiries"
+                resp = requests.get(url, headers=headers, params=params, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # totalPages, page, size, content[], ...
+                    content_arr = data.get("content", [])
+                    total_pages = data.get("totalPages", 1)
+                    # 각 item에 accountName 추가
+                    for c in content_arr:
+                        c["accountName"] = acc_name
+                    account_all_contents.extend(content_arr)
+                    if current_page >= total_pages:
+                        success_for_acc = True
+                        break
+                    else:
+                        current_page += 1
+                elif resp.status_code == 429:
+                    import time
+                    time.sleep(5)
+                    continue
+                else:
+                    msg = f"[{acc_name}] status={resp.status_code}, text={resp.text}"
+                    partial_errors.append(msg)
+                    break
+            except requests.exceptions.RequestException as e:
+                partial_errors.append(f"[{acc_name}] 요청 예외: {str(e)}")
+                break
+        
+        if success_for_acc:
+            all_contents.extend(account_all_contents)
+        else:
+            pass  # 일부 실패 기록됨
+
+    if not all_contents and partial_errors:
+        # 전부 실패
+        return (False, f"[fetch_naver_center_inquiries] 모든 계정 실패 => {partial_errors}")
+    merged_data = {
+        "contents": all_contents
+    }
+    if partial_errors:
+        merged_data["partial_errors"] = partial_errors
+    return (True, merged_data)
+
+
+def fetch_coupang_center_inquiries(
+    start_date=None, # yyyy-MM-dd
+    end_date=None,   # yyyy-MM-dd
+    partnerCounselingStatus="NONE", # NONE=전체, NO_ANSWER=미답변, ANSWER=답변완료, TRANSFER=미확인
+    pageNum=1,
+    pageSize=10
+):
+    """
+    쿠팡 “고객센터 문의” API:
+      GET /v2/providers/openapi/apis/api/v4/vendors/{vendorId}/callCenterInquiries
+    
+    파라미터:
+      start_date, end_date -> inquiryStartAt, inquiryEndAt (없으면 최대 7일)
+      partnerCounselingStatus -> NONE/NO_ANSWER/ANSWER/TRANSFER
+      pageNum, pageSize
+    
+    반환:
+      (True, {"contents":[...], "partial_errors":[...]})
+      (False, "에러메시지")
+    """
+
+    import requests, time
+    from .api_clients import COUPANG_ACCOUNTS, generate_coupang_signature
+
+    # 1) 날짜 기본
+    if not start_date or not end_date:
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        now_kst = timezone.now()
+        if not end_date:
+            end_date = now_kst.strftime('%Y-%m-%d')
+        if not start_date:
+            start_dt = now_kst - timedelta(days=6)
+            start_date = start_dt.strftime('%Y-%m-%d')
+
+    all_contents = []
+    partial_errors = []
+
+    # (A) 모든 쿠팡 계정
+    for acc_info in COUPANG_ACCOUNTS:
+        acc_name = acc_info['names'][0] if acc_info.get('names') else "COUPANG_Center"
+        vendor_id = acc_info.get('vendor_id')
+        access_key = acc_info.get('access_key')
+        secret_key = acc_info.get('secret_key')
+
+        if not (vendor_id and access_key and secret_key):
+            msg = f"[{acc_name}] 계정정보 부족(vendor_id/access_key/secret_key)"
+            partial_errors.append(msg)
+            continue
+        
+        # base params
+        base_params = {
+            "vendorId": vendor_id,
+            "partnerCounselingStatus": partnerCounselingStatus,  # "NONE"/"NO_ANSWER"/"ANSWER"/"TRANSFER"
+            "inquiryStartAt": start_date,
+            "inquiryEndAt": end_date,
+            "pageNum": pageNum,
+            "pageSize": pageSize
+        }
+
+        method = "GET"
+        url_path = f"/v2/providers/openapi/apis/api/v4/vendors/{vendor_id}/callCenterInquiries"
+        import urllib
+        sorted_q = sorted(base_params.items())
+        query_str = '&'.join(f"{k}={urllib.parse.quote(str(v), safe='~')}" for k,v in sorted_q)
+        signature, datetime_now = generate_coupang_signature(method, url_path, dict(sorted_q), secret_key)
+
+        endpoint = f"https://api-gateway.coupang.com{url_path}"
+        if query_str:
+            endpoint += f"?{query_str}"
+        
+        headers = {
+            "Content-Type": "application/json;charset=UTF-8",
+            "Authorization": (
+                f"CEA algorithm=HmacSHA256, access-key={access_key}, "
+                f"signed-date={datetime_now}, signature={signature}"
+            ),
+        }
+
+        MAX_RETRIES = 3
+        retry_count = 0
+        success_for_acc = False
+
+        while retry_count < MAX_RETRIES:
+            try:
+                resp = requests.get(endpoint, headers=headers, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    code_val = data.get("code") # ex: 200
+                    if code_val == 200:
+                        content_arr = data.get("data", {}).get("content", [])
+                        # ex: data["data"]["pagination"] = { currentPage, totalPages, ...}
+                        pagination = data.get("data", {}).get("pagination", {})
+                        total_pages = pagination.get("totalPages", 1)
+                        # each item => add accountName
+                        for c in content_arr:
+                            c["accountName"] = acc_name
+                        all_contents.extend(content_arr)
+                        success_for_acc = True
+                        break
+                    else:
+                        msg = f"[{acc_name}] code != 200 => raw={data}"
+                        partial_errors.append(msg)
+                        break
+                elif resp.status_code == 429:
+                    retry_count += 1
+                    time.sleep(5)
+                    continue
+                else:
+                    msg = f"[{acc_name}] status={resp.status_code}, text={resp.text}"
+                    partial_errors.append(msg)
+                    break
+            except requests.exceptions.RequestException as e:
+                partial_errors.append(f"[{acc_name}] 예외: {str(e)}")
+                break
+        
+        if not success_for_acc:
+            pass  # 실패 기록
+    
+    if not all_contents and partial_errors:
+        return (False, f"모든 쿠팡계정 실패 => {partial_errors}")
+    
+    merged = {"contents": all_contents}
+    if partial_errors:
+        merged["partial_errors"] = partial_errors
+    return (True, merged)
+
+
+def save_center_naver_inquiries_to_db(data):
+    """
+    네이버 '고객센터 문의' 데이터를 CenterInquiry 모델에 저장/업데이트.
+    :param data: {"contents": [ {...}, {...}, ... ]}
+    """
+    contents = data.get("contents", [])
+    saved_list = []
+
+    for item in contents:
+        # 1) 각 필드 값 추출
+        inquiry_id = item.get("inquiryNo")  # 문의 식별자
+        if not inquiry_id:
+            continue
+        
+        inquiry_title = item.get("title")  # 문의 제목
+        inquiry_content = item.get("inquiryContent")  # 문의 내용
+        category = item.get("category")  # 문의 유형/카테고리
+        answered = item.get("answered", False)  # 답변 여부
+        answer_content = item.get("answerContent")  # 답변 내용
+        orderId01 = item.get("orderId")  # 주문번호
+        product_id = item.get("productNo")  # 상품번호
+        product_name = item.get("productName")  # 상품명
+        option_name = item.get("productOrderOption")  # 옵션정보
+        author = item.get("customerId")  # 구매자ID
+        customer_name = item.get("customerName")  # 구매자 정보
+        store_name = item.get("accountName", "NAVER")  # 스토어명
+        # 주문번호(배열) => 네이버는 productOrderIdList가 배열일 수 있으므로 문자열 변환 예시:
+        orderId02_list = item.get("productOrderIdList", [])
+        orderId02_str = ",".join([str(x) for x in orderId02_list]) if isinstance(orderId02_list, list) else str(orderId02_list)
+
+        # 2) 날짜 필드 파싱
+        created_at_utc = None
+        created_at_str = item.get("inquiryRegistrationDateTime")  # ISO8601
+        if created_at_str:
+            try:
+                dt = parser.parse(created_at_str)
+                created_at_utc = dt.astimezone(timezone.utc)
+            except:
+                created_at_utc = None
+
+        answer_date = None
+        answer_date_str = item.get("answerRegistrationDateTime")
+        if answer_date_str:
+            try:
+                dt = parser.parse(answer_date_str)
+                answer_date = dt.astimezone(timezone.utc)
+            except:
+                answer_date = None
+
+        # 아직 네이버 API에는 별도 'ordered_at'(주문일자) 제공이 없다고 가정
+        ordered_at = None
+
+        # 3) DB 저장/업데이트
+        obj, created = CenterInquiry.objects.update_or_create(
+            platform="NAVER",
+            inquiry_id=inquiry_id,
+            defaults={
+                "inquiry_title": inquiry_title,
+                "inquiry_content": inquiry_content,
+                "created_at_utc": created_at_utc,
+                "category": category,
+                "answered": answered,
+                "answer_content": answer_content,
+                "orderId01": orderId01,
+                "product_id": product_id,
+                "product_name": product_name,
+                "option_name": option_name,
+                "author": author,
+                "customer_name": customer_name,
+                "store_name": store_name,
+                "orderId02": orderId02_str,
+                "answer_date": answer_date,
+                "ordered_at": ordered_at,
+                # 나머지 필드 (answered_at, answer_updated_at 등)은 현재 값이 없으므로 None
+                "answered_at": None,
+                "answer_updated_at": None,
+                # 아직 대표이미지, gpt_* 등은 미정
+                "representative_image": None,
+                "gpt_summary": None,
+                "gpt_recommendation_1": None,
+                "gpt_recommendation_2": None,
+                "gpt_confidence_score": None,
+                "gpt_used_answer_index": None,
+            }
+        )
+        saved_list.append(obj)
+
+    return saved_list
+
+from dateutil import parser
+from django.utils import timezone
+from .models import CenterInquiry
+
+def save_center_coupang_inquiries_to_db(data):
+    """
+    쿠팡 '고객센터 문의' 데이터를 CenterInquiry 모델에 저장/업데이트.
+    :param data: {"contents": [ {...}, {...}, ... ]}
+    """
+    contents = data.get("contents", [])
+    saved_list = []
+
+    for item in contents:
+        # 1) 쿠팡 문의 식별자
+        inquiry_id = item.get("inquiryId")
+        if not inquiry_id:
+            continue
+
+        # 2) 필드 파싱
+        # 제목이 없으므로 itemName이 있으면 그걸 사용, 없으면 receiptCategory 사용
+        item_name = item.get("itemName")  # "상품명 / 옵션명" 형태를 가정
+        receipt_category = item.get("receiptCategory", "")
+        inquiry_title = ""
+
+        # --- inquiry_content: replies에 있는 내용 우선 ---
+        replies = item.get("replies") or []
+        if replies:
+            # replies가 있으면, 여러 개 reply의 content를 모두 합치기
+            inquiry_content = "\n\n-----\n\n".join(r.get("content", "") for r in replies)
+        else:
+            # replies가 없으면, 원래 item["content"]를 사용
+            inquiry_content = item.get("content")  # 문의 내용
+
+        category = item.get("receiptCategory", "")
+        
+        # --- 답변 여부 & 내용 ---
+        cs_status = item.get("csPartnerCounselingStatus", "").upper()  # 예: "COMPLETE", "INCOMPLETE"
+        answered = (cs_status == "COMPLETE") or (len(replies) > 0)
+        
+        # 답변 내용: replies[0]["content"] (여러 개면 추가로 처리)
+        answer_content = None
+        answer_date = None
+        if replies:
+            answer_content = replies[0].get("content")
+            # 답변일자
+            answer_date_str = replies[0].get("replyAt")
+            if answer_date_str:
+                try:
+                    dt = parser.parse(answer_date_str)
+                    answer_date = dt.astimezone(timezone.utc)
+                except:
+                    answer_date = None
+
+        # --- 날짜 파싱 ---
+        created_at_utc = None
+        inquiry_at_str = item.get("inquiryAt")  # "2025-01-29 11:24:00"
+        if inquiry_at_str:
+            try:
+                dt = parser.parse(inquiry_at_str)
+                created_at_utc = dt.astimezone(timezone.utc)
+            except:
+                created_at_utc = None
+        
+        ordered_at = None
+        order_date_str = item.get("orderDate")  # 주문일자
+        if order_date_str:
+            try:
+                dt = parser.parse(order_date_str)
+                ordered_at = dt.astimezone(timezone.utc)
+            except:
+                ordered_at = None
+
+        # --- 기타 ---
+        orderId01 = str(item.get("orderId", ""))     # 주문번호
+        product_id = str(item.get("vendorItemId", ""))  # 상품번호
+        # itemName에 "상품명 / 옵션명" 형식이 있다고 가정하면:
+        # product_name = 앞쪽, option_name = 뒷쪽?
+        product_name = ""
+        option_name = ""
+        if item_name and " / " in item_name:
+            splitted = item_name.split(" / ", 1)
+            product_name = splitted[0]
+            option_name = splitted[1] if len(splitted) > 1 else ""
+        else:
+            # itemName 구조가 달라질 경우 fallback
+            product_name = item_name
+            option_name = ""
+
+        # "상품주문번호" => orderId02 = vendorItemId 그대로 사용 가능
+        orderId02 = product_id
+
+        author = str(item.get("orderId", ""))  # 구매자ID => "orderid로 받아와야함" 가정
+        customer_name = str(item.get("orderId", ""))  # 실제 API에 구매자명/닉네임이 없어서 동일 처리
+        store_name = item.get("accountName", "쿠팡")   # 스토어명
+
+        # 3) DB 저장/업데이트
+        obj, created = CenterInquiry.objects.update_or_create(
+            platform="COUPANG",
+            inquiry_id=inquiry_id,
+            defaults={
+                "inquiry_title": inquiry_title,
+                "inquiry_content": inquiry_content,
+                "created_at_utc": created_at_utc,
+                "category": category,
+                "answered": answered,
+                "answer_content": answer_content,
+                "orderId01": orderId01,
+                "product_id": product_id,
+                "product_name": product_name,
+                "option_name": option_name,
+                "author": author,
+                "customer_name": customer_name,
+                "store_name": store_name,
+                "orderId02": orderId02,
+                "answer_date": answer_date,
+                "ordered_at": ordered_at,
+                "answered_at": None,  # 아직 별도 필드가 없으므로 None
+                "answer_updated_at": None,
+                "representative_image": None,  # 미정
+                "gpt_summary": None,
+                "gpt_recommendation_1": None,
+                "gpt_recommendation_2": None,
+                "gpt_confidence_score": None,
+                "gpt_used_answer_index": None,
+            }
+        )
+        saved_list.append(obj)
+
+    return saved_list
+
+
+def post_naver_center_inquiry_answer(account_info, inquiry_no, answer_comment, answer_template_id=None):
+    """
+    네이버 '고객센터 문의'에 답변을 등록하는 API 호출 함수.
+    POST /v1/pay-merchant/inquiries/{inquiryNo}/answer
+
+    :param account_info: dict - 네이버 계정 정보 (ex: {"names": ["네이버스토어1"], ...})
+    :param inquiry_no: int - 문의 번호
+    :param answer_comment: str - 답변 내용
+    :param answer_template_id: str or None - (선택) 답변 템플릿 ID
+    :return: (success, data or msg)
+        - success=True, data=dict => 성공
+        - success=False, msg=str   => 실패 메시지
+    """
+    # 1) 액세스 토큰
+    access_token = fetch_naver_access_token(account_info)
+    if not access_token:
+        msg = f"{account_info['names'][0]} 토큰 발급 실패"
+        logger.error(msg)
+        return False, msg
+
+    # 2) 요청 URL & 헤더
+    base_url = "https://api.commerce.naver.com"
+    endpoint = f"/v1/pay-merchant/inquiries/{inquiry_no}/answer"
+    url = base_url + endpoint
+
+    headers = {
+        'Authorization': f"Bearer {access_token}",
+        'Content-Type': "application/json"
+    }
+
+    # 3) 요청 바디
+    payload = {
+        "answerComment": answer_comment
+        # answerTemplateId가 있으면 추가
+    }
+    if answer_template_id:
+        payload["answerTemplateId"] = answer_template_id
+
+    MAX_RETRIES = 3
+    retry_count = 0
+
+    while retry_count < MAX_RETRIES:
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            logger.debug(f"[post_naver_center_inquiry_answer] status_code={resp.status_code}, resp={resp.text[:300]}")
+
+            if resp.status_code == 200:
+                # 성공 => resp.json() 파싱
+                data = {}
+                try:
+                    data = resp.json()
+                except Exception:
+                    pass
+
+                logger.info(
+                    f"[{account_info['names'][0]}] 문의답변 등록 성공 (status=200), inquiry_no={inquiry_no}"
+                )
+                return True, data
+
+            elif resp.status_code == 429:
+                # Rate Limit 초과 => 재시도
+                retry_count += 1
+                logger.warning(f"[post_naver_center_inquiry_answer] 429: Too Many Requests, 재시도 {retry_count}")
+                time.sleep(5)
+                continue
+
+            else:
+                # 그 외 => 실패
+                msg = f"status={resp.status_code}, text={resp.text}"
+                logger.error(f"[post_naver_center_inquiry_answer] 실패: {msg}")
+                return False, msg
+
+        except requests.exceptions.RequestException as e:
+            msg = f"[post_naver_center_inquiry_answer] 요청 예외: {str(e)}"
+            logger.error(msg)
+            return False, msg
+
+    msg = "[post_naver_center_inquiry_answer] 재시도 초과"
+    logger.error(msg)
+    return False, msg
+
+
+def put_naver_qna_center_answer(account_info, inquiry_no, answer_comment):
+    """
+    네이버 '고객센터 문의' 답변 등록 API (CenterInquiry).
+    POST /v1/pay-merchant/inquiries/{inquiryNo}/answer
+
+    :param account_info: dict - 네이버 스토어 계정 정보 (토큰 발급용)
+    :param inquiry_no: int - 네이버 고객센터 문의 번호
+    :param answer_comment: str - 등록할 답변 내용
+    :return: (success: bool, data_or_msg)
+        - success=True이면 성공, data_or_msg는 응답 JSON (dict)
+        - success=False이면 실패, data_or_msg는 실패 원인(str)
+    """
+
+    # 1) 액세스 토큰 발급
+    access_token = fetch_naver_access_token(account_info)
+    if not access_token:
+        msg = f"{account_info['names'][0]} 토큰 발급 실패"
+        logger.error(msg)
+        return False, msg
+
+    # 2) 엔드포인트
+    base_url = "https://api.commerce.naver.com"
+    endpoint = f"/v1/pay-merchant/inquiries/{inquiry_no}/answer"
+    url = base_url + endpoint
+
+    headers = {
+        'Authorization': f"Bearer {access_token}",
+        'Content-Type': "application/json"
+    }
+
+    # 3) 요청 바디
+    payload = {
+        "answerComment": answer_comment
+    }
+
+    # (A) 디버그용 로그: 함수 진입 시 어떤 값들을 가지고 있는지 확인
+    logger.debug(
+        f"[put_naver_qna_center_answer] 준비: store={account_info['names'][0]}, "
+        f"inquiry_no={inquiry_no}, answer_comment={answer_comment}"
+    )
+    logger.debug(f"[put_naver_qna_center_answer] url={url}, payload={payload}")
+
+    # 4) 재시도 로직
+    MAX_RETRIES = 3
+    retry_count = 0
+
+    while retry_count < MAX_RETRIES:
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            # (B) 요청 후 응답 코드와 일부 본문 로깅
+            logger.debug(f"[put_naver_qna_center_answer] status_code={resp.status_code}, resp={resp.text[:300]}")
+
+            if resp.status_code == 200:
+                # 성공 -> 응답 JSON 파싱
+                data = {}
+                try:
+                    data = resp.json()
+                except Exception:
+                    pass  # 응답 바디가 없거나 JSON 파싱 실패 시 빈 dict
+                logger.info(
+                    f"[{account_info['names'][0]}] 고객센터 문의 답변 등록 성공 (status=200), inquiry_no={inquiry_no}"
+                )
+                return True, data
+
+            elif resp.status_code == 429:
+                # Rate Limit -> 재시도
+                retry_count += 1
+                logger.warning(f"[put_naver_qna_center_answer] 429(Too Many Requests), 재시도 {retry_count}")
+                time.sleep(5)
+                continue
+
+            else:
+                # 그 외 상태코드는 실패 처리
+                msg = f"status={resp.status_code}, text={resp.text}"
+                logger.error(f"[put_naver_qna_center_answer] 실패: {msg}")
+                return False, msg
+
+        except requests.exceptions.RequestException as e:
+            msg = f"[put_naver_qna_center_answer] 요청 예외: {str(e)}"
+            logger.error(msg)
+            return False, msg
+
+    # 5) 재시도 초과
+    msg = "[put_naver_qna_center_answer] 재시도 초과"
+    logger.error(msg)
+    return False, msg

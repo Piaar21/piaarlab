@@ -1,8 +1,9 @@
 # cs_management/admin.py
 
 from django.contrib import admin
-from .models import Inquiry, CoupangOrderSheet
-
+from django.utils.html import format_html
+from .models import Inquiry, CoupangOrderSheet,CenterInquiry
+from .views import STORE_LINK_PREFIX
 @admin.register(Inquiry)
 class InquiryAdmin(admin.ModelAdmin):
     """
@@ -30,6 +31,8 @@ class InquiryAdmin(admin.ModelAdmin):
         'updated_at',
         'answered_at',
         'answer_updated_at',
+        'gpt_recommendation_1',
+        'gpt_recommendation_2',
     )
     # 검색/필터 예시
     search_fields = ('platform', 'store_name', 'inquiry_id', 'author', 'content')
@@ -76,3 +79,60 @@ class CoupangOrderSheetAdmin(admin.ModelAdmin):
     # 검색/필터 예시
     search_fields = ('order_id', 'shipment_box_id', 'receiver_name', 'receiver_addr1', 'orderer_name')
     list_filter = ('status', 'remote_area', 'split_shipping', 'able_split_shipping', 'created_at')
+
+
+
+@admin.register(CenterInquiry)
+class CenterInquiryAdmin(admin.ModelAdmin):
+    # CenterInquiry 모델의 모든 필드를 리스트에 표시
+    list_display = (
+        'id',
+        'inquiry_id',
+        'inquiry_title',
+        'inquiry_content',
+        'created_at_utc',
+        'category',
+        'answered',
+        'answer_content',
+        'orderId01',
+        'product_id',
+        'product_name',
+        'option_name',
+        'author',
+        'customer_name',
+        'store_name',
+        'orderId02',
+        'answer_date',
+        'representative_image',
+        'ordered_at',
+        'platform',
+        'answered_at',
+        'answer_updated_at',
+        'gpt_summary',
+        'gpt_recommendation_1',
+        'gpt_recommendation_2',
+        'gpt_confidence_score',
+        'gpt_used_answer_index',
+    )
+
+    # 검색, 필터도 필요하다면 임시로 전부 넣어볼 수 있습니다.
+    search_fields = (
+        'inquiry_id',
+        'inquiry_title',
+        'inquiry_content',
+        'answer_content',
+        'product_name',
+        'author',
+        'customer_name',
+        'store_name',
+        'representative_image',
+        'platform',
+    )
+    list_filter = (
+        'answered',
+        'platform',
+        'category',
+    )
+
+    # 필요시 순서를 바꾸거나 ordering 지정 (예: 최신순)
+    ordering = ('-created_at_utc',)
