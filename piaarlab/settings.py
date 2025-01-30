@@ -209,6 +209,11 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': True,
         },
+        'cs_management': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
     },
 }
 
