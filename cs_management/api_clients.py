@@ -161,7 +161,7 @@ def fetch_naver_qna_templates(
     if not from_date or not to_date:
         kst = timezone(timedelta(hours=9))
         end_dt = datetime.now(tz=kst)
-        start_dt = end_dt - timedelta(days=1)
+        start_dt = end_dt - timedelta(days=14)
         if not from_date:
             from_date = start_dt.isoformat(timespec='milliseconds')
         if not to_date:
@@ -330,7 +330,7 @@ def fetch_coupang_inquiries(
             end_date = now_kst.strftime('%Y-%m-%d')
         if not start_date:
             # 6일 전 => 총 7일 범위
-            start_dt = now_kst - timedelta(days=1)
+            start_dt = now_kst - timedelta(days=6)
             start_date = start_dt.strftime('%Y-%m-%d')
 
     all_contents = []      # 모든 계정에서 받은 문의 총합
