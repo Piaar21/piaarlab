@@ -3,312 +3,356 @@
 
 <div class="container">
   <h2 class="mt-4 mb-2">{{ platform_name }}</h2>
+
   <!-- 상단 버튼들 -->
   <div style="margin-bottom: 12px; text-align: right;">
-    <!-- 네이버 문의 불러오기 -->
-    <a href="{% url 'cs_management:update_inquiries' %}?platform=all"
-      class="btn btn-success me-2">
-      문의 불러오기
+    <a href="{% url 'cs_management:update_center_inquiries' %}?platform=all" class="btn btn-success me-2">
+      문의
     </a>
-    <!-- 전체 삭제 -->
-    <a href="{% url 'cs_management:delete_all_inquiries' %}"
-       class="btn btn-danger"
-       onclick="return confirm('정말 모든 데이터를 삭제하시겠습니까?');">
+    <a href="{% url 'cs_management:delete_all_inquiries_center' %}" class="btn btn-danger"
+       onclick="return confirm('정말 모든 고객센터 데이터를 삭제하시겠습니까?');">
       모든 데이터 삭제
     </a>
   </div>
 
-
+  <!-- 예시: 미답변 현황 카드 (원하시면 생략/수정) -->
   <div class="container mt-4 mb-4" style="background-color:#fff; border-radius:8px;">
-
-    <!-- (A) 미답변 현황 카드들 -->
-    <div class="col-md-6 row mb-4">
-
-    <div class="col-md-4 mb-3">
-      <a href="?range=24h&status=pending" style="text-decoration:none;">
-        <div class="card p-3 h-100" style="cursor:pointer;">
-          <div class="text-secondary" style="font-size:0.9rem;">24시간 이내</div>
-          <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
-            {{ count_24h|default:'0' }}건
+    <div class="col-md-8 row mb-4">
+      <div class="col-md-3 mb-3">
+        <a href="?range=24h&status=pending" style="text-decoration:none;">
+          <div class="card p-3 h-100" style="cursor:pointer;">
+            <div class="text-secondary" style="font-size:0.9rem;">24시간 이내</div>
+            <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
+              {{ count_24h|default:'0' }}건
+            </div>
           </div>
-        </div>
-      </a>
-    </div>
-    <!-- 24~72시간 -->
-    <div class="col-md-4 mb-3">
-      <a href="?range=24_72h&status=pending" style="text-decoration:none;">
-        <div class="card p-3 h-100" style="cursor:pointer;">
-          <div class="text-secondary" style="font-size:0.9rem;">24~72시간</div>
-          <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
-            {{ count_24_72h|default:'0' }}건
+        </a>
+      </div>
+      <div class="col-md-3 mb-3">
+        <a href="?range=24_72h&status=pending" style="text-decoration:none;">
+          <div class="card p-3 h-100" style="cursor:pointer;">
+            <div class="text-secondary" style="font-size:0.9rem;">24~72시간</div>
+            <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
+              {{ count_24_72h|default:'0' }}건
+            </div>
           </div>
-        </div>
-      </a>
-    </div>
-    <!-- 72시간~30일 -->
-    <div class="col-md-4 mb-3">
-      <a href="?range=72_30d&status=pending" style="text-decoration:none;">
-        <div class="card p-3 h-100" style="cursor:pointer;">
-          <div class="text-secondary" style="font-size:0.9rem;">72시간-30일 이내</div>
-          <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
-            {{ count_72h_30d|default:'0' }}건
+        </a>
+      </div>
+      <div class="col-md-3 mb-3">
+        <a href="?range=72_30d&status=pending" style="text-decoration:none;">
+          <div class="card p-3 h-100" style="cursor:pointer;">
+            <div class="text-secondary" style="font-size:0.9rem;">72시간~30일</div>
+            <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
+              {{ count_72h_30d|default:'0' }}건
+            </div>
           </div>
-        </div>
-      </a>
+        </a>
+      </div>
+      <div class="col-md-3 mb-3">
+        <a href="{% url 'cs_management:inquiry_product_list' %}" style="text-decoration:none;">
+          <div class="card p-3 h-100" style="cursor:pointer;">
+            <div class="text-secondary" style="font-size:0.9rem;">고객센터문의</div>
+            <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
+              {{ count_72h_30d|default:'0' }}건
+            </div>
+          </div>
+        </a>
+      </div>
     </div>
   </div>
-  </div>
-  
-  <!-- 필터 카드: 기본 접힘 -->
+
+  <!-- 필터 폼 (원하시면 수정/삭제) -->
   <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0">검색 / 필터</h5>
-      <!-- 만약 GET 파라미터가 있으면 show, 아니면 collapse -->
-      <!-- 이 예시는 JS 없이, 서버단에서 open_collapse=True 면 show -->
       <button class="btn btn-sm btn-outline-primary" type="button"
               data-bs-toggle="collapse" data-bs-target="#filterCollapse"
               aria-expanded="false" aria-controls="filterCollapse">
         열기/접기
       </button>
     </div>
-    
-      <!-- (B) 실제 접히는 영역: collapse + show 제거하면 기본 접힘 -->
-      <div id="filterCollapse" class="collapse">
-        <div class="card-body">
-      <form method="GET" action="" id="inquiryFilterForm">
-        <!-- 등록일 / 날짜범위 -->
-        <div class="mb-3">
-          <label class="form-label" style="font-weight:600;">등록일</label>
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <!-- 버튼들 (오늘, 지난7일, 지난30일) -->
-            <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('today')">
-              오늘
-            </button>
-            <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('7days')">
-              지난 7일
-            </button>
-            <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('30days')">
-              지난 30일
-            </button>
-  
-            <!-- 달력 (시작일/종료일) -->
-            <div class="d-flex align-items-center">
-              <input type="date" name="start_date" id="start_date" class="form-control" style="width:auto;" />
-              <span class="mx-2">~</span>
-              <input type="date" name="end_date" id="end_date" class="form-control" style="width:auto;" />
+    <div id="filterCollapse" class="collapse">
+      <div class="card-body">
+        <form method="GET" action="" id="inquiryFilterForm">
+          <!-- 날짜범위 -->
+          <div class="mb-3">
+            <label class="form-label" style="font-weight:600;">등록일</label>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('today')">오늘</button>
+              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('7days')">7일</button>
+              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('30days')">30일</button>
+              <div class="d-flex align-items-center">
+                <input type="date" name="start_date" id="start_date" class="form-control" style="width:auto;" />
+                <span class="mx-2">~</span>
+                <input type="date" name="end_date" id="end_date" class="form-control" style="width:auto;" />
+              </div>
             </div>
           </div>
-        </div>
-  
-        <!-- 답변여부 라디오 -->
-        <div class="mb-3">
-          <label class="form-label" style="font-weight:600;">답변여부</label>
-          <div class="d-flex gap-3">
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="status" value="" id="radioAll"
-                     {% if not filter_status %} checked {% endif %} />
-              <label class="form-check-label" for="radioAll">전체</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="status" value="answered" id="radioAnswered"
-                     {% if filter_status == 'answered' %} checked {% endif %}/>
-              <label class="form-check-label" for="radioAnswered">답변</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="status" value="pending" id="radioPending"
-                     {% if filter_status == 'pending' %} checked {% endif %}/>
-              <label class="form-check-label" for="radioPending">미답변</label>
+
+          <!-- 답변여부 라디오 -->
+          <div class="mb-3">
+            <label class="form-label" style="font-weight:600;">답변여부</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="status" value=""
+                       id="radioAll" {% if not filter_status %} checked {% endif %}/>
+                <label class="form-check-label" for="radioAll">전체</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="status" value="answered"
+                       id="radioAnswered" {% if filter_status == 'answered' %} checked {% endif %}/>
+                <label class="form-check-label" for="radioAnswered">답변</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="status" value="pending"
+                       id="radioPending" {% if filter_status == 'pending' %} checked {% endif %}/>
+                <label class="form-check-label" for="radioPending">미답변</label>
+              </div>
             </div>
           </div>
-        </div>
-  
-        <!-- 상세검색 (상품명 / 주문번호 / 구매자) + 검색어 -->
-        <div class="mb-3">
-          <label class="form-label" style="font-weight:600;">상세검색</label>
-          <div class="d-flex align-items-center gap-2 flex-wrap">
-            <select name="search_type" class="form-select" style="width:auto;">
-              <option value="product_name">상품명</option>
-              <option value="order_number">주문번호</option>
-              <option value="buyer_name">구매자</option>
-            </select>
-            <input type="text" name="q" class="form-control" placeholder="입력해주세요"
-                   style="min-width:200px;" value="{{ search_query }}"/>
+
+          <!-- 검색어 -->
+          <div class="mb-3">
+            <label class="form-label" style="font-weight:600;">상세검색</label>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <select name="search_type" class="form-select" style="width:auto;">
+                <option value="product_name">상품명</option>
+                <option value="order_number">주문번호</option>
+                <option value="buyer_name">구매자</option>
+              </select>
+              <input type="text" name="q" class="form-control" placeholder="검색어"
+                     style="min-width:200px;" value="{{ search_query }}"/>
+            </div>
           </div>
-        </div>
-  
-        <!-- 조회 / 초기화 버튼 -->
-        <div class="mt-4 d-flex justify-content-center gap-2">
-          <!-- 조회는 type=submit, --> 
-          <!-- Bootstrap collapse toggle를 주지 않음 => 클릭해도 collapse 안접힘 -->
-          <button type="submit" class="btn btn-primary">
-            조회
-          </button>
-          <button type="button" class="btn btn-outline-secondary" onclick="resetFilter()">
-            초기화
-          </button>
-        </div>
-      </form>
-    </div>
-    
-</div>
-  </div>
-  
 
-<!-- 문의 목록 -->
-{% if inquiries %}
-<div class="inquiry-list-container" style="max-height: 60vh; overflow-y: auto; margin-bottom:1rem;">
-
-{% for item in inquiries %}
-
-<div class="card mb-3 " style="box-shadow:0 1px 2px rgba(0,0,0,0.1);">
-  <div class="card-body d-flex">
-    <!-- (1) 왼쪽: 이미지/네모 + 링크 -->
-    <div style="width:80px; height:80px; margin-right:16px; border-radius:8px; overflow:hidden;">
-      <!-- 무조건 <a> 감싸기 -->
-      <a href="{{ item.product_link }}" target="_blank" rel="noopener noreferrer"
-         style="display:block; width:100%; height:100%;">
-        {% if item.representative_image %}
-          <!-- 대표이미지 있음: 이미지 표시 -->
-          <img src="{{ item.representative_image }}" alt="대표이미지"
-               style="width:100%; height:auto; display:block;" />
-        {% else %}
-          <!-- 대표이미지 없음: 회색 네모 -->
-          <div style="width:100%; height:100%; background:#eee;"></div>
-        {% endif %}
-      </a>
-    </div>
-    <div style="flex:1;">
-      <div class="d-flex align-items-center mb-2">
-        {% if item.status == 'pending' %}
-          <span class="badge bg-warning text-dark me-2">미답변</span>
-        {% else %}
-          <span class="badge bg-success me-2">답변완료</span>
-        {% endif %}
-        <h5 class="m-0" style="font-size:1rem;">{{ item.product_name }}</h5>
+          <div class="mt-4 d-flex justify-content-center gap-2">
+            <button type="submit" class="btn btn-primary">조회</button>
+            <button type="button" class="btn btn-outline-secondary" onclick="resetFilter()">초기화</button>
+          </div>
+        </form>
       </div>
-      <!-- 메타 정보 -->
-      <div class="text-muted mb-2">
-        {{ item.store_name }}
-        <span class="mx-1">•</span>
-        문의번호: {{ item.id }}
-        <span class="mx-1">•</span>
-        <span class="piaar-author-click text-info" 
-              data-ordersheet='{{ item.order_sheet_raw|escapejs }}'
-              style="cursor:pointer;">
-          {{ item.author }}
-        </span>
-        <span class="mx-1">•</span>
-        {{ item.date }}
-      </div>
-      <!-- 문의 내용 -->
-      <div style="background:#fafafa; border:1px solid #eee; border-radius:4px; padding:8px; font-size:0.875rem;">
-        {{ item.content }}
-      </div>
-      <!-- 답글 버튼 => data-inquiry-id & data-answer-content -->
-      <button class="btn btn-sm btn-outline-secondary mt-2 piaar-reply-btn"
-            data-inquiry-id="{{ item.id }}"
-            data-answer-content="{{ item.answer_content|escapejs }}"
-            data-answer-date="{{ item.answer_date|escapejs }}"
-            data-platform="{{ item.platform|default_if_none:'' }}">
-      답글
-      </button>
-      <button class="btn btn-sm btn-outline-secondary mt-2 piaar-webhook-btn"
-              data-inquiry-id="{{ item.id }}">
-        전송
-      </button>
     </div>
   </div>
-</div>
-{% endfor %}
-{% else %}
-<p class="text-center py-4">등록된 문의가 없습니다.</p>
-{% endif %}
-</div>
-</div>
 
-{% if page_obj.has_other_pages %}
+  <!-- 문의 목록 -->
+  {% if inquiries %}
+  <div class="inquiry-list-container" style="max-height:60vh; overflow-y:auto; margin-bottom:1rem;">
+    {% for item in inquiries %}
+    <div class="card mb-3" style="box-shadow:0 1px 2px rgba(0,0,0,0.1);">
+      <div class="card-body d-flex">
+        <!-- 왼쪽 (대표이미지) -->
+        <div style="width:80px; height:80px; margin-right:16px; border-radius:8px; overflow:hidden;">
+          <a href="{{ item.product_link }}" target="_blank" rel="noopener noreferrer"
+             style="display:block; width:100%; height:100%;">
+            {% if item.representative_image %}
+              <img src="{{ item.representative_image }}" alt="대표이미지"
+                   style="width:100%; height:auto; display:block;" />
+            {% else %}
+              <div style="width:100%; height:100%; background:#eee;"></div>
+            {% endif %}
+          </a>
+        </div>
+        <!-- 오른쪽 -->
+        <div style="flex:1;">
+          <div class="d-flex align-items-center mb-2">
+            {% if item.status == 'pending' %}
+              <span class="badge bg-warning text-dark me-2">미답변</span>
+            {% else %}
+              <span class="badge bg-success me-2">답변완료</span>
+            {% endif %}
+            <h5 class="m-0" style="font-size:1rem;">{{ item.product_name }}</h5>
+          </div>
+          <div class="text-muted mb-2">
+            {{ item.store_name }}
+            <span class="mx-1">•</span>
+            문의번호: {{ item.id }}
+            <span class="mx-1">•</span>
+            <span class="piaar-author-click text-info"
+                  data-ordersheet='{{ item.order_sheet_raw|escapejs }}'
+                  style="cursor:pointer;">
+              {{ item.author }}
+            </span>
+            <span class="mx-1">•</span>
+            {{ item.date }}
+          </div>
+          <div style="background:#fafafa; border:1px solid #eee; border-radius:4px;
+                      padding:8px; font-size:0.875rem;">
+            {{ item.inquiry_content }}
+          </div>
+          <button class="piaar-reply-btn btn-sm btn-outline-secondary mt-2 btn"
+                  data-inquiry-id="{{ item.id }}"
+                  data-author="{{ item.author }}"
+                  data-inquiry-date="{{ item.date }}"
+                  data-inquiry-content="{{ item.inquiry_content|escapejs }}"
+                  data-answer-content="{{ item.answer_content|escapejs }}"
+                  data-answer-date="{{ item.answer_date|default:''|escapejs }}"
+                  data-gpt-summary="{{ item.gpt_summary|default:''|escapejs }}"
+                  data-gpt-rec1="{{ item.gpt_recommendation_1|default:''|escapejs }}"
+                  data-gpt-rec2="{{ item.gpt_recommendation_2|default:''|escapejs }}"
+          >
+            답글
+          </button>
+          <button class="btn btn-sm btn-outline-secondary mt-2 piaar-webhook-btn"
+                  data-inquiry-id="{{ item.id }}">
+            웹훅 전송
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-center py-4">등록된 문의가 없습니다.</p>
+  {% endif %}
+
+  <!-- 페이지네이션 (있다면) -->
+  {% if page_obj.has_other_pages %}
 <nav aria-label="Page navigation">
   <ul class="pagination justify-content-center">
 
-    <!-- 이전 페이지 -->
+    <!-- 이전 버튼 -->
     {% if page_obj.has_previous %}
-    <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}"
-         aria-label="Previous">
-        &laquo;
-      </a>
-    </li>
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">&laquo;</a>
+      </li>
     {% else %}
-    <li class="page-item disabled">
-      <span class="page-link">&laquo;</span>
-    </li>
+      <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
     {% endif %}
 
-    <!-- 번호들 (단순 전부 or elided_page_range) -->
-    {% for num in page_obj.paginator.page_range %}
+    <!-- 실제 페이지 번호: custom_page_range만 출력 -->
+    {% for num in custom_page_range %}
       {% if num == page_obj.number %}
-      <li class="page-item active">
-        <span class="page-link">{{ num }}</span>
-      </li>
+        <!-- 현재 페이지는 active -->
+        <li class="page-item active">
+          <span class="page-link">{{ num }}</span>
+        </li>
       {% else %}
-      <li class="page-item">
-        <a class="page-link" href="?page={{ num }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">{{ num }}</a>
-      </li>
+        <li class="page-item">
+          <a class="page-link"
+             href="?page={{ num }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">
+            {{ num }}
+          </a>
+        </li>
       {% endif %}
     {% endfor %}
 
-    <!-- 다음 페이지 -->
+    <!-- 다음 버튼 -->
     {% if page_obj.has_next %}
-    <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}"
-         aria-label="Next">
-        &raquo;
-      </a>
-    </li>
+      <li class="page-item">
+        <a class="page-link"
+           href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">
+          &raquo;
+        </a>
+      </li>
     {% else %}
-    <li class="page-item disabled">
-      <span class="page-link">&raquo;</span>
-    </li>
+      <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
     {% endif %}
-
   </ul>
 </nav>
 {% endif %}
+</div>
+
+
 <!-- (A) 답글 모달 -->
 <div class="piaar-modal-overlay" id="replyModalOverlay">
-<div class="piaar-modal">
-<div class="piaar-modal-header">
-  <h2>문의 답글</h2>
-  <button class="piaar-modal-close" id="replyCloseBtn">&times;</button>
-</div>
-<div class="piaar-modal-body">
-  <!-- 문의 내용 -->
-  <div class="question" id="replyModalContent" style="margin-bottom:12px; padding:12px; background:#f9f9f9;">
-    문의 내용이 여기에 표시됩니다.
+  <div class="piaar-modal">
+    <div class="piaar-modal-header">
+      <h2>문의 답글</h2>
+      <button class="piaar-modal-close" id="replyCloseBtn">&times;</button>
+    </div>
+    <div class="piaar-modal-body">
+      <!-- (1) 문의 정보 -->
+      <div id="inquiryHeader" style="margin-bottom:12px; padding:12px; background:#f9f9f9;">
+        <p><strong>작성자:</strong> <span id="modalAuthorText">[작성자명]</span></p>
+        <p><strong>문의일시:</strong> <span id="modalInquiryDateText">[문의일시]</span></p>
+        <hr style="margin:8px 0;">
+        <p id="replyModalContent" style="white-space:pre-wrap;">
+          {{ item.inquiry_content }}
+        </p>
+      </div>
+
+      <!-- (2) 최종 답변 입력 -->
+      <div class="mb-3">
+        <label class="form-label fw-bold">최종 답변 작성</label>
+        <textarea id="replyTextarea" class="form-control"
+                  style="min-height:80px;"></textarea>
+      </div>
+
+      <!-- (3) GPT 문의 요약 -->
+      <div class="border rounded p-2 mb-3" style="background:#f9f9f9;">
+        <p class="mb-1 fw-bold">GPT 문의 요약</p>
+        <div id="inquirySummary" style="white-space:pre-wrap; font-size:14px; color:#555;">
+          {% if item.gpt_summary %}
+          {{ item.gpt_summary }}
+        {% else %}
+          <!-- 없으면 샘플 -->
+          (문의 요약 로딩...)
+        {% endif %}
+        </div>
+      </div>
+
+      <!-- AI 추천 답변 목록 -->
+      <div class="border rounded p-2 mb-3" style="background:#fffef7;">
+        <p class="mb-1 fw-bold">AI 추천 답변 목록</p>
+        <ul id="aiRecommendationList" class="m-0 p-0" style="list-style:none;">
+
+          <!-- (1) 추천 답변 #1 -->
+          <li class="mb-2 d-flex justify-content-between align-items-center">
+            <span>
+              {% if item.gpt_recommendation_1 %}
+                {{ item.gpt_recommendation_1 }}
+              {% else %}
+                <!-- 없으면 샘플 -->
+                추천 답변 1 (샘플)
+              {% endif %}
+            </span>
+            <button class="btn btn-sm btn-outline-secondary"
+                    onclick="insertRecommendation('{% if item.gpt_recommendation_1 %}{{ item.gpt_recommendation_1|escapejs }}{% else %}추천 답변 1 (샘플){% endif %}')">
+              삽입
+            </button>
+          </li>
+
+          <!-- (2) 추천 답변 #2 -->
+          <li class="mb-2 d-flex justify-content-between align-items-center">
+            <span>
+              {% if item.gpt_recommendation_2 %}
+                {{ item.gpt_recommendation_2 }}
+              {% else %}
+                추천 답변 2 (샘플)
+              {% endif %}
+            </span>
+            <button class="btn btn-sm btn-outline-secondary"
+                    onclick="insertRecommendation('{% if item.gpt_recommendation_2 %}{{ item.gpt_recommendation_2|escapejs }}{% else %}추천 답변 2 (샘플){% endif %}')">
+              삽입
+            </button>
+          </li>
+
+        </ul>
+      </div>
+
+      <!-- (5) 기존 답변 영역 (이미 답변된 경우) -->
+      <div id="answeredInfo" style="display:none; margin-bottom:8px; border:1px solid #ddd;
+                                   border-radius:4px; background:#fafafa; padding:8px;">
+        <p style="margin-bottom:4px;"><strong>기존 답변</strong> (아래 참고)</p>
+        <p><strong>답변 시각:</strong> <span id="answerDateText"></span></p>
+        <p><strong>답변 내용:</strong></p>
+        <div id="existingAnswerContent" style="white-space:pre-wrap; margin-top:4px; color:#555;">
+          <!-- 기존 답변 로딩 -->
+        </div>
+      </div>
+    </div>
+    <div class="piaar-modal-footer" style="text-align:right;">
+      <button type="button" class="btn btn-outline-secondary me-2" id="modalCancelBtn">닫기</button>
+      <!-- GPT추천 버튼 (옵션) -->
+      <button id="gptRecommendBtn" class="btn btn-outline-secondary me-2">
+        GPT추천
+      </button>
+      <button id="sendReplyBtn" class="btn btn-primary">답변 등록</button>
+    </div>
   </div>
-  <!-- GPT 추천 -->
-  <div style="border:1px solid #ccc; padding:10px; border-radius:4px; background:#fffef7; margin-bottom:8px;">
-    <strong>GPT 추천답변</strong>
-    <p id="gptRecommendation">[GPT에서 받아온 답변 텍스트 예시...]</p>
-  </div>
-  <!-- 기존 답변 영역 -->
-  <div id="answeredInfo" style="display:none; margin-bottom:8px; border:1px solid #ddd; padding:8px; border-radius:4px; background:#fafafa;">
-    <p><strong>답변 시각:</strong> <span id="answerDateText"></span></p>
-    <p><strong>답변 내용:</strong></p>
-    <div id="existingAnswerContent" style="white-space:pre-wrap; margin-top:4px; color:#555;"></div>
-  </div>
-  <!-- 새 답변 textarea -->
-  <textarea id="replyTextarea" placeholder="실제 답변을 작성하세요" 
-            style="width:100%; margin-top:8px; min-height:80px;"></textarea>
-</div>
-<div class="piaar-modal-footer" style="text-align:right;">
-  <button id="sendReplyBtn" class="btn btn-primary">답변 등록</button>
-</div>
-</div>
 </div>
 
-
-<!-- (B) OrderSheet 모달 -->
+<!-- (B) 오더시트(주문정보) 모달 (선택) -->
 <div class="piaar-modal-overlay" id="orderSheetModalOverlay">
   <div class="piaar-modal">
     <div class="piaar-modal-header">
@@ -316,263 +360,328 @@
       <button class="piaar-modal-close" id="orderSheetCloseBtn">&times;</button>
     </div>
     <div class="piaar-modal-body">
-      <pre id="orderSheetContent" style="white-space: pre-wrap; font-size:14px;"></pre>
+      <pre id="orderSheetContent" style="white-space:pre-wrap; font-size:14px;"></pre>
     </div>
   </div>
 </div>
 
 <script>
   let currentInquiryId = null;
-
-  // 모달
-  const replyOverlay = document.getElementById("replyModalOverlay");
-  const replyCloseBtn = document.getElementById("replyCloseBtn");
-  const replyModalContent = document.getElementById("replyModalContent");
-  const gptRecommendation = document.getElementById("gptRecommendation");
-  const replyTextarea = document.getElementById("replyTextarea");
-  const sendReplyBtn = document.getElementById("sendReplyBtn");
-
-  // 기존 답변 표시 영역
-  const answeredInfo = document.getElementById("answeredInfo");
-  const existingAnswerContent = document.getElementById("existingAnswerContent");
-  const answerDateText = document.getElementById("answerDateText");
-
-  // 모든 '답글' 버튼
-  const replyButtons = document.querySelectorAll(".piaar-reply-btn");
-  replyButtons.forEach(btn => {
+  
+  // 모달 관련 요소
+  const replyOverlay         = document.getElementById("replyModalOverlay");
+  const replyCloseBtn        = document.getElementById("replyCloseBtn");
+  const modalCancelBtn       = document.getElementById("modalCancelBtn");
+  const sendReplyBtn         = document.getElementById("sendReplyBtn");
+  const gptRecommendBtn      = document.getElementById("gptRecommendBtn");
+  
+  const modalAuthorText      = document.getElementById("modalAuthorText");
+  const modalInquiryDateText = document.getElementById("modalInquiryDateText");
+  const replyModalContent    = document.getElementById("replyModalContent");
+  const replyTextarea        = document.getElementById("replyTextarea");
+  
+  // GPT 요약 / 추천 영역
+  const inquirySummary       = document.getElementById("inquirySummary");
+  const aiRecommendationList = document.getElementById("aiRecommendationList");
+  
+  // 기존답변 영역
+  const answeredInfo         = document.getElementById("answeredInfo");
+  const answerDateText       = document.getElementById("answerDateText");
+  const existingAnswerContent= document.getElementById("existingAnswerContent");
+  
+  // (A) "답글" 버튼 -> 모달 열기
+  document.querySelectorAll(".piaar-reply-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      // inquiryId만 세팅, 플랫폼 구분은 서버에서 DB를 확인
-      const inquiryId = btn.dataset.inquiryId;
-      const existingAnswer = btn.dataset.answerContent || "";
-      const existingDate = btn.dataset.answerDate || "";
+      // dataset 파싱
+      const inquiryId     = btn.dataset.inquiryId || "";
+      const authorName    = btn.dataset.author || "";
+      const inquiryDate   = btn.dataset.inquiryDate || "";
+      const inquiryContent= btn.dataset.inquiryContent || "";
+      const existingAns   = btn.dataset.answerContent || "";
+      const existingDate  = btn.dataset.answerDate || "";
+  
+      // GPT 추천답변
+      const gptRec1 = btn.dataset.gptRec1 || "";
+      const gptRec2 = btn.dataset.gptRec2 || "";
+  
+      currentInquiryId = inquiryId;  // ← 모달에서 사용할 전역 변수
+  
+      // 모달 UI 채우기
+      modalAuthorText.textContent      = authorName;
+      modalInquiryDateText.textContent = inquiryDate;
+      replyModalContent.textContent    = inquiryContent;
+      replyTextarea.value              = "";
+      const gptSummary  = btn.dataset.gptSummary  || "";
 
-      currentInquiryId = inquiryId;
+      // (1) GPT 요약 초기화
+      if (gptSummary.trim()) {
+        inquirySummary.textContent = gptSummary;
+      } else {
+        inquirySummary.textContent = "(문의 요약 로딩...)";
+      }  
 
-      // 모달 UI 초기화
-      replyModalContent.textContent = `문의 ID: ${inquiryId}\n`;
-      gptRecommendation.textContent = "[GPT] 안녕하세요 고객님, 문의 감사...";
-      replyTextarea.value = "";
-
-      if (existingAnswer.trim() !== "") {
+      // (2) 추천답변 목록 생성
+      let html = "";
+      if(gptRec1.trim()){
+        html += `
+        <li class="mb-2 d-flex justify-content-between align-items-center">
+          <span>${gptRec1}</span>
+          <button class="btn btn-sm btn-outline-secondary"
+                  onclick="insertRecommendation('${gptRec1}')">삽입</button>
+        </li>`;
+      }
+      if(gptRec2.trim()){
+        html += `
+        <li class="mb-2 d-flex justify-content-between align-items-center">
+          <span>${gptRec2}</span>
+          <button class="btn btn-sm btn-outline-secondary"
+                  onclick="insertRecommendation('${gptRec2}')">삽입</button>
+        </li>`;
+      }
+      aiRecommendationList.innerHTML = html;
+  
+      // (3) 기존답변 표시
+      if(existingAns.trim()){
         answeredInfo.style.display = "block";
-        existingAnswerContent.textContent = existingAnswer;
+        existingAnswerContent.textContent = existingAns;
         answerDateText.textContent = existingDate;
       } else {
         answeredInfo.style.display = "none";
         existingAnswerContent.textContent = "";
         answerDateText.textContent = "";
       }
-
+  
       // 모달 열기
       replyOverlay.style.display = "flex";
     });
   });
-
-  // 모달 닫기
+  
+  // (B) 모달 닫기
   replyCloseBtn.addEventListener("click", () => {
     replyOverlay.style.display = "none";
   });
+  modalCancelBtn.addEventListener("click", () => {
+    replyOverlay.style.display = "none";
+  });
   window.addEventListener("click", (e) => {
-    if (e.target === replyOverlay) {
+    if(e.target === replyOverlay){
       replyOverlay.style.display = "none";
     }
   });
-
-  // "답변 등록" 버튼
-  sendReplyBtn.addEventListener("click", () => {
-    const userReply = replyTextarea.value;
-    if(!currentInquiryId) {
-      alert("오류: 문의 ID 없음");
+  
+  // (C) GPT추천 버튼 => /gpt-recommend/ (RAG + GPT)
+  gptRecommendBtn.addEventListener("click", () => {
+    if(!currentInquiryId){
+      alert("문의 ID가 설정되지 않았습니다.");
       return;
     }
-
-    // (A) 항상 /cs/inquiries/answer/
-    fetch("/cs/inquiries/answer/", {
-      method: "POST",
-      headers: {
-        "X-CSRFToken": "{{ csrf_token }}",
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        "inquiry_id": currentInquiryId,
-        "replyContent": userReply
+    fetch(`/cs/inquiries/${currentInquiryId}/gpt-recommend/`)
+      .then(res => res.json())
+      .then(data => {
+        if(data.status === "ok"){
+          inquirySummary.textContent = data.summary || "";
+          let html = "";
+          data.recommendations.forEach(r => {
+            html += `
+            <li class="mb-2 d-flex justify-content-between align-items-center">
+              <span>${r}</span>
+              <button class="btn btn-sm btn-outline-secondary"
+                      onclick="insertRecommendation('${r}')">삽입</button>
+            </li>`;
+          });
+          aiRecommendationList.innerHTML = html;
+        } else {
+          alert("Error: " + data.message);
+        }
       })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if(data.status === 'ok') {
-        alert("답변 등록 성공!\n\n" + data.message);
-
-        // 기존답변 업데이트
-        answeredInfo.style.display = "block";
-        existingAnswerContent.textContent = data.answer_content || userReply;
-        answerDateText.textContent = data.answer_date || "";
-
-      } else {
-        alert("오류: " + data.message);
-      }
-    })
-    .catch(err => {
-      alert("서버 에러 발생");
-      console.error(err);
-    });
+      .catch(err => {
+        console.error(err);
+        alert("서버오류(gpt-recommend).");
+      });
   });
+  
+  // (D) 최종등록 버튼 => answer_inquiry_unified(플랫폼별 API 연동)
+sendReplyBtn.addEventListener("click", () => {
+  if(!currentInquiryId){
+    alert("오류: 문의 ID 없음");
+    return;
+  }
+  const userReply = replyTextarea.value.trim();
+  if(!userReply){
+    alert("답변 내용을 입력하세요.");
+    return;
+  }
 
-  // === (B) OrderSheet 모달 ===
+  // 서버에서 answer_inquiry_unified 뷰가
+  // POST['inquiry_id'], POST['replyContent']를 받도록 함
+  const formData = new URLSearchParams();
+  formData.append("inquiry_id", currentInquiryId);
+  formData.append("replyContent", userReply);
+
+  fetch("/cs/inquiries/center/answer-unified/", {
+  method: "POST",
+  headers: {
+    "X-CSRFToken": "{{ csrf_token }}",
+    "Content-Type": "application/x-www-form-urlencoded"
+  },
+  body: new URLSearchParams({
+    "inquiry_id": currentInquiryId,
+    "replyContent": userReply
+    // "usedIndex": "1" or "2"
+  }).toString()
+  })
+  .then(res => res.json())
+  .then(data => {
+    if(data.status === "ok"){
+      alert(" 답변 등록 성공!");
+      // 여기서 UI 업데이트
+      answeredInfo.style.display = "block";
+      existingAnswerContent.textContent = data.answer_content;
+      replyOverlay.style.display = "none";
+    } else {
+      alert("오류: " + data.message);
+    }
+  })
+  .catch(err=>{
+    console.error(err);
+    alert("서버 에러(answer-unified).");
+  });
+});
+  
+  // 삽입 함수
+  function insertRecommendation(txt){
+    replyTextarea.value = txt;
+  }
+  
+  // (E) 주문정보 모달 (선택)
   const orderSheetOverlay = document.getElementById("orderSheetModalOverlay");
-  const orderSheetCloseBtn = document.getElementById("orderSheetCloseBtn");
+  const orderSheetCloseBtn= document.getElementById("orderSheetCloseBtn");
   const orderSheetContent = document.getElementById("orderSheetContent");
-  const authorSpans = document.querySelectorAll(".piaar-author-click");
-
-  authorSpans.forEach(span => {
+  
+  document.querySelectorAll(".piaar-author-click").forEach(span => {
     span.addEventListener("click", () => {
-      const rawData = span.dataset.ordersheet;
+      const rawData = span.dataset.ordersheet || "";
       let prettyText;
       try {
-        const parsed = JSON.parse(rawData);
-        prettyText = JSON.stringify(parsed, null, 2);
-      } catch(e) {
+        prettyText = JSON.stringify(JSON.parse(rawData), null, 2);
+      } catch(e){
         prettyText = rawData;
       }
       orderSheetContent.textContent = prettyText;
       orderSheetOverlay.style.display = "flex";
     });
   });
-
   orderSheetCloseBtn.addEventListener("click", () => {
     orderSheetOverlay.style.display = "none";
   });
   window.addEventListener("click", (e) => {
-    if(e.target === orderSheetOverlay) {
+    if(e.target === orderSheetOverlay){
       orderSheetOverlay.style.display = "none";
     }
   });
-
-   // (예시) 날짜버튼 클릭 시 date input 자동 채우기
-   function setDateRange(type) {
+  
+  //////////////////////////////////////////////////
+  // (F) 기타
+  //////////////////////////////////////////////////
+  function setDateRange(type) {
     const today = new Date();
     const start = new Date();
-
     if (type === 'today') {
-      // 오늘만 => start=end=today
+      //...
     } else if (type === '7days') {
       start.setDate(today.getDate() - 7);
     } else if (type === '30days') {
       start.setDate(today.getDate() - 30);
     }
-    // YYYY-MM-DD 포맷
     document.getElementById('start_date').value = formatDate(start);
-    document.getElementById('end_date').value = formatDate(today);
+    document.getElementById('end_date').value   = formatDate(today);
   }
-
-  function formatDate(d) {
+  function formatDate(d){
     const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
     return `${yyyy}-${mm}-${dd}`;
   }
-
-  // 초기화 버튼
-  function resetFilter() {
-    // 폼의 모든 input/select 초기화
+  function resetFilter(){
     const baseUrl = location.origin + location.pathname;
     window.location.href = baseUrl;
-    // 필요시 location.reload() or location.href='...?'
   }
   document.querySelectorAll(".piaar-webhook-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    const inquiryId = btn.dataset.inquiryId;
-    if(!inquiryId) {
-      alert("inquiry_id가 없습니다.");
-      return;
-    }
-    // AJAX POST 전송
-    fetch("/cs/inquiries/webhook/", {  // URL은 view의 URL패턴에 맞게
-      method: "POST",
-      headers: {
-        "X-CSRFToken": "{{ csrf_token }}", // Django CSRF
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({ "inquiry_id": inquiryId })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if(data.status === "ok") {
-        alert("웹훅 전송 성공!");
-      } else {
-        alert("오류: " + data.message);
+    btn.addEventListener("click", () => {
+      const inquiryId = btn.dataset.inquiryId;
+      if(!inquiryId){
+        alert("inquiry_id 없음");
+        return;
       }
-    })
-    .catch(err => {
-      console.error(err);
-      alert("서버 에러 발생");
+      fetch(`/cs/inquiries/webhook/`, {
+        method:"POST",
+        headers:{
+          "X-CSRFToken":"{{ csrf_token }}",
+          "Content-Type":"application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({"inquiry_id": inquiryId}).toString()
+      })
+      .then(res => res.json())
+      .then(data => {
+        if(data.status === "ok"){
+          alert("웹훅 전송 성공");
+        } else {
+          alert("오류:" + data.message);
+        }
+      })
+      .catch(err=>{
+        console.error(err);
+        alert("서버 에러(웹훅).");
+      });
     });
   });
-});
 </script>
-
 <style>
-  /* 모달 오버레이 */
-  .piaar-modal-overlay {
-    position: fixed;
-    top: 0; 
-    left: 0;
-    width: 100%; 
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-    display: none;  
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-  }
-
-  /* 모달 박스 */
-  .piaar-modal {
-    background-color: #fff;
-    width: 600px;
-    max-width: 90%;
-    max-height: 80vh; 
-    overflow-y: auto;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    position: relative;
-    z-index: 10000;
-  }
-
-  .piaar-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-  .piaar-modal-header h2 {
-    margin: 0; font-size: 18px;
-  }
-  .piaar-modal-close {
-    background: none; 
-    border: none; 
-    font-size: 20px; 
-    cursor: pointer;
-  }
-  .piaar-modal-body {
-    margin-bottom: 16px;
-  }
-  .piaar-modal-footer {
-    text-align: right;
-  }
-  .piaar-modal-footer button {
-    padding: 8px 16px; 
-    border: none; 
-    border-radius: 4px; 
-    cursor: pointer;
-    color: #fff; 
-    background-color: #2E3A59; 
-    font-size: 14px;
-  }
-  .piaar-modal-footer button:hover {
-    background-color: #1b2a40;
-  }
-
+.piaar-modal-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-color: rgba(0,0,0,0.5);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+.piaar-modal {
+  background-color: #fff;
+  width: 600px;
+  max-width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  position: relative;
+  z-index: 10000;
+}
+.piaar-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px;
+}
+.piaar-modal-header h2 {
+  margin: 0; font-size: 18px;
+}
+.piaar-modal-close {
+  background: none; border: none; font-size: 20px; cursor: pointer;
+}
+.piaar-modal-body {
+  margin-bottom: 16px;
+}
+.piaar-modal-footer {
+  text-align: right;
+}
+.piaar-modal-footer button {
+  padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;
+  color: #fff; background-color: #2E3A59; font-size:14px;
+}
+.piaar-modal-footer button:hover {
+  background-color:#1b2a40;
+}
 </style>
+
 {% endblock %}

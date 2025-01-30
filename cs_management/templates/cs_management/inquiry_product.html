@@ -3,31 +3,22 @@
 
 <div class="container">
   <h2 class="mt-4 mb-2">{{ platform_name }}</h2>
+
   <!-- 상단 버튼들 -->
   <div style="margin-bottom: 12px; text-align: right;">
-    <!-- 문의 불러오기 -->
-    <a href="{% url 'cs_management:update_inquiries' %}?platform=all"
-       class="btn btn-success me-2">
+    <a href="{% url 'cs_management:update_inquiries' %}?platform=all" class="btn btn-success me-2">
       문의 불러오기
     </a>
-    <!-- GPT 버튼 (새로 추가) -->
-    <a href="{% url 'cs_management:generate_gpt_summaries' %}"
-      class="btn btn-info me-2">
-    GPT
-    </a>    
-    <!-- 전체 삭제 -->
-    <a href="{% url 'cs_management:delete_all_inquiries' %}"
-       class="btn btn-danger"
+    <a href="{% url 'cs_management:delete_all_inquiries' %}" class="btn btn-danger"
        onclick="return confirm('정말 모든 데이터를 삭제하시겠습니까?');">
       모든 데이터 삭제
     </a>
   </div>
 
-  <!-- 미답변 현황 카드들 -->
+  <!-- 예시: 미답변 현황 카드 (원하시면 생략/수정) -->
   <div class="container mt-4 mb-4" style="background-color:#fff; border-radius:8px;">
-    <div class="col-md-6 row mb-4">
-      <!-- 24시간 이내 -->
-      <div class="col-md-4 mb-3">
+    <div class="col-md-8 row mb-4">
+      <div class="col-md-3 mb-3">
         <a href="?range=24h&status=pending" style="text-decoration:none;">
           <div class="card p-3 h-100" style="cursor:pointer;">
             <div class="text-secondary" style="font-size:0.9rem;">24시간 이내</div>
@@ -37,8 +28,7 @@
           </div>
         </a>
       </div>
-      <!-- 24~72시간 -->
-      <div class="col-md-4 mb-3">
+      <div class="col-md-3 mb-3">
         <a href="?range=24_72h&status=pending" style="text-decoration:none;">
           <div class="card p-3 h-100" style="cursor:pointer;">
             <div class="text-secondary" style="font-size:0.9rem;">24~72시간</div>
@@ -48,11 +38,20 @@
           </div>
         </a>
       </div>
-      <!-- 72시간~30일 -->
-      <div class="col-md-4 mb-3">
+      <div class="col-md-3 mb-3">
         <a href="?range=72_30d&status=pending" style="text-decoration:none;">
           <div class="card p-3 h-100" style="cursor:pointer;">
-            <div class="text-secondary" style="font-size:0.9rem;">72시간~30일 이내</div>
+            <div class="text-secondary" style="font-size:0.9rem;">72시간~30일</div>
+            <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
+              {{ count_72h_30d|default:'0' }}건
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-md-3 mb-3">
+        <a href="{% url 'cs_management:inquiry_center_list' %}" style="text-decoration:none;">
+          <div class="card p-3 h-100" style="cursor:pointer;">
+            <div class="text-secondary" style="font-size:0.9rem;">고객센터문의</div>
             <div class="mt-1" style="font-size:1.2rem; font-weight:500;">
               {{ count_72h_30d|default:'0' }}건
             </div>
@@ -62,7 +61,7 @@
     </div>
   </div>
 
-  <!-- 필터 카드 -->
+  <!-- 필터 폼 (원하시면 수정/삭제) -->
   <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0">검색 / 필터</h5>
@@ -75,20 +74,13 @@
     <div id="filterCollapse" class="collapse">
       <div class="card-body">
         <form method="GET" action="" id="inquiryFilterForm">
-          <!-- 등록일/날짜범위 -->
+          <!-- 날짜범위 -->
           <div class="mb-3">
             <label class="form-label" style="font-weight:600;">등록일</label>
             <div class="d-flex flex-wrap align-items-center gap-2">
-              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('today')">
-                오늘
-              </button>
-              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('7days')">
-                지난 7일
-              </button>
-              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('30days')">
-                지난 30일
-              </button>
-
+              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('today')">오늘</button>
+              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('7days')">7일</button>
+              <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('30days')">30일</button>
               <div class="d-flex align-items-center">
                 <input type="date" name="start_date" id="start_date" class="form-control" style="width:auto;" />
                 <span class="mx-2">~</span>
@@ -102,24 +94,24 @@
             <label class="form-label" style="font-weight:600;">답변여부</label>
             <div class="d-flex gap-3">
               <div class="form-check">
-                <input class="form-check-input" type="radio" name="status" value="" id="radioAll"
-                       {% if not filter_status %} checked {% endif %} />
+                <input class="form-check-input" type="radio" name="status" value=""
+                       id="radioAll" {% if not filter_status %} checked {% endif %}/>
                 <label class="form-check-label" for="radioAll">전체</label>
               </div>
               <div class="form-check">
-                <input class="form-check-input" type="radio" name="status" value="answered" id="radioAnswered"
-                       {% if filter_status == 'answered' %} checked {% endif %}/>
+                <input class="form-check-input" type="radio" name="status" value="answered"
+                       id="radioAnswered" {% if filter_status == 'answered' %} checked {% endif %}/>
                 <label class="form-check-label" for="radioAnswered">답변</label>
               </div>
               <div class="form-check">
-                <input class="form-check-input" type="radio" name="status" value="pending" id="radioPending"
-                       {% if filter_status == 'pending' %} checked {% endif %}/>
+                <input class="form-check-input" type="radio" name="status" value="pending"
+                       id="radioPending" {% if filter_status == 'pending' %} checked {% endif %}/>
                 <label class="form-check-label" for="radioPending">미답변</label>
               </div>
             </div>
           </div>
 
-          <!-- 상세검색 -->
+          <!-- 검색어 -->
           <div class="mb-3">
             <label class="form-label" style="font-weight:600;">상세검색</label>
             <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -128,12 +120,11 @@
                 <option value="order_number">주문번호</option>
                 <option value="buyer_name">구매자</option>
               </select>
-              <input type="text" name="q" class="form-control" placeholder="입력해주세요"
+              <input type="text" name="q" class="form-control" placeholder="검색어"
                      style="min-width:200px;" value="{{ search_query }}"/>
             </div>
           </div>
 
-          <!-- 조회 / 초기화 -->
           <div class="mt-4 d-flex justify-content-center gap-2">
             <button type="submit" class="btn btn-primary">조회</button>
             <button type="button" class="btn btn-outline-secondary" onclick="resetFilter()">초기화</button>
@@ -149,7 +140,7 @@
     {% for item in inquiries %}
     <div class="card mb-3" style="box-shadow:0 1px 2px rgba(0,0,0,0.1);">
       <div class="card-body d-flex">
-        <!-- 왼쪽 대표이미지/링크 -->
+        <!-- 왼쪽 (대표이미지) -->
         <div style="width:80px; height:80px; margin-right:16px; border-radius:8px; overflow:hidden;">
           <a href="{{ item.product_link }}" target="_blank" rel="noopener noreferrer"
              style="display:block; width:100%; height:100%;">
@@ -176,7 +167,7 @@
             <span class="mx-1">•</span>
             문의번호: {{ item.id }}
             <span class="mx-1">•</span>
-            <span class="piaar-author-click text-info" 
+            <span class="piaar-author-click text-info"
                   data-ordersheet='{{ item.order_sheet_raw|escapejs }}'
                   style="cursor:pointer;">
               {{ item.author }}
@@ -184,21 +175,26 @@
             <span class="mx-1">•</span>
             {{ item.date }}
           </div>
-          <div style="background:#fafafa; border:1px solid #eee; border-radius:4px; padding:8px; font-size:0.875rem;">
+          <div style="background:#fafafa; border:1px solid #eee; border-radius:4px;
+                      padding:8px; font-size:0.875rem;">
             {{ item.content }}
           </div>
-          <button class="btn btn-sm btn-outline-secondary mt-2 piaar-reply-btn"
+          <button class="piaar-reply-btn btn-sm btn-outline-secondary mt-2 btn"
                   data-inquiry-id="{{ item.id }}"
-                  data-author="{{ item.author|default:'' }}"
-                  data-inquiry-date="{{ item.date|default:'' }}"
-                  data-inquiry-content="{{ item.content|default:''|escapejs }}"
-                  data-answer-content="{{ item.answer_content|default:''|escapejs }}"
-                  data-answer-date="{{ item.answer_date|default:''|escapejs }}">
+                  data-author="{{ item.author }}"
+                  data-inquiry-date="{{ item.date }}"
+                  data-inquiry-content="{{ item.content|escapejs }}"
+                  data-answer-content="{{ item.answer_content|escapejs }}"
+                  data-answer-date="{{ item.answer_date|default:''|escapejs }}"
+                  data-gpt-summary="{{ item.gpt_summary|default:''|escapejs }}"
+                  data-gpt-rec1="{{ item.gpt_recommendation_1|default:''|escapejs }}"
+                  data-gpt-rec2="{{ item.gpt_recommendation_2|default:''|escapejs }}"
+          >
             답글
           </button>
           <button class="btn btn-sm btn-outline-secondary mt-2 piaar-webhook-btn"
                   data-inquiry-id="{{ item.id }}">
-            전송
+            웹훅 전송
           </button>
         </div>
       </div>
@@ -256,6 +252,7 @@
 {% endif %}
 </div>
 
+
 <!-- (A) 답글 모달 -->
 <div class="piaar-modal-overlay" id="replyModalOverlay">
   <div class="piaar-modal">
@@ -263,60 +260,80 @@
       <h2>문의 답글</h2>
       <button class="piaar-modal-close" id="replyCloseBtn">&times;</button>
     </div>
-
     <div class="piaar-modal-body">
-      <!-- (1) 문의 정보 영역 -->
+      <!-- (1) 문의 정보 -->
       <div id="inquiryHeader" style="margin-bottom:12px; padding:12px; background:#f9f9f9;">
         <p><strong>작성자:</strong> <span id="modalAuthorText">[작성자명]</span></p>
         <p><strong>문의일시:</strong> <span id="modalInquiryDateText">[문의일시]</span></p>
         <hr style="margin:8px 0;">
         <p id="replyModalContent" style="white-space:pre-wrap;">
-          <!-- 문의 내용이 여기에 표시됩니다. -->
           문의 내용 로딩...
         </p>
       </div>
 
       <!-- (2) 최종 답변 입력 -->
       <div class="mb-3">
-        <label for="replyTextarea" class="form-label fw-bold">최종 답변 작성</label>
+        <label class="form-label fw-bold">최종 답변 작성</label>
         <textarea id="replyTextarea" class="form-control"
                   style="min-height:80px;"></textarea>
       </div>
 
-      <!-- (3) 문의 요약 -->
+      <!-- (3) GPT 문의 요약 -->
       <div class="border rounded p-2 mb-3" style="background:#f9f9f9;">
-        <p class="mb-1 fw-bold">문의 요약</p>
+        <p class="mb-1 fw-bold">GPT 문의 요약</p>
         <div id="inquirySummary" style="white-space:pre-wrap; font-size:14px; color:#555;">
-          (문의 요약 내용 로딩...)
+          {% if item.gpt_summary %}
+          {{ item.gpt_summary }}
+        {% else %}
+          <!-- 없으면 샘플 -->
+          (문의 요약 로딩...)
+        {% endif %}
         </div>
       </div>
 
-      <!-- (4) AI 추천답변 (리스트) -->
+      <!-- AI 추천 답변 목록 -->
       <div class="border rounded p-2 mb-3" style="background:#fffef7;">
         <p class="mb-1 fw-bold">AI 추천 답변 목록</p>
         <ul id="aiRecommendationList" class="m-0 p-0" style="list-style:none;">
+
+          <!-- (1) 추천 답변 #1 -->
           <li class="mb-2 d-flex justify-content-between align-items-center">
-            <span>추천 답변 1 (샘플)</span>
+            <span>
+              {% if item.gpt_recommendation_1 %}
+                {{ item.gpt_recommendation_1 }}
+              {% else %}
+                <!-- 없으면 샘플 -->
+                추천 답변 1 (샘플)
+              {% endif %}
+            </span>
             <button class="btn btn-sm btn-outline-secondary"
-                    onclick="insertRecommendation('추천 답변 1 (샘플)')">
+                    onclick="insertRecommendation('{% if item.gpt_recommendation_1 %}{{ item.gpt_recommendation_1|escapejs }}{% else %}추천 답변 1 (샘플){% endif %}')">
               삽입
             </button>
           </li>
+
+          <!-- (2) 추천 답변 #2 -->
           <li class="mb-2 d-flex justify-content-between align-items-center">
-            <span>추천 답변 2 (샘플)</span>
+            <span>
+              {% if item.gpt_recommendation_2 %}
+                {{ item.gpt_recommendation_2 }}
+              {% else %}
+                추천 답변 2 (샘플)
+              {% endif %}
+            </span>
             <button class="btn btn-sm btn-outline-secondary"
-                    onclick="insertRecommendation('추천 답변 2 (샘플)')">
+                    onclick="insertRecommendation('{% if item.gpt_recommendation_2 %}{{ item.gpt_recommendation_2|escapejs }}{% else %}추천 답변 2 (샘플){% endif %}')">
               삽입
             </button>
           </li>
+
         </ul>
       </div>
 
       <!-- (5) 기존 답변 영역 (이미 답변된 경우) -->
-      <div id="answeredInfo" style="display:none; margin-bottom:8px; border:1px solid #ddd; padding:8px; border-radius:4px; background:#fafafa;">
-        <p style="margin-bottom:4px;">
-          <strong>기존 답변</strong> (아래 참고)
-        </p>
+      <div id="answeredInfo" style="display:none; margin-bottom:8px; border:1px solid #ddd;
+                                   border-radius:4px; background:#fafafa; padding:8px;">
+        <p style="margin-bottom:4px;"><strong>기존 답변</strong> (아래 참고)</p>
         <p><strong>답변 시각:</strong> <span id="answerDateText"></span></p>
         <p><strong>답변 내용:</strong></p>
         <div id="existingAnswerContent" style="white-space:pre-wrap; margin-top:4px; color:#555;">
@@ -324,173 +341,228 @@
         </div>
       </div>
     </div>
-
     <div class="piaar-modal-footer" style="text-align:right;">
-      <!-- 닫기 버튼 -->
       <button type="button" class="btn btn-outline-secondary me-2" id="modalCancelBtn">닫기</button>
-      <!-- 답변 등록 버튼 -->
+      <!-- GPT추천 버튼 (옵션) -->
+      <button id="gptRecommendBtn" class="btn btn-outline-secondary me-2">
+        GPT추천
+      </button>
       <button id="sendReplyBtn" class="btn btn-primary">답변 등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- (B) 오더시트(주문정보) 모달 (선택) -->
+<div class="piaar-modal-overlay" id="orderSheetModalOverlay">
+  <div class="piaar-modal">
+    <div class="piaar-modal-header">
+      <h2>주문 정보</h2>
+      <button class="piaar-modal-close" id="orderSheetCloseBtn">&times;</button>
+    </div>
+    <div class="piaar-modal-body">
+      <pre id="orderSheetContent" style="white-space:pre-wrap; font-size:14px;"></pre>
     </div>
   </div>
 </div>
 
 <script>
   let currentInquiryId = null;
-
+  
   // 모달 관련 요소
-  const replyOverlay = document.getElementById("replyModalOverlay");
-  const replyCloseBtn= document.getElementById("replyCloseBtn");
-  const modalCancelBtn= document.getElementById("modalCancelBtn");
-  const sendReplyBtn = document.getElementById("sendReplyBtn");
-
-  // 문의 정보
+  const replyOverlay         = document.getElementById("replyModalOverlay");
+  const replyCloseBtn        = document.getElementById("replyCloseBtn");
+  const modalCancelBtn       = document.getElementById("modalCancelBtn");
+  const sendReplyBtn         = document.getElementById("sendReplyBtn");
+  const gptRecommendBtn      = document.getElementById("gptRecommendBtn");
+  
   const modalAuthorText      = document.getElementById("modalAuthorText");
   const modalInquiryDateText = document.getElementById("modalInquiryDateText");
   const replyModalContent    = document.getElementById("replyModalContent");
-
-  // 최종답변 textarea
   const replyTextarea        = document.getElementById("replyTextarea");
-
-  // 문의 요약
+  
+  // GPT 요약 / 추천 영역
   const inquirySummary       = document.getElementById("inquirySummary");
-
-  // AI 추천답변 리스트
   const aiRecommendationList = document.getElementById("aiRecommendationList");
-
-  // 기존 답변
+  
+  // 기존답변 영역
   const answeredInfo         = document.getElementById("answeredInfo");
   const answerDateText       = document.getElementById("answerDateText");
   const existingAnswerContent= document.getElementById("existingAnswerContent");
-
-  // '답글' 버튼들 => .piaar-reply-btn
-  const replyButtons = document.querySelectorAll(".piaar-reply-btn");
-  replyButtons.forEach(btn => {
+  
+  // (A) "답글" 버튼 -> 모달 열기
+  document.querySelectorAll(".piaar-reply-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      // dataset에서 필요한 정보 읽기
-      const inquiryId     = btn.dataset.inquiryId        || "";
-      const authorName    = btn.dataset.author           || "";
-      const inquiryDate   = btn.dataset.inquiryDate      || "";
-      const inquiryContent= btn.dataset.inquiryContent   || "";
-      const existingAnswer= btn.dataset.answerContent    || "";
-      const existingDate  = btn.dataset.answerDate       || "";
-
-      currentInquiryId    = inquiryId;
-
-      // 모달 채우기
-      modalAuthorText.textContent = authorName;
+      // dataset 파싱
+      const inquiryId     = btn.dataset.inquiryId || "";
+      const authorName    = btn.dataset.author || "";
+      const inquiryDate   = btn.dataset.inquiryDate || "";
+      const inquiryContent= btn.dataset.inquiryContent || "";
+      const existingAns   = btn.dataset.answerContent || "";
+      const existingDate  = btn.dataset.answerDate || "";
+  
+      // 여기서 GPT 추천답변 읽어옴
+      const gptRec1 = btn.dataset.gptRec1 || "";
+      const gptRec2 = btn.dataset.gptRec2 || "";
+  
+      currentInquiryId = inquiryId;
+  
+      // 모달 UI 채우기
+      modalAuthorText.textContent      = authorName;
       modalInquiryDateText.textContent = inquiryDate;
-      replyModalContent.textContent = inquiryContent;
-      replyTextarea.value = "";
+      replyModalContent.textContent    = inquiryContent;
+      replyTextarea.value              = "";
+      const gptSummary  = btn.dataset.gptSummary  || "";
 
-      // 요약 & 추천답변은 실제론 별도 Ajax or 값 세팅
-      inquirySummary.textContent = "(문의 요약 로딩...)";
-      aiRecommendationList.innerHTML = `
+      // (1) GPT 요약 초기화
+      if (gptSummary.trim()) {
+        inquirySummary.textContent = gptSummary;
+      } else {
+        inquirySummary.textContent = "(문의 요약 로딩...)";
+      }  
+      // (2) 추천답변 리스트: 샘플 부분 완전 삭제 -> 빈 값이면 그냥 표시 안 함
+      let html = "";
+      if(gptRec1.trim()){
+        html += `
         <li class="mb-2 d-flex justify-content-between align-items-center">
-          <span>추천 답변 1 (샘플)</span>
+          <span>${gptRec1}</span>
           <button class="btn btn-sm btn-outline-secondary"
-                  onclick="insertRecommendation('추천 답변 1 (샘플)')">
-            삽입
-          </button>
-        </li>
+                  onclick="insertRecommendation('${gptRec1}')">삽입</button>
+        </li>`;
+      }
+      if(gptRec2.trim()){
+        html += `
         <li class="mb-2 d-flex justify-content-between align-items-center">
-          <span>추천 답변 2 (샘플)</span>
+          <span>${gptRec2}</span>
           <button class="btn btn-sm btn-outline-secondary"
-                  onclick="insertRecommendation('추천 답변 2 (샘플)')">
-            삽입
-          </button>
-        </li>
-      `;
-
-      // 기존 답변
-      if(existingAnswer.trim() !== ""){
+                  onclick="insertRecommendation('${gptRec2}')">삽입</button>
+        </li>`;
+      }
+      // 값이 없으면 html은 "" (아무것도 표시 안 함)
+      aiRecommendationList.innerHTML = html;
+  
+      // (3) 기존답변
+      if(existingAns.trim()){
         answeredInfo.style.display = "block";
-        existingAnswerContent.textContent = existingAnswer;
+        existingAnswerContent.textContent = existingAns;
         answerDateText.textContent = existingDate;
       } else {
         answeredInfo.style.display = "none";
         existingAnswerContent.textContent = "";
         answerDateText.textContent = "";
       }
-
+  
       // 모달 열기
       replyOverlay.style.display = "flex";
     });
   });
-
-  // 닫기
+  
+  // (B) 모달 닫기
   replyCloseBtn.addEventListener("click", () => {
     replyOverlay.style.display = "none";
   });
-  if(modalCancelBtn){
-    modalCancelBtn.addEventListener("click", () => {
-      replyOverlay.style.display = "none";
-    });
-  }
+  modalCancelBtn.addEventListener("click", () => {
+    replyOverlay.style.display = "none";
+  });
   window.addEventListener("click", (e) => {
     if(e.target === replyOverlay){
       replyOverlay.style.display = "none";
     }
   });
-
-  // "답변 등록" 버튼
-  sendReplyBtn.addEventListener("click", () => {
-    const userReply = replyTextarea.value.trim();
+  
+  // (C) GPT추천 버튼 => /gpt-recommend/ (RAG + GPT)
+  gptRecommendBtn.addEventListener("click", () => {
     if(!currentInquiryId){
-      alert("오류: 문의 ID 없음");
+      alert("문의 ID가 설정되지 않았습니다.");
       return;
     }
-    // 예: /cs/inquiries/answer/ 로 POST
-    fetch("/cs/inquiries/answer/", {
-      method: "POST",
-      headers: {
-        "X-CSRFToken": "{{ csrf_token }}",
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        "inquiry_id": currentInquiryId,
-        "replyContent": userReply
+    fetch(`/cs/inquiries/${currentInquiryId}/gpt-recommend/`)
+      .then(res => res.json())
+      .then(data => {
+        if(data.status === "ok"){
+          inquirySummary.textContent = data.summary || "";
+          let html = "";
+          data.recommendations.forEach(r => {
+            html += `
+            <li class="mb-2 d-flex justify-content-between align-items-center">
+              <span>${r}</span>
+              <button class="btn btn-sm btn-outline-secondary"
+                      onclick="insertRecommendation('${r}')">
+                삽입
+              </button>
+            </li>`;
+          });
+          aiRecommendationList.innerHTML = html;
+        } else {
+          alert("Error: " + data.message);
+        }
       })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if(data.status === "ok"){
-        alert("답변 등록 성공!\n\n" + data.message);
-        // 기존답변 업데이트
-        answeredInfo.style.display = "block";
-        existingAnswerContent.textContent= data.answer_content || userReply;
-        answerDateText.textContent= data.answer_date || "";
-      } else {
-        alert("오류: " + data.message);
-      }
-    })
-    .catch(err => {
-      console.error(err);
-      alert("서버 에러 발생");
-    });
+      .catch(err => {
+        console.error(err);
+        alert("서버오류(gpt-recommend).");
+      });
   });
+  
+  // (D) 최종등록 버튼 => answer_inquiry_unified(플랫폼별 API 연동)
+sendReplyBtn.addEventListener("click", () => {
+  if(!currentInquiryId){
+    alert("오류: 문의 ID 없음");
+    return;
+  }
+  const userReply = replyTextarea.value.trim();
+  if(!userReply){
+    alert("답변 내용을 입력하세요.");
+    return;
+  }
 
-  // (AI 삽입) ex: 전역 함수
+  // 서버에서 answer_inquiry_unified 뷰가
+  // POST['inquiry_id'], POST['replyContent']를 받도록 함
+  const formData = new URLSearchParams();
+  formData.append("inquiry_id", currentInquiryId);
+  formData.append("replyContent", userReply);
+
+  fetch("/cs/inquiries/answer-unified/", {
+    method: "POST",
+    headers: {
+      "X-CSRFToken": "{{ csrf_token }}",
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: formData.toString()
+  })
+  .then(res => res.json())
+  .then(data => {
+    if(data.status === "ok"){
+      alert(" 답변 등록 성공!");
+      // 여기서 UI 업데이트
+      answeredInfo.style.display = "block";
+      existingAnswerContent.textContent = data.answer_content;
+      replyOverlay.style.display = "none";
+    } else {
+      alert("오류: " + data.message);
+    }
+  })
+  .catch(err=>{
+    console.error(err);
+    alert("서버 에러(answer-unified).");
+  });
+});
+  
+  // 삽입 함수
   function insertRecommendation(txt){
     replyTextarea.value = txt;
   }
-</script>
-
-<script>
-
-
-  // === 주문정보(오더시트) 모달 ===
+  
+  // (E) 주문정보 모달
   const orderSheetOverlay = document.getElementById("orderSheetModalOverlay");
-  const orderSheetCloseBtn = document.getElementById("orderSheetCloseBtn");
+  const orderSheetCloseBtn= document.getElementById("orderSheetCloseBtn");
   const orderSheetContent = document.getElementById("orderSheetContent");
-  const authorSpans = document.querySelectorAll(".piaar-author-click");
-
-  authorSpans.forEach(span => {
+  
+  document.querySelectorAll(".piaar-author-click").forEach(span => {
     span.addEventListener("click", () => {
       const rawData = span.dataset.ordersheet || "";
       let prettyText;
       try {
         prettyText = JSON.stringify(JSON.parse(rawData), null, 2);
-      } catch(e) {
+      } catch(e){
         prettyText = rawData;
       }
       orderSheetContent.textContent = prettyText;
@@ -501,127 +573,113 @@
     orderSheetOverlay.style.display = "none";
   });
   window.addEventListener("click", (e) => {
-    if(e.target === orderSheetOverlay) {
+    if(e.target === orderSheetOverlay){
       orderSheetOverlay.style.display = "none";
     }
   });
-
-  // 날짜범위 setDateRange
+  
+  //////////////////////////////////////////////////
+  // (F) 기타
+  //////////////////////////////////////////////////
   function setDateRange(type) {
     const today = new Date();
     const start = new Date();
-
     if (type === 'today') {
-      // start=end=today
+      //...
     } else if (type === '7days') {
       start.setDate(today.getDate() - 7);
     } else if (type === '30days') {
       start.setDate(today.getDate() - 30);
     }
     document.getElementById('start_date').value = formatDate(start);
-    document.getElementById('end_date').value = formatDate(today);
+    document.getElementById('end_date').value   = formatDate(today);
   }
-
-  function formatDate(d) {
+  function formatDate(d){
     const yyyy = d.getFullYear();
-    const mm = String(d.getMonth()+1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
     return `${yyyy}-${mm}-${dd}`;
   }
-
-  function resetFilter() {
+  function resetFilter(){
     const baseUrl = location.origin + location.pathname;
     window.location.href = baseUrl;
   }
-
-  // 웹훅
   document.querySelectorAll(".piaar-webhook-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const inquiryId = btn.dataset.inquiryId;
       if(!inquiryId){
-        alert("inquiry_id가 없습니다.");
+        alert("inquiry_id 없음");
         return;
       }
-      fetch("/cs/inquiries/webhook/", {
-        method: "POST",
-        headers: {
-          "X-CSRFToken": "{{ csrf_token }}",
-          "Content-Type": "application/x-www-form-urlencoded"
+      fetch(`/cs/inquiries/webhook/`, {
+        method:"POST",
+        headers:{
+          "X-CSRFToken":"{{ csrf_token }}",
+          "Content-Type":"application/x-www-form-urlencoded"
         },
-        body: new URLSearchParams({ "inquiry_id": inquiryId })
+        body: new URLSearchParams({"inquiry_id": inquiryId}).toString()
       })
       .then(res => res.json())
       .then(data => {
         if(data.status === "ok"){
-          alert("웹훅 전송 성공!");
+          alert("웹훅 전송 성공");
         } else {
-          alert("오류: " + data.message);
+          alert("오류:" + data.message);
         }
       })
-      .catch(err => {
+      .catch(err=>{
         console.error(err);
-        alert("서버 에러 발생");
+        alert("서버 에러(웹훅).");
       });
     });
   });
-</script>
-
+  </script>
 <style>
-  .piaar-modal-overlay {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background-color: rgba(0,0,0,0.5);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-  }
-  .piaar-modal {
-    background-color: #fff;
-    width: 600px;
-    max-width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    position: relative;
-    z-index: 10000;
-  }
-  .piaar-modal-header {
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center;
-    margin-bottom: 16px;
-  }
-  .piaar-modal-header h2 {
-    margin: 0; font-size:18px;
-  }
-  .piaar-modal-close {
-    background: none; 
-    border: none; 
-    font-size: 20px;
-    cursor: pointer;
-  }
-  .piaar-modal-body {
-    margin-bottom:16px;
-  }
-  .piaar-modal-footer {
-    text-align:right;
-  }
-  .piaar-modal-footer button {
-    padding:8px 16px;
-    border:none;
-    border-radius:4px;
-    cursor:pointer;
-    color:#fff;
-    background-color:#2E3A59;
-    font-size:14px;
-  }
-  .piaar-modal-footer button:hover {
-    background-color:#1b2a40;
-  }
+.piaar-modal-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-color: rgba(0,0,0,0.5);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+.piaar-modal {
+  background-color: #fff;
+  width: 600px;
+  max-width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  position: relative;
+  z-index: 10000;
+}
+.piaar-modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px;
+}
+.piaar-modal-header h2 {
+  margin: 0; font-size: 18px;
+}
+.piaar-modal-close {
+  background: none; border: none; font-size: 20px; cursor: pointer;
+}
+.piaar-modal-body {
+  margin-bottom: 16px;
+}
+.piaar-modal-footer {
+  text-align: right;
+}
+.piaar-modal-footer button {
+  padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;
+  color: #fff; background-color: #2E3A59; font-size:14px;
+}
+.piaar-modal-footer button:hover {
+  background-color:#1b2a40;
+}
 </style>
 
 {% endblock %}
