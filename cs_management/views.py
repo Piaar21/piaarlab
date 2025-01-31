@@ -20,6 +20,8 @@ from .api_clients import (
     save_center_naver_inquiries_to_db,
     save_center_coupang_inquiries_to_db,
     put_naver_qna_center_answer,
+    put_coupang_center_inquiry_confirm,
+    put_coupang_center_inquiry_answer
 )
 from .utils import send_inquiry_to_dooray_webhook  
 from django.views.decorators.csrf import csrf_exempt
@@ -610,7 +612,8 @@ def inquiry_center_list(request):
             'product_link': product_link,
             'product_id_raw': product_id_raw,
             'product_id': product_id_str,  # 괄호 제거된 최종값
-            # 필요 시 다른 필드도 추가
+            'inquiry_status': obj.inquiry_status or "",
+            'partner_transfer_status': obj.partner_transfer_status or "",
         })
 
     context = {
@@ -826,6 +829,7 @@ def answer_center_inquiry_unified(request):
         store_name = inq.store_name or ""
         logger.debug(f"[answer_center_inquiry_unified] platform={platform}, store_name={store_name}")
 
+        
         if platform == "NAVER":
             # (A) 네이버 로직
             # store_name 에 맞는 account_info 찾기
@@ -833,43 +837,64 @@ def answer_center_inquiry_unified(request):
                 (acc for acc in NAVER_ACCOUNTS if store_name in acc['names']),
                 None
             )
-            logger.debug(f"[answer_center_inquiry_unified] NAVER account_info={account_info}")
 
             if not account_info:
                 msg = f"No Naver account for store={store_name}"
                 logger.error(msg)
                 return JsonResponse({'status':'error','message':msg}, status=404)
 
+            logger.debug(f"[answer_center_inquiry_unified] selected account_info={account_info}")
+
             # 네이버 '고객센터 문의'용 API => put_naver_qna_center_answer(...)
             success, result = put_naver_qna_center_answer(
                 account_info=account_info,
                 inquiry_no=inq.inquiry_id,
-                answer_comment=reply_content
+                answer_comment=reply_content  # ← 여기서 reply_content를 전달
             )
             if not success:
                 logger.error(f"[answer_center_inquiry_unified] NAVER API 실패: {result}")
                 return JsonResponse({'status':'error','message':f'네이버 API 실패: {result}'}, status=400)
 
         elif platform == "COUPANG":
-            # (B) 쿠팡 로직 (예시)
-            # account_info = next(
-            #     (acc for acc in COUPANG_ACCOUNTS if store_name in acc['names']),
-            #     None
-            # )
-            # if not account_info:
-            #     msg = f"No Coupang account for store={store_name}"
-            #     logger.error(msg)
-            #     return JsonResponse({'status':'error','message':msg}, status=404)
+            account_info = next(
+                (acc for acc in COUPANG_ACCOUNTS if store_name in acc.get('names', [])),
+                None
+            )
+            if not account_info:
+                msg = f"No Coupang account for store={store_name}"
+                logger.error(msg)
+                return JsonResponse({'status':'error','message':msg}, status=404)
 
-            # success, result = put_coupang_center_inquiry_answer(
-            #     account_info=account_info,
-            #     inquiry_id=inq.inquiry_id,
-            #     answer_comment=reply_content
-            # )
-            # if not success:
-            #     logger.error(f"[answer_center_inquiry_unified] 쿠팡 API 실패: {result}")
-            #     return JsonResponse({'status':'error','message':f'쿠팡 API 실패: {result}'}, status=400)
-            pass
+            i_status = (inq.inquiry_status or "").lower()          # e.g. "progress" / "complete"
+            p_status = (inq.partner_transfer_status or "").lower() # e.g. "requestanswer", "transfer"
+
+            logger.debug(f"[answer_center_inquiry_unified] (COUPANG) i_status={i_status}, p_status={p_status}, inquiry_id={inq.inquiry_id}")
+
+            if i_status == "progress" and p_status == "requestanswer":
+                # (A) => 답변 등록 API (POST /replies)
+                success, result = put_coupang_center_inquiry_answer(
+                    account_info=account_info,
+                    inquiry_id=inq.inquiry_id,
+                    content=reply_content,
+                    reply_by=account_info.get('wing_id', account_info['vendor_id'])
+                )
+            elif i_status == "complete" and (p_status == "transfer" or p_status == "requestanswer"):
+                # (B) => 확인 처리 API (POST /confirms)
+                #  (complete + transfer) → 확인
+                #  (complete + requestAnswer) → (새로 추가)도 동일하게 확인으로 처리
+                success, result = put_coupang_center_inquiry_confirm(
+                    account_info=account_info,
+                    inquiry_id=inq.inquiry_id
+                )
+            else:
+                # 그 외 상태 => 아무 것도 안 함 (이미 답변완료 등)
+                success, result = True, "No action needed"
+
+            if not success:
+                logger.error(f"[answer_center_inquiry_unified] 쿠팡 API 실패: {result}")
+                return JsonResponse({'status':'error','message':f'쿠팡 API 실패: {result}'}, status=400)
+
+            logger.debug(f"[answer_center_inquiry_unified] 쿠팡 => success={success}, result={result}")
 
         else:
             # (C) 그 외 플랫폼, 혹은 아무 것도 안 함

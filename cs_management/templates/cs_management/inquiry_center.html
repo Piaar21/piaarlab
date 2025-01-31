@@ -180,7 +180,9 @@
             {{ item.inquiry_content }}
           </div>
           <button class="piaar-reply-btn btn-sm btn-outline-secondary mt-2 btn"
-                  data-inquiry-id="{{ item.id }}"
+                  data-inquiry-id="{{ item.inquiry_id }}"
+                  data-inquiry-status="{{ item.inquiry_status|default:'' }}"
+                  data-partner-transfer-status="{{ item.partner_transfer_status|default:'' }}"
                   data-author="{{ item.author }}"
                   data-inquiry-date="{{ item.date }}"
                   data-inquiry-content="{{ item.inquiry_content|escapejs }}"
@@ -399,7 +401,10 @@
       const inquiryContent= btn.dataset.inquiryContent || "";
       const existingAns   = btn.dataset.answerContent || "";
       const existingDate  = btn.dataset.answerDate || "";
-  
+      // (A) 추가: 상태 파싱
+      const iStatus = (btn.dataset.inquiryStatus || "").toLowerCase();         // "progress" / "complete" / ...
+      const pStatus = (btn.dataset.partnerTransferStatus || "").toLowerCase(); // "requestanswer" / "transfer" / ...
+
       // GPT 추천답변
       const gptRec1 = btn.dataset.gptRec1 || "";
       const gptRec2 = btn.dataset.gptRec2 || "";
@@ -411,6 +416,29 @@
       modalInquiryDateText.textContent = inquiryDate;
       replyModalContent.textContent    = inquiryContent;
       replyTextarea.value              = "";
+
+      // (B) "미답변" vs "미확인" 상태 구분하여 UI 토글
+      //     (1) iStatus="progress" + pStatus="requestanswer" => 답변 입력 가능
+      //     (2) iStatus="complete" + pStatus="transfer" => 확인만 가능
+      if (iStatus === "progress" && pStatus === "requestanswer") {
+        // 답변 입력 모드
+        replyTextarea.disabled = false;          // 텍스트박스 활성
+        sendReplyBtn.style.display = "inline-block"; // "답변등록" 버튼 보이기
+        sendReplyBtn.textContent = "답변 등록";
+
+      } else if (iStatus === "complete" && ["transfer","requestanswer"].includes(pStatus)) {
+        // 확인 모드
+        replyTextarea.disabled = true;           // 텍스트박스 비활성
+        replyTextarea.value = "[판매자 확인이 필요한 상태입니다.]";
+        sendReplyBtn.style.display = "inline-block";
+        sendReplyBtn.textContent = "확인";       // 버튼 라벨 바꿔주기
+
+      } else {
+        // 그 외 상태 => UI 어떻게 할지 결정 (ex: 비활성화 or 기존 로직)
+        replyTextarea.disabled = false;
+        sendReplyBtn.style.display = "inline-block";
+        sendReplyBtn.textContent = "답변 등록";
+      }
       const gptSummary  = btn.dataset.gptSummary  || "";
 
       // (1) GPT 요약 초기화
@@ -501,57 +529,94 @@
   });
   
   // (D) 최종등록 버튼 => answer_inquiry_unified(플랫폼별 API 연동)
-sendReplyBtn.addEventListener("click", () => {
+  sendReplyBtn.addEventListener("click", () => {
   if(!currentInquiryId){
     alert("오류: 문의 ID 없음");
     return;
   }
-  const userReply = replyTextarea.value.trim();
-  if(!userReply){
-    alert("답변 내용을 입력하세요.");
+
+  // 상태 읽기 (모달 열 때 저장하거나, inquiryStatus/inquiryPartnerStatus를 전역에 저장해도 됨)
+  // 여기서는 DOM에서 다시 읽는 예시:
+  const btnElem = document.querySelector(`[data-inquiry-id="${currentInquiryId}"]`);
+  if(!btnElem){
+    alert("에러: 상태를 가져올 수 없습니다.");
     return;
   }
+  const iStatus = btnElem.dataset.inquiryStatus?.toLowerCase() || "";
+  const pStatus = btnElem.dataset.partnerTransferStatus?.toLowerCase() || "";
 
-  // 서버에서 answer_inquiry_unified 뷰가
-  // POST['inquiry_id'], POST['replyContent']를 받도록 함
-  const formData = new URLSearchParams();
-  formData.append("inquiry_id", currentInquiryId);
-  formData.append("replyContent", userReply);
-
-  fetch("/cs/inquiries/center/answer-unified/", {
-  method: "POST",
-  headers: {
-    "X-CSRFToken": "{{ csrf_token }}",
-    "Content-Type": "application/x-www-form-urlencoded"
-  },
-  body: new URLSearchParams({
-    "inquiry_id": currentInquiryId,
-    "replyContent": userReply
-    // "usedIndex": "1" or "2"
-  }).toString()
-  })
-  .then(res => res.json())
-  .then(data => {
-    if(data.status === "ok"){
-      alert(" 답변 등록 성공!");
-      // 여기서 UI 업데이트
-      answeredInfo.style.display = "block";
-      existingAnswerContent.textContent = data.answer_content;
-      replyOverlay.style.display = "none";
-    } else {
-      alert("오류: " + data.message);
+  if(iStatus === "progress" && pStatus === "requestanswer"){
+    // (A) 답변 등록
+    const userReply = replyTextarea.value.trim();
+    if(!userReply){
+      alert("답변 내용을 입력하세요.");
+      return;
     }
-  })
-  .catch(err=>{
-    console.error(err);
-    alert("서버 에러(answer-unified).");
-  });
-});
-  
-  // 삽입 함수
-  function insertRecommendation(txt){
-    replyTextarea.value = txt;
+
+    const formData = new URLSearchParams();
+    formData.append("inquiry_id", currentInquiryId);
+    formData.append("replyContent", userReply);
+
+    fetch("/cs/inquiries/center/answer-unified/", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: formData.toString()
+    })
+    .then(res => res.json())
+    .then(data => {
+      if(data.status === "ok"){
+        alert("답변 등록 성공!");
+        // UI 업데이트
+        answeredInfo.style.display = "block";
+        existingAnswerContent.textContent = data.answer_content;
+        replyOverlay.style.display = "none";
+      } else {
+        alert("오류: " + data.message);
+      }
+    })
+    .catch(err=>{
+      console.error(err);
+      alert("서버 에러(answer-unified).");
+    });
   }
+  else if (iStatus === "complete" && (pStatus === "transfer" || pStatus === "requestanswer")) {
+    // (B) 확인 처리
+    // 여기서는 'replyContent'가 굳이 필요 없으니 "" 넘기거나, "confirm" 등으로 전달
+    const formData = new URLSearchParams();
+    formData.append("inquiry_id", currentInquiryId);
+    formData.append("replyContent", "[확인처리]");
+
+    fetch("/cs/inquiries/center/answer-unified/", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: formData.toString()
+    })
+    .then(res => res.json())
+    .then(data => {
+      if(data.status === "ok"){
+        alert("확인 처리 성공!");
+        replyOverlay.style.display = "none";
+      } else {
+        alert("오류: " + data.message);
+      }
+    })
+    .catch(err=>{
+      console.error(err);
+      alert("서버 에러(answer-unified).");
+    });
+  }
+  else {
+    // 다른 상태
+    alert("이미 처리된 문의이거나, 상태가 달라 별도 처리가 필요없습니다.");
+    replyOverlay.style.display = "none";
+  }
+});
   
   // (E) 주문정보 모달 (선택)
   const orderSheetOverlay = document.getElementById("orderSheetModalOverlay");

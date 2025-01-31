@@ -193,6 +193,8 @@ class CenterInquiry(models.Model):
     gpt_recommendation_2 = models.TextField(null=True, blank=True)
     gpt_confidence_score = models.FloatField(null=True, blank=True)
     gpt_used_answer_index = models.IntegerField(null=True, blank=True)
+    inquiry_status = models.CharField(max_length=50, null=True, blank=True)  
+    partner_transfer_status = models.CharField(max_length=50, null=True, blank=True)
 
     def __str__(self):
         return f"CenterInquiry #{self.inquiry_id} - {self.inquiry_title or 'No Title'}"
