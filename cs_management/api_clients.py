@@ -1379,7 +1379,12 @@ def save_center_coupang_inquiries_to_db(data):
         customer_name = str(item.get("orderId", ""))  # 실제 API에 구매자명/닉네임이 없어서 동일 처리
         store_name = item.get("accountName", "쿠팡")   # 스토어명
 
-        # 3) DB 저장/업데이트
+        inquiry_status = item.get("inquiryStatus", "")  # progress or complete
+       # (A1) partner_transfer_status: replies[0]["partnerTransferStatus"]가 있으면 사용
+        partner_transfer_status = ""
+        if replies:
+            partner_transfer_status = replies[0].get("partnerTransferStatus", "")        # 3) DB 저장/업데이트
+            
         obj, created = CenterInquiry.objects.update_or_create(
             platform="COUPANG",
             inquiry_id=inquiry_id,
@@ -1408,6 +1413,9 @@ def save_center_coupang_inquiries_to_db(data):
                 "gpt_recommendation_2": None,
                 "gpt_confidence_score": None,
                 "gpt_used_answer_index": None,
+                "inquiry_status": inquiry_status,
+                "partner_transfer_status": partner_transfer_status,
+
             }
         )
         saved_list.append(obj)
@@ -1415,96 +1423,22 @@ def save_center_coupang_inquiries_to_db(data):
     return saved_list
 
 
-def post_naver_center_inquiry_answer(account_info, inquiry_no, answer_comment, answer_template_id=None):
-    """
-    네이버 '고객센터 문의'에 답변을 등록하는 API 호출 함수.
-    POST /v1/pay-merchant/inquiries/{inquiryNo}/answer
-
-    :param account_info: dict - 네이버 계정 정보 (ex: {"names": ["네이버스토어1"], ...})
-    :param inquiry_no: int - 문의 번호
-    :param answer_comment: str - 답변 내용
-    :param answer_template_id: str or None - (선택) 답변 템플릿 ID
-    :return: (success, data or msg)
-        - success=True, data=dict => 성공
-        - success=False, msg=str   => 실패 메시지
-    """
-    # 1) 액세스 토큰
-    access_token = fetch_naver_access_token(account_info)
-    if not access_token:
-        msg = f"{account_info['names'][0]} 토큰 발급 실패"
-        logger.error(msg)
-        return False, msg
-
-    # 2) 요청 URL & 헤더
-    base_url = "https://api.commerce.naver.com"
-    endpoint = f"/v1/pay-merchant/inquiries/{inquiry_no}/answer"
-    url = base_url + endpoint
-
-    headers = {
-        'Authorization': f"Bearer {access_token}",
-        'Content-Type': "application/json"
-    }
-
-    # 3) 요청 바디
-    payload = {
-        "answerComment": answer_comment
-        # answerTemplateId가 있으면 추가
-    }
-    if answer_template_id:
-        payload["answerTemplateId"] = answer_template_id
-
-    MAX_RETRIES = 3
-    retry_count = 0
-
-    while retry_count < MAX_RETRIES:
-        try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=30)
-            logger.debug(f"[post_naver_center_inquiry_answer] status_code={resp.status_code}, resp={resp.text[:300]}")
-
-            if resp.status_code == 200:
-                # 성공 => resp.json() 파싱
-                data = {}
-                try:
-                    data = resp.json()
-                except Exception:
-                    pass
-
-                logger.info(
-                    f"[{account_info['names'][0]}] 문의답변 등록 성공 (status=200), inquiry_no={inquiry_no}"
-                )
-                return True, data
-
-            elif resp.status_code == 429:
-                # Rate Limit 초과 => 재시도
-                retry_count += 1
-                logger.warning(f"[post_naver_center_inquiry_answer] 429: Too Many Requests, 재시도 {retry_count}")
-                time.sleep(5)
-                continue
-
-            else:
-                # 그 외 => 실패
-                msg = f"status={resp.status_code}, text={resp.text}"
-                logger.error(f"[post_naver_center_inquiry_answer] 실패: {msg}")
-                return False, msg
-
-        except requests.exceptions.RequestException as e:
-            msg = f"[post_naver_center_inquiry_answer] 요청 예외: {str(e)}"
-            logger.error(msg)
-            return False, msg
-
-    msg = "[post_naver_center_inquiry_answer] 재시도 초과"
-    logger.error(msg)
-    return False, msg
 
 
 def put_naver_qna_center_answer(account_info, inquiry_no, answer_comment):
     """
     네이버 '고객센터 문의' 답변 등록 API (CenterInquiry).
-    POST /v1/pay-merchant/inquiries/{inquiryNo}/answer
+    POST /external/v1/pay-merchant/inquiries/{inquiryNo}/answer
 
     :param account_info: dict - 네이버 스토어 계정 정보 (토큰 발급용)
+      예: {
+        "names": ["스토어명"],
+        "client_id": "...",
+        "client_secret": "..."
+      }
     :param inquiry_no: int - 네이버 고객센터 문의 번호
     :param answer_comment: str - 등록할 답변 내용
+
     :return: (success: bool, data_or_msg)
         - success=True이면 성공, data_or_msg는 응답 JSON (dict)
         - success=False이면 실패, data_or_msg는 실패 원인(str)
@@ -1517,9 +1451,9 @@ def put_naver_qna_center_answer(account_info, inquiry_no, answer_comment):
         logger.error(msg)
         return False, msg
 
-    # 2) 엔드포인트
+    # 2) 엔드포인트 (external/v1로 수정)
     base_url = "https://api.commerce.naver.com"
-    endpoint = f"/v1/pay-merchant/inquiries/{inquiry_no}/answer"
+    endpoint = f"/external/v1/pay-merchant/inquiries/{inquiry_no}/answer"
     url = base_url + endpoint
 
     headers = {
@@ -1532,7 +1466,7 @@ def put_naver_qna_center_answer(account_info, inquiry_no, answer_comment):
         "answerComment": answer_comment
     }
 
-    # (A) 디버그용 로그: 함수 진입 시 어떤 값들을 가지고 있는지 확인
+    # (A) 디버그용 로그
     logger.debug(
         f"[put_naver_qna_center_answer] 준비: store={account_info['names'][0]}, "
         f"inquiry_no={inquiry_no}, answer_comment={answer_comment}"
@@ -1547,7 +1481,10 @@ def put_naver_qna_center_answer(account_info, inquiry_no, answer_comment):
         try:
             resp = requests.post(url, headers=headers, json=payload, timeout=30)
             # (B) 요청 후 응답 코드와 일부 본문 로깅
-            logger.debug(f"[put_naver_qna_center_answer] status_code={resp.status_code}, resp={resp.text[:300]}")
+            logger.debug(
+                f"[put_naver_qna_center_answer] status_code={resp.status_code}, "
+                f"resp={resp.text[:300]}"
+            )
 
             if resp.status_code == 200:
                 # 성공 -> 응답 JSON 파싱
@@ -1557,14 +1494,17 @@ def put_naver_qna_center_answer(account_info, inquiry_no, answer_comment):
                 except Exception:
                     pass  # 응답 바디가 없거나 JSON 파싱 실패 시 빈 dict
                 logger.info(
-                    f"[{account_info['names'][0]}] 고객센터 문의 답변 등록 성공 (status=200), inquiry_no={inquiry_no}"
+                    f"[{account_info['names'][0]}] 고객센터 문의 답변 등록 성공 (status=200), "
+                    f"inquiry_no={inquiry_no}"
                 )
                 return True, data
 
             elif resp.status_code == 429:
                 # Rate Limit -> 재시도
                 retry_count += 1
-                logger.warning(f"[put_naver_qna_center_answer] 429(Too Many Requests), 재시도 {retry_count}")
+                logger.warning(
+                    f"[put_naver_qna_center_answer] 429(Too Many Requests), 재시도 {retry_count}"
+                )
                 time.sleep(5)
                 continue
 
@@ -1583,3 +1523,175 @@ def put_naver_qna_center_answer(account_info, inquiry_no, answer_comment):
     msg = "[put_naver_qna_center_answer] 재시도 초과"
     logger.error(msg)
     return False, msg
+
+
+def put_coupang_center_inquiry_answer(account_info, inquiry_id, content, reply_by=None):
+    """
+    쿠팡 '고객센터 문의' 답변 API
+    POST /v2/providers/openapi/apis/api/v4/vendors/{vendorId}/callCenterInquiries/{inquiryId}/replies
+
+    :param account_info: dict
+        {
+          "vendor_id": "...",
+          "access_key": "...",
+          "secret_key": "...",
+          "wing_id": "..." (선택, reply_by가 없을 시 대체)
+        }
+    :param inquiry_id: int or str - 문의 ID
+    :param content: str - 답변 내용
+    :param reply_by: str or None - 답변 작성자(기본값: vendorId 또는 wing_id)
+    :return: (success: bool, result: dict or str)
+      - success=True => result는 API 응답 데이터
+      - success=False => result는 에러 메세지
+    """
+    vendor_id = account_info.get('vendor_id')
+    access_key = account_info.get('access_key')
+    secret_key = account_info.get('secret_key')
+
+    if not (vendor_id and access_key and secret_key):
+        msg = "[put_coupang_center_inquiry_answer] 계정정보 부족"
+        logger.error(msg)
+        return False, msg
+
+    # reply_by가 None이라면, account_info.get('wing_id') 등 사용
+    if not reply_by:
+        reply_by = account_info.get('wing_id', vendor_id)
+
+    logger.debug(f"[put_coupang_center_inquiry_answer] inquiry_id={inquiry_id}, content={content[:30]}, "
+                 f"reply_by={reply_by}, vendor_id={vendor_id}")
+
+    method = "POST"
+    # --- ※ callCenterInquiries 로 변경됨 (onlineInquiries -> callCenterInquiries)
+    url_path = f"/v2/providers/openapi/apis/api/v4/vendors/{vendor_id}/callCenterInquiries/{inquiry_id}/replies"
+    query_params = {}
+
+    # 시그니처 생성 (generate_coupang_signature는 기존 코드 재사용)
+    signature, datetime_now = generate_coupang_signature(method, url_path, query_params, secret_key)
+
+    host = "https://api-gateway.coupang.com"
+    endpoint = f"{host}{url_path}"
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": (
+            f"CEA algorithm=HmacSHA256, access-key={access_key}, "
+            f"signed-date={datetime_now}, signature={signature}"
+        ),
+    }
+
+    payload = {
+        "content": content,
+        "vendorId": vendor_id,
+        "replyBy": reply_by
+    }
+
+    # (A) 요청
+    MAX_RETRIES = 3
+    retry_count = 0
+    while retry_count < MAX_RETRIES:
+        try:
+            resp = requests.post(endpoint, headers=headers, json=payload, timeout=30)
+            logger.debug(f"[put_coupang_center_inquiry_answer] status={resp.status_code}, text={resp.text}")
+
+            if resp.status_code == 200:
+                data = resp.json()
+                code_val = data.get("code")  # e.g. 200 (int)
+                if code_val == 200:
+                    return True, data
+                else:
+                    msg = f"code != 200, raw={data}"
+                    logger.error(msg)
+                    return False, msg
+
+            elif resp.status_code == 429:
+                logger.warning("[put_coupang_center_inquiry_answer] 429 RateLimit => 재시도")
+                retry_count += 1
+                time.sleep(5)
+                continue
+            else:
+                msg = f"status={resp.status_code}, text={resp.text}"
+                logger.error(f"[put_coupang_center_inquiry_answer] 실패: {msg}")
+                return False, msg
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"[put_coupang_center_inquiry_answer] 예외: {str(e)}")
+            return False, str(e)
+
+    return False, "[put_coupang_center_inquiry_answer] 재시도 초과"
+
+def put_coupang_center_inquiry_confirm(account_info, inquiry_id):
+    """
+    쿠팡 '고객센터 문의' 확인 처리 API
+    POST /v2/providers/openapi/apis/api/v4/vendors/{vendorId}/callCenterInquiries/{inquiryId}/confirms
+
+    :param account_info: dict
+        {
+          "vendor_id": "...",
+          "access_key": "...",
+          "secret_key": "..."
+        }
+    :param inquiry_id: int or str - 문의 ID
+    :return: (success: bool, result: dict or str)
+    """
+    vendor_id = account_info.get('vendor_id')
+    access_key = account_info.get('access_key')
+    secret_key = account_info.get('secret_key')
+
+    if not (vendor_id and access_key and secret_key):
+        msg = "[put_coupang_center_inquiry_confirm] 계정정보 부족"
+        logger.error(msg)
+        return False, msg
+
+    logger.debug(f"[put_coupang_center_inquiry_confirm] inquiry_id={inquiry_id}, vendor_id={vendor_id}")
+
+    method = "POST"
+    # --- callCenterInquiries + confirms
+    url_path = f"/v2/providers/openapi/apis/api/v4/vendors/{vendor_id}/callCenterInquiries/{inquiry_id}/confirms"
+    query_params = {}
+
+    signature, datetime_now = generate_coupang_signature(method, url_path, query_params, secret_key)
+    host = "https://api-gateway.coupang.com"
+    endpoint = f"{host}{url_path}"
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": (
+            f"CEA algorithm=HmacSHA256, access-key={access_key}, "
+            f"signed-date={datetime_now}, signature={signature}"
+        ),
+    }
+
+    # 확인 API는 보통 vendorId만 넘기면 된다고 문서에 나와 있으나,
+    # 필요 시 payload에 다른 필드가 있으면 추가
+    payload = {
+        "vendorId": vendor_id
+    }
+
+    try:
+        resp = requests.post(endpoint, headers=headers, json=payload, timeout=30)
+        logger.debug(f"[put_coupang_center_inquiry_confirm] status={resp.status_code}, text={resp.text}")
+
+        if resp.status_code == 200:
+            data = resp.json()
+            code_val = data.get("code")  # 예: 200
+            if code_val == 200:
+                return True, data
+            else:
+                msg = f"code != 200, raw={data}"
+                logger.error(msg)
+                return False, msg
+
+        elif resp.status_code == 429:
+            logger.warning("[put_coupang_center_inquiry_confirm] 429 RateLimit")
+            return False, "429 Too Many Requests"
+        else:
+            msg = f"status={resp.status_code}, text={resp.text}"
+            logger.error(f"[put_coupang_center_inquiry_confirm] 실패: {msg}")
+            return False, msg
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[put_coupang_center_inquiry_confirm] 예외: {str(e)}")
+        return False, str(e)
+
+    return False, "[put_coupang_center_inquiry_confirm] 예외 종료"
+

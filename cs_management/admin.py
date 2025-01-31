@@ -113,6 +113,8 @@ class CenterInquiryAdmin(admin.ModelAdmin):
         'gpt_recommendation_2',
         'gpt_confidence_score',
         'gpt_used_answer_index',
+        'inquiry_status',
+        'partner_transfer_status',
     )
 
     # 검색, 필터도 필요하다면 임시로 전부 넣어볼 수 있습니다.
