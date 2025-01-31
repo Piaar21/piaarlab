@@ -6,7 +6,8 @@ import json
 from urllib.parse import quote
 from decouple import config
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
+
 import base64
 import bcrypt
 import urllib.parse
@@ -327,7 +328,7 @@ def fetch_coupang_inquiries(
             end_date = now_kst.strftime('%Y-%m-%d')
         if not start_date:
             # 6일 전 => 총 7일 범위
-            start_dt = now_kst - timedelta(days=6)
+            start_dt = now_kst - timedelta(days=1)
             start_date = start_dt.strftime('%Y-%m-%d')
 
     all_contents = []      # 모든 계정에서 받은 문의 총합
@@ -978,13 +979,15 @@ def fetch_naver_center_inquiries(
 
     # 1) 날짜 디폴트
     if not start_date or not end_date:
+        # Django 함수 (get_default_timezone)은 사용하지 않고,
+        # 표준 라이브러리로 KST(UTC+9) 타임존을 만듭니다.
+        kst = timezone(timedelta(hours=9))  
+        now_kst = datetime.now(tz=kst)
 
-        kst = timezone.get_default_timezone()  # 예: Asia/Seoul
-        now_kst = datetime.now(kst)
         if not end_date:
             end_date = now_kst.strftime('%Y-%m-%d')
         if not start_date:
-            start_dt = now_kst - timedelta(days=7)
+            start_dt = now_kst - timedelta(days=5)
             start_date = start_dt.strftime('%Y-%m-%d')
 
     # 2) 쿼리 파라미터(기본)
@@ -1091,8 +1094,10 @@ def fetch_coupang_center_inquiries(
 
     # 1) 날짜 기본
     if not start_date or not end_date:
+        # Django의 timezone.now() 대신, 표준 라이브러리로 KST(UTC+9) 생성
+        kst = timezone(timedelta(hours=9))
+        now_kst = datetime.now(tz=kst)
 
-        now_kst = timezone.now()
         if not end_date:
             end_date = now_kst.strftime('%Y-%m-%d')
         if not start_date:

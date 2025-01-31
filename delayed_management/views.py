@@ -675,8 +675,7 @@ def change_exchangeable_options(request):
                 messages.error(request, "전송할 항목이 선택되지 않았습니다.")
                 return redirect('delayed_shipment_list')
 
-            from .models import DelayedShipment, OutOfStock
-            from .api_clients import get_inventory_by_option_codes  # 셀러툴 API
+ 
 
             # 1) DelayedShipment 쿼리셋
             shipments = DelayedShipment.objects.filter(id__in=shipment_ids)
@@ -3823,12 +3822,7 @@ def update_seller_tool_stock(request):
     (3) OutOfStock.seller_tool_stock 갱신
     (4) 결과: “업데이트 완료 X건, 변경없음 Y건”을 반환(JSON)
     """
-    import logging, json
-    from django.http import JsonResponse
-    from django.views.decorators.http import require_POST
 
-    from .models import OutOfStock
-    from .api_clients import get_inventory_by_option_codes
 
     logger = logging.getLogger(__name__)
 

@@ -44,25 +44,16 @@
     <nav class="navbar-tabs">
         <ul class="nav nav-tabs justify-content-center">
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'upload_delayed_orders' %}">업로드</a>
+                <a class="nav-link" href="{% url 'cs_management:inquiry_product_list' %}">상품문의</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'delayed_shipment_list' %}">리스트</a>
+                <a class="nav-link" href="{% url 'cs_management:inquiry_center_list' %}">고객센터문의</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'send_message_list' %}">발송완료</a>
+                <a class="nav-link" href="{% url 'upload_delayed_orders' %}">배송지연</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'confirmed_list' %}">확인완료</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'shipped_list' %}">출고완료</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'upload_store_mapping' %}">스토어명</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'restock_management' %}">재입고일자</a>
+                <a class="nav-link" href="{% url 'out_of_stock_management' %}">품절관리</a>
             </li>
             <li class="nav-item">
                 <a class="nav-link" href="{% url '반품목록' %}">반품</a>
