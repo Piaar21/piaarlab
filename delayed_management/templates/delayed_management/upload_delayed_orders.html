@@ -1,0 +1,294 @@
+{% extends 'delayed_management_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-primary">엑셀 업로드</h2>
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <!-- 엑셀 업로드 폼 -->
+            <form method="post" enctype="multipart/form-data" action="{% url 'upload_delayed_orders' %}">
+                {% csrf_token %}
+                
+                <!-- 드래그 앤 드롭 영역 -->
+                <div id="drag-and-drop-area" class="drag-and-drop-area mb-3">
+                    <p class="mb-0">이곳에 엑셀 파일을 드래그 앤 드롭 하거나 클릭해서 선택하세요.</p>
+                </div>
+    
+                <!-- 숨겨진 파일 입력 -->
+                <input
+                    type="file"
+                    id="file-input"
+                    name="file"
+                    class="form-control w-auto me-3 d-none"
+                    accept=".xls,.xlsx"  
+                    required
+                />
+    
+                <!-- 선택된 파일명 표시 영역 -->
+                <div id="selected-file-info" class="text-secondary mb-3">
+                    <!-- 선택된 파일명이 여기에 표시됩니다 -->
+                </div>
+    
+                <!-- 업로드 버튼 -->
+                <button type="submit" name="upload_excel" class="btn btn-primary">엑셀 업로드</button>
+            </form>
+        </div>
+    </div>
+
+    {% if temp_orders %}
+    <!-- 임시 데이터 테이블 및 리스트 업로드 버튼 -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive" style="max-height:70vh; overflow-y:auto;">
+                <table class="table table-hover table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>순번</th>
+                            <th>옵션코드</th>
+                            <th>성함</th>
+                            <th>연락처</th>
+                            <th>주문상품명</th>
+                            <th>주문옵션명</th>
+                            <th>수량</th> <!-- 수량 열 추가 -->
+                            <th>셀러툴상품명</th>
+                            <th>셀러툴옵션명</th>
+                            <th>주문번호1</th>
+                            <th>주문번호2</th>
+                            <th>스토어명</th>
+                            <th>삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in temp_orders %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td>{{ order.option_code }}</td>
+                            <td>{{ order.customer_name }}</td>
+                            <td>{{ order.customer_contact }}</td>
+                            <td>{{ order.order_product_name }}</td>
+                            <td>{{ order.order_option_name }}</td>
+                            <td>{{ order.quantity }}</td> <!-- 수량 표시 -->
+                            <td>{{ order.seller_product_name }}</td>
+                            <td>{{ order.seller_option_name }}</td>
+                            <td>{{ order.order_number_1 }}</td>
+                            <td>{{ order.order_number_2 }}</td>
+                            <td>{{ order.store_name }}</td>
+                            <td>
+                                <form method="post" action="{% url 'upload_delayed_orders' %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="delete_index" value="{{ forloop.counter0 }}">
+                                    <button type="submit" name="delete_item" class="btn btn-sm btn-danger">삭제</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-3 text-end">
+                <form method="post" action="{% url 'upload_delayed_orders' %}" id="finalize-form">
+                    {% csrf_token %}
+                    <button type="submit" name="finalize" class="btn btn-success">리스트 업로드</button>
+                    <button type="submit" name="delete_all_items" class="btn btn-danger ms-3">전체삭제</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center text-muted mt-5">
+        업로드한 데이터가 없습니다. 엑셀 파일을 업로드 해주세요.
+    </div>
+    {% endif %}
+</div>
+<div 
+    id="loading-overlay" 
+    style="
+      position: fixed; 
+      top: 0; 
+      left: 0; 
+      width: 100%; 
+      height: 100%; 
+      background: rgba(0,0,0,0.5); 
+      display: none; 
+      align-items: center; 
+      justify-content: center; 
+      z-index: 9999;
+    "
+>
+    <div class="text-center">
+        <!-- Bootstrap 스피너 예시 -->
+        <div class="spinner-border text-light" role="status" style="width:3rem; height:3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <div class="text-white mt-2">업로드 처리 중입니다. 잠시만 기다려주세요...</div>
+    </div>
+</div>
+
+<style>
+    :root {
+        --primary-color: #6c5ce7;
+        --secondary-color: #a29bfe;
+        --background-color: #f8f9fa;
+        --text-color: #2d3436;
+        --border-color: #dfe6e9;
+        --table-text-color: #2d3436;
+        --table-background: #ffffff;
+    }
+
+    body {
+        background-color: var(--background-color);
+        color: var(--text-color);
+    }
+
+    .container-fluid {
+        max-width: 1400px;
+    }
+
+    h2 {
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+
+    .btn-primary:hover {
+        background-color: var(--secondary-color);
+        border-color: var(--secondary-color);
+    }
+
+    .card {
+        border: none;
+        border-radius: 15px;
+        overflow: hidden;
+        background-color: #ffffff;
+        color: var(--text-color);
+    }
+
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: var(--table-background);
+        color: var(--table-text-color);
+    }
+
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background-color: var(--primary-color);
+        color: white;
+        z-index: 1;
+        padding: 15px;
+        white-space: nowrap;
+    }
+
+    .table tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+
+    .table tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+
+    .table td,
+    .table th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+    }
+
+    .drag-and-drop-area {
+        border: 2px dashed var(--primary-color);
+        border-radius: 15px;
+        padding: 40px;
+        text-align: center;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+
+    .drag-and-drop-area p {
+        margin-bottom: 0;
+        color: var(--text-color);
+    }
+
+    /* 드래그 중일 때 배경 색상 변환 */
+    .drag-and-drop-area.drag-over {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+</style>
+
+
+<!-- 드래그 앤 드롭 스크립트 -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const dropArea = document.getElementById('drag-and-drop-area');
+        const fileInput = document.getElementById('file-input');
+        const selectedFileInfo = document.getElementById('selected-file-info');
+
+        // 드래그 영역에 들어왔을 때
+        dropArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropArea.classList.add('drag-over');
+        });
+
+        // 드래그 영역에서 벗어났을 때
+        dropArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dropArea.classList.remove('drag-over');
+        });
+
+        // 드롭됐을 때
+        dropArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dropArea.classList.remove('drag-over');
+
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files; 
+                // 파일명 표시
+                selectedFileInfo.textContent = `선택된 파일: ${e.dataTransfer.files[0].name}`;
+            }
+        });
+
+        // 영역 클릭 시 -> 숨겨진 파일 탐색창 열기
+        dropArea.addEventListener('click', function() {
+            fileInput.click();
+        });
+
+        // 파일 선택창에서 직접 파일을 골랐을 때
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) {
+                selectedFileInfo.textContent = `선택된 파일: ${fileInput.files[0].name}`;
+            }
+        });
+    });
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const finalizeForm = document.getElementById('finalize-form');
+        
+        if (finalizeForm) {
+            finalizeForm.addEventListener('submit', function(e) {
+                // 어떤 버튼이 클릭되었는지 확인 (name="finalize" 버튼이 눌렸을 때만 로딩 표시)
+                const clickedButton = document.activeElement;
+                if (clickedButton && clickedButton.name === 'finalize') {
+                    document.getElementById('loading-overlay').style.display = 'flex';
+                }
+            });
+        }
+    });
+    </script>
+
+{% endblock %}

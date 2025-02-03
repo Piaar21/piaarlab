@@ -1,0 +1,693 @@
+{% extends 'delayed_management_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+  <h2 class="mb-4 text-primary">품절관리</h2>
+  <!-- (A) [API_list 이동 링크 버튼] -->
+<div class="mb-3">
+  <a href="{% url 'api_option_list' %}" class="btn btn-secondary btn-sm">
+    API List
+  </a>
+  <!-- 전체 재매칭 버튼 -->
+  <a href="{% url 'match_option_ids' %}" class="btn btn-danger btn-sm">
+    옵션ID 매칭
+  </a>
+  <a href="#"
+   class="btn btn-info btn-sm"
+   onclick="return doSellerToolStockUpdate();">
+  셀러툴 재고 업데이트
+  </a>
+  <!-- 선택재고 업데이트 -->
+  <a href="#"
+     class="btn btn-primary btn-sm"
+     onclick="return doOptionIdStockUpdate();">
+    옵션ID 재고 업데이트
+  </a>
+  <!-- 품절처리 버튼 -->
+  <a href="#"
+     class="btn btn-primary btn-sm"
+     onclick="return doOutOfStock();">
+    품절처리
+  </a>
+  <!-- 재고추가 버튼 -->
+  <a href="#"
+     class="btn btn-success btn-sm"
+     onclick="return doAddStockForSelection();">
+    재고추가
+  </a>
+  <!-- 전체 삭제 -->
+  <a href="{% url 'out_of_stock_delete_all' %}"
+     class="btn btn-warning btn-sm"
+     onclick="return confirm('정말로 모두 삭제하시겠습니까?');">
+    전체 삭제
+  </a>
+  
+  <!-- 목록 업데이트 (계정 선택) -->
+  <a href="#"
+   class="btn btn-success btn-sm"
+   onclick="return showAccountModal();">
+  상품 업데이트
+</a>
+<a href="#"
+   class="btn btn-warning btn-sm"
+   onclick="return downloadOutOfStockExcel();">
+  품절엑셀다운
+</a>
+
+
+<!-- (B) 모달 (Bootstrap 5) -->
+<div class="modal fade" id="accountModal" tabindex="-1" aria-labelledby="accountModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      
+      <!-- 모달 헤더 -->
+      <div class="modal-header">
+        <h5 class="modal-title" id="accountModalLabel">계정 선택</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      
+      <!-- 모달 바디 -->
+      <div class="modal-body">
+        
+        <!-- [1] 로딩 스피너 (처음에 display:none) -->
+        <div id="loadingSpinner" class="text-center my-3" style="display: none;">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-2">로딩중...</p>
+        </div>
+
+        <!-- [2] 완료 메시지 (처음에 display:none) -->
+        <div id="completeMessage" class="alert alert-success text-center" style="display: none;">
+          업데이트 완료!
+        </div>
+
+        <!-- [3] 계정 목록 버튼 -->
+        <div id="accountButtonList">
+          <button type="button"
+                  class="btn btn-outline-primary btn-sm me-2 account-update-btn"
+                  data-account-name="니뜰리히">
+            니뜰리히
+          </button>
+          <button type="button"
+                  class="btn btn-outline-primary btn-sm me-2 account-update-btn"
+                  data-account-name="수비다 SUBIDA">
+            수비다 SUBIDA
+          </button>
+          <button type="button"
+                  class="btn btn-outline-primary btn-sm me-2 account-update-btn"
+                  data-account-name="노는 개 최고양">
+            노는 개 최고양
+          </button>
+          <button type="button"
+                  class="btn btn-outline-primary btn-sm me-2 account-update-btn"
+                  data-account-name="아르빙">
+            아르빙
+          </button>
+          <button type="button"
+                  class="btn btn-outline-primary btn-sm me-2 account-update-btn"
+                  data-account-name="쿠팡01">
+            쿠팡01
+          </button>
+          <button type="button"
+                  class="btn btn-outline-primary btn-sm me-2 account-update-btn"
+                  data-account-name="쿠팡02">
+            쿠팡02
+          </button>
+        </div>
+      </div>
+
+      <!-- 모달 푸터 -->
+      <div class="modal-footer">
+        <button type="button"
+                class="btn btn-secondary"
+                data-bs-dismiss="modal">
+          닫기
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+  </div>
+
+  <!-- 필터 버튼 -->
+  <div class="mb-2 btn-group" role="group" aria-label="Filter Buttons">
+    <a href="?filter=all"
+       class="btn btn-sm
+         {% if filter_val == 'all' %}
+           btn-primary text-white
+         {% else %}
+           btn-outline-primary
+         {% endif %}
+       ">
+      전체
+    </a>
+  
+    <a href="?filter=outofstock"
+       class="btn btn-sm
+         {% if filter_val == 'outofstock' %}
+           btn-primary text-white
+         {% else %}
+           btn-outline-primary
+         {% endif %}
+       ">
+      품절
+    </a>
+  
+    <a href="?filter=instock"
+       class="btn btn-sm
+         {% if filter_val == 'instock' %}
+           btn-primary text-white
+         {% else %}
+           btn-outline-primary
+         {% endif %}
+       ">
+      판매중
+    </a>
+  </div>
+  <form method="get" class="mb-3" id="searchForm">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <input type="text"
+               name="search_query"
+               class="form-control form-control-sm"
+               placeholder="플랫폼명 / 셀러툴상품명 / 옵션코드 검색"
+               value="{{ search_query|default_if_none:'' }}">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm">검색</button>
+      </div>
+    </div>
+  </form>
+  <!-- 목록 -->
+  {% if details and details|length > 0 %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover table-striped align-middle">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="selectAllCheckbox" /></th>
+              <th>품절여부</th>
+              <th>플랫폼명</th>
+              <th>대표이미지</th>
+              <th>옵션ID</th>
+              <th>옵션ID재고</th>
+              <th>셀러툴재고</th>
+              <th>예상날짜</th>
+              <th>주문상품명</th>
+              <th>주문옵션명</th>
+              <th>셀러툴상품명</th>
+              <th>셀러툴옵션명</th>
+              <th>옵션코드</th>
+              <th>정가(할인전)</th>
+              <th>옵션가</th>
+              <th>품절처리시간</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in details %}
+            <tr class="clickable-row">
+              <td>
+                <input type="checkbox"
+                       class="option-checkbox"
+                       name="out_item_ids"
+                       value="{{ row.row_type }}-{{ row.row_id }}">
+              </td>            
+              <td>
+                {% if row.stock == 0 %}
+                  <span class="text-danger">품절</span>
+                {% else %}
+                  <span class="text-success">판매중</span>
+                {% endif %}
+              </td>
+              <td>{{ row.platform_name }}</td>
+              <td>
+                {% if row.representative_image %}
+                  <img src="{{ row.representative_image }}" style="max-width:50px;">
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>{{ row.platform_option_id|default:"(미매칭)" }}</td>
+              <td>{{ row.stock }}</td>
+              <td>{{ row.seller_tool_stock }}</td>
+              <td>{{ row.expected_date|default:"-" }}</td>
+              <td>{{ row.order_product_name }}</td>
+              <td>{{ row.order_option_name }}</td>
+              <td>{{ row.seller_product_name }}</td>
+              <td>{{ row.seller_option_name }}</td>
+              <td>{{ row.option_code }}</td>
+              <td>{{ row.base_price }}</td>
+              <td>{{ row.option_price }}</td>
+              <td>
+                {% if row.out_of_stock_at %}
+                  {{ row.out_of_stock_at|date:"Y-m-d H:i" }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <!-- 페이지네이션 -->
+      <nav class="mt-3">
+        <ul class="pagination justify-content-center">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link"
+                 href="?page={{ page_obj.previous_page_number }}&filter={{ filter_val }}">
+                «
+              </a>
+            </li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">«</span></li>
+          {% endif %}
+  
+          {% for num in page_range_custom %}
+            {% if num == page_obj.number %}
+              <li class="page-item active">
+                <span class="page-link">{{ num }}</span>
+              </li>
+            {% else %}
+              <li class="page-item">
+                <a class="page-link"
+                   href="?page={{ num }}&filter={{ filter_val }}">
+                  {{ num }}
+                </a>
+              </li>
+            {% endif %}
+          {% endfor %}
+  
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link"
+                 href="?page={{ page_obj.next_page_number }}&filter={{ filter_val }}">
+                »
+              </a>
+            </li>
+          {% else %}
+            <li class="page-item disabled"><span class="page-link">»</span></li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+  </div>
+{% else %}
+  <div class="text-center text-muted mt-5">
+    데이터가 없습니다.
+  </div>
+{% endif %}
+
+</div>
+
+<!-- 스타일 -->
+<style>
+    .container-fluid {
+        max-width: 1400px;
+    }
+    .card {
+        border: none;
+        border-radius: 15px;
+        background-color: #ffffff;
+        color: #2d3436;
+        padding: 20px;
+    }
+    .table thead th {
+        background-color: #6c5ce7;
+        color: white;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        white-space: nowrap;
+    }
+    .table tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+    .table tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+    .table td, .table th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid #dfe6e9;
+        border-bottom: 1px solid #dfe6e9;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+    .clickable-row {
+        cursor: pointer;
+    }
+    .table-responsive {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+</style>
+
+<!-- 스크립트 -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // (1) 전체 선택 체크박스
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const optionCheckboxes = document.querySelectorAll('.option-checkbox');
+    if (selectAllCheckbox) {
+      selectAllCheckbox.addEventListener('change', function() {
+        optionCheckboxes.forEach(cb => {
+          cb.checked = selectAllCheckbox.checked;
+        });
+      });
+    }
+
+    // (2) 행 클릭 시 (체크박스 아닌 곳) → 해당 행 체크박스 토글
+    const rows = document.querySelectorAll('.clickable-row');
+    rows.forEach(row => {
+      row.addEventListener('click', function(e) {
+        // 클릭 대상이 checkbox 자체면 무시
+        if (e.target.type !== 'checkbox') {
+          const checkbox = row.querySelector('.option-checkbox');
+          if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+          }
+        }
+      });
+    });
+
+
+    // (3) 옵션코드 복사
+    const copyBtn = document.getElementById('copySelected');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function() {
+            let codes = [];
+            optionCheckboxes.forEach(cb => {
+                if (cb.checked) {
+                    // row: tr
+                    const row = cb.closest('tr');
+                    // "옵션코드" → 여기서는 12번째 열(td) / nth-child(12) 
+                    // (단, 실제 열 인덱스는 HTML구조 따라 조정)
+                    const codeCell = row.querySelector('td:nth-child(13)');
+                    if (codeCell) {
+                        const codeVal = codeCell.textContent.trim();
+                        if (codeVal) codes.push(codeVal);
+                    }
+                }
+            });
+            if (!codes.length) {
+                alert("체크된 항목이 없습니다.");
+                return;
+            }
+            const textToCopy = codes.join(',\n');
+            navigator.clipboard.writeText(textToCopy)
+                .then(() => alert(`복사완료:\n${textToCopy}`))
+                .catch(err => {
+                    console.error("복사 실패:", err);
+                    alert("복사에 실패했습니다.");
+                });
+        });
+    }
+});
+</script>
+<script>
+   function doOptionIdStockUpdate() {
+    if (!confirm("정말 체크된 항목들의 옵션ID재고를 업데이트하시겠습니까?")) {
+        return false;
+    }
+
+    // (1) 체크된 checkbox
+    const checkedBoxes = document.querySelectorAll('.option-checkbox:checked');
+    if (!checkedBoxes.length) {
+        alert("선택된 항목이 없습니다.");
+        return false;
+    }
+
+    // (2) value값(= "detail-123" 또는 "outofstock-45")만 배열로 수집
+    const detail_ids = [...checkedBoxes]
+      .map(cb => cb.value.trim())
+      .filter(v => v !== "");  // 공백 제거
+
+    if (!detail_ids.length) {
+        alert("선택된 항목이 없습니다. (공백 제외)");
+        return false;
+    }
+
+    // (3) Ajax (POST)로 서버에 전달
+    //      URL = {% url 'option_id_stock_update' %}
+    fetch("{% url 'option_id_stock_update' %}", {
+        method: "POST",
+        headers: {
+            "X-CSRFToken": "{{ csrf_token }}",
+            "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify({ detail_ids })
+        //  ↑ detail_ids = ["detail-132","outofstock-45", ...]
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.message) {
+            alert(data.message);
+        }
+        if (data.success === false) {
+            // 실패 처리 (있다면)
+            console.warn("부분 업데이트 실패:", data.detail);
+        } else {
+            // 성공 처리
+            location.reload();
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("서버 통신 오류");
+    });
+
+    return false;
+  }
+  function doOutOfStock() {
+    if(!confirm("정말 옵션ID 재고를 품절처리 하시겠습니까?")) {
+      return false;
+    }
+
+    const checkedBoxes = document.querySelectorAll('.option-checkbox:checked');
+    if (!checkedBoxes.length) {
+      alert("선택된 항목이 없습니다.");
+      return false;
+    }
+
+    const detail_ids = [...checkedBoxes]
+      .map(cb => cb.value.trim())
+      .filter(v => v !== "");
+    if (!detail_ids.length) {
+      alert("선택된 항목이 없습니다. (공백 제외)");
+      return false;
+    }
+
+    fetch("{% url 'do_out_of_stock' %}", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+        "Content-Type": "application/json"
+      },
+      credentials: "include",
+      body: JSON.stringify({ detail_ids }) 
+      // e.g. ["detail-132","outofstock-45"]
+    })
+    .then(res => res.json())
+    .then(data => {
+      if(data.success) {
+        alert("품절처리 완료!");
+        location.reload();
+      } else {
+        alert("품절처리 실패: " + data.message);
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      alert("서버 통신 오류");
+    });
+
+    return false;
+  }
+
+
+  function doAddStockForSelection() {
+    // 1) 체크된 항목
+    const checkedBoxes = document.querySelectorAll('.option-checkbox:checked');
+    if (!checkedBoxes.length) {
+      alert("선택된 항목이 없습니다.");
+      return false;
+    }
+
+    // 2) 배열화
+    const detail_ids = [...checkedBoxes]
+      .map(cb => cb.value.trim())
+      .filter(v => v !== "");
+    if (!detail_ids.length) {
+      alert("선택된 항목이 없습니다. (공백 제외)");
+      return false;
+    }
+
+    fetch("{% url 'add_stock_9999' %}", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ detail_ids })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        alert(data.message);  
+        location.reload();
+      } else {
+        alert("재고추가 실패: " + data.message);
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      alert("서버 통신 오류");
+    });
+
+    return false;
+  }
+  </script>
+<script>
+  /**
+   * 모달 열기 (Bootstrap)
+   */
+  function showAccountModal() {
+    const modalElem = document.getElementById('accountModal');
+    const bsModal = new bootstrap.Modal(modalElem, { backdrop: 'static' });
+    bsModal.show();
+    return false; // <a> 태그 이동 막기
+  }
+  
+  document.addEventListener('DOMContentLoaded', function() {
+    const accountButtons = document.querySelectorAll('.account-update-btn');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const completeMsg    = document.getElementById('completeMessage');
+    const accountBtnList = document.getElementById('accountButtonList');
+  
+    accountButtons.forEach(btn => {
+      btn.addEventListener('click', function() {
+        const accountName = btn.dataset.accountName || "";
+        if(!accountName) return;
+  
+        // (1) UI 변경: 계정 버튼 목록 숨기고, 로딩 스피너 보여주기
+        accountBtnList.style.display = 'none';
+        loadingSpinner.style.display = 'block';
+        completeMsg.style.display = 'none';
+  
+        // (2) URL 생성
+        let targetUrl;
+        if (accountName === "쿠팡01" || accountName === "쿠팡02") {
+          targetUrl = "{% url 'update_coupang_product_list' %}?account_name=" + encodeURIComponent(accountName);
+        } else {
+          targetUrl = "{% url 'update_naver_product_list' %}?account_name=" + encodeURIComponent(accountName);
+        }
+  
+        // (3) API 호출 (GET)
+        fetch(targetUrl, {
+          method: "GET",
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        })
+        .then(response => response.json())
+        .then(data => {
+          // (3A) 로딩 스피너 숨김
+          loadingSpinner.style.display = 'none';
+  
+          // (3B) 에러 검사
+          if (data.error) {
+            alert("업데이트 실패: " + (data.detail || "알 수 없음"));
+            // 버튼 목록 되돌려놓기
+            accountBtnList.style.display = 'block';
+            return;
+          }
+  
+          // (3C) 완료 메시지 보여주기
+          completeMsg.style.display = 'block';
+          completeMsg.textContent = `${accountName} 업데이트 완료. 총 ${data.count}건.`;
+  
+          // (3D) 잠시 후(1.5초 뒤) 모달 닫기
+          setTimeout(() => {
+            const modalElem = document.getElementById('accountModal');
+            const bsModal = bootstrap.Modal.getInstance(modalElem);
+            if(bsModal) bsModal.hide();
+  
+            // 모달이 닫힌 뒤 버튼 목록 복구
+            accountBtnList.style.display = 'block';
+            completeMsg.style.display = 'none';
+          }, 1500);
+        })
+        .catch(err => {
+          console.error(err);
+          loadingSpinner.style.display = 'none';
+          accountBtnList.style.display = 'block';
+          alert("목록 업데이트 중 오류! " + err);
+        });
+      });
+    });
+  });
+  function doSellerToolStockUpdate() {
+
+
+  // 1) 서버에 POST 요청: 전체(혹은 현재 페이지)의 detail 레코드 갱신
+  fetch("{% url 'update_seller_tool_stock' %}", {
+    method: "POST",
+    headers: {
+      "X-CSRFToken": "{{ csrf_token }}",
+      "Content-Type": "application/json"
+    },
+    credentials: "include",  // 필요 시
+    body: JSON.stringify({})  // 특별히 보낼 내용이 없다면 빈 객체
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      alert(data.message || "셀러툴 재고 업데이트 완료");
+      location.reload();
+    } else {
+      alert("실패: " + (data.message || "알 수 없음"));
+    }
+  })
+  .catch(err => {
+    console.error(err);
+    alert("서버 통신 오류: " + err);
+  });
+
+  return false; // <a> 태그 기본이동 막기
+}
+// "품절엑셀다운" 버튼 누르면, 서버에 fetch로 요청 → 오늘 품절된 데이터 엑셀 다운로드
+function downloadOutOfStockExcel() {
+  fetch("{% url 'download_out_of_stock_excel_today' %}", {
+    method: "GET",
+  })
+  .then(res => {
+    if(!res.ok) {
+      throw new Error("서버 응답 에러: HTTP " + res.status);
+    }
+    return res.blob();
+  })
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "today_out_of_stock.xlsx"; // 파일명
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  })
+  .catch(err => {
+    console.error(err);
+    alert("엑셀 다운로드 실패: " + err.message);
+  });
+
+  return false; // a 태그 기본 이동 방지
+}
+  </script>
+{% endblock %}
