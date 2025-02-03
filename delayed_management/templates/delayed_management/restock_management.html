@@ -1,0 +1,91 @@
+{% extends 'delayed_management_base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <h1 class="mb-4 text-primary">재입고 관리 (Restock Date Management)</h1>
+
+  <div class="mb-3">
+      <form method="get" action="{% url 'update_restock_from_sheet' %}">
+          <button type="submit" class="btn btn-success">동기화</button>
+      </form>
+  </div>
+
+  <div class="card shadow-sm p-3 mb-4">
+      <h2>상태별 재입고 기간 안내</h2>
+      <table class="table table-hover">
+          <thead>
+              <tr>
+                  <th>상태</th>
+                  <th>최소일</th>
+                  <th>최대일</th>
+                  <th>비고</th>
+              </tr>
+          </thead>
+          <tbody>
+              <tr><td>구매된상품들(purchase)</td><td>14</td><td>21</td><td>공장출고전</td></tr>
+              <tr><td>배송중(shipping)</td><td>10</td><td>14</td><td>중국배송중</td></tr>
+              <tr><td>도착완료(arrived)</td><td>7</td><td>10</td><td>중국창고도착</td></tr>
+              <tr><td>서류작성(document)</td><td>5</td><td>7</td><td>서류제출</td></tr>
+              <tr><td>선적중(loading)</td><td>1</td><td>4</td><td>출고/선적</td></tr>
+          </tbody>
+      </table>
+  </div>
+
+  <!-- 재입고 목록 -->
+  <div class="card shadow-sm p-3">
+      <h2>재입고 목록</h2>
+      <table class="table table-striped table-hover">
+          <thead>
+              <tr>
+                  <th>옵션코드</th>
+                  <th>주문상품명</th>
+                  <th>주문옵션명</th>
+                  <th>셀러툴상품명</th>
+                  <th>셀러툴옵션명</th>
+                  <th>수량</th>
+                  <th>현재상태</th>
+                  <!-- "재입고 안내날짜" -->
+                  <th>재입고 안내날짜</th>
+                  <!-- "재입고 예상날짜" -->
+                  <th>재입고 예상날짜</th>
+              </tr>
+          </thead>
+          <tbody>
+              {% for s in shipments %}
+              <tr>
+                  <td>{{ s.option_code }}</td>
+                  <td>{{ s.order_product_name }}</td>
+                  <td>{{ s.order_option_name }}</td>
+                  <td>{{ s.seller_product_name }}</td>
+                  <td>{{ s.seller_option_name }}</td>
+                  <td>{{ s.quantity }}</td>
+                  <td>{{ s.status_display }}</td>
+                  
+                  <!-- 안내날짜 (final, 변경 X) -->
+                  <td>
+                    {% if s.range_start and s.range_end %}
+                      <!-- 예: 2024.01.06 ~ 01.10 형태 -->
+                      {{ s.range_start|date:"Y.m.d" }} ~ {{ s.range_end|date:"m.d" }}
+                    {% else %}
+                      (미정)
+                    {% endif %}
+                  </td>
+
+                  <!-- 예상날짜 (동적, 매번 갱신) -->
+                  <td>
+                    {% if s.expected_start and s.expected_end %}
+                      {{ s.expected_start|date:"Y.m.d" }} ~ {{ s.expected_end|date:"m.d" }}
+                    {% else %}
+                      (미정)
+                    {% endif %}
+                  </td>
+              </tr>
+              {% empty %}
+              <tr>
+                  <td colspan="7" class="text-center text-muted">데이터가 없습니다.</td>
+              </tr>
+              {% endfor %}
+          </tbody>
+      </table>
+  </div>
+</div>
+{% endblock %}

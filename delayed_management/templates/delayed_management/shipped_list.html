@@ -1,0 +1,167 @@
+{% extends 'delayed_management_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4 text-primary">출고완료 목록</h2>
+
+    <!-- 출고완료 폼 -->
+    <form method="post" action="{% url 'process_shipped_shipments' %}">
+        {% csrf_token %}
+
+        <div class="mb-3 d-flex gap-2">
+            <!-- "출고완료" 버튼 -->
+            <button type="submit" name="action" value="delete_multiple" class="btn btn-danger btn-sm">
+                선택 삭제
+            </button>
+            <button type="submit" name="action" value="revert_to_confirmed" class="btn btn-warning btn-sm">
+                확인완료로 되돌리기
+            </button>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <!-- 전체선택 체크박스 -->
+                            <th><input type="checkbox" id="selectAll"></th>
+                            <th>전송유형</th>
+                            <th>전송상태</th>
+                            <th>확인여부</th>
+                            <th>기다리기</th>
+                            <th>변경된옵션</th>
+                            <th>변경된옵션코드</th>
+                            <th>주문번호1</th>
+                            <th>옵션코드</th>
+                            <th>주문상품명</th>
+                            <th>주문옵션명</th>
+                            <th>수량</th>
+                            <th>변경가능옵션</th>
+                            <th>재입고일자</th>
+                            <th>스토어</th>
+                            <th>성함</th>
+                            <th>연락처</th>
+                            <th>셀러툴상품명</th>
+                            <th>셀러툴옵션명</th>
+                            <th>주문번호2</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in shipments %}
+                        <tr class="clickable-row">
+                            <td>
+                                <input type="checkbox" name="shipment_ids" value="{{ s.id }}" class="option-checkbox">
+                            </td>
+                            <td>
+                                {% if s.send_type == "SMS" %}문자
+                                {% elif s.send_type == "KAKAO" %}알림톡
+                                {% else %}미전송
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if s.send_status == "SENDING" %}전송중
+                                {% elif s.send_status == "SUCCESS" %}성공
+                                {% elif s.send_status == "FAIL" %}실패
+                                {% elif s.send_status == "DONE" %}처리완료
+                                {% elif s.send_status == "SHIPPED" %}출고완료
+                                {% else %}대기
+                                {% endif %}
+                            </td>
+                            <td>{% if s.confirmed %}확인됨{% else %}미확인{% endif %}</td>
+                            <td>{% if s.waiting %}기다리는 중{% else %}-{% endif %}</td>
+                            <td>{{ s.changed_option }}</td>
+                            <td>{{ s.changed_option_code }}</td>
+                            <td>{{ s.order_number_1 }}</td>
+                            <td>{{ s.option_code }}</td>
+                            <td>{{ s.order_product_name }}</td>
+                            <td>{{ s.order_option_name }}</td>
+                            <td>{{ s.quantity }}</td>
+                            <td>{{ s.exchangeable_options }}</td>
+                            <td>{% if s.restock_date %}{{ s.restock_date|date:"Y-m-d" }}{% endif %}</td>
+                            <td>{{ s.store_name }}</td>
+                            <td>{{ s.customer_name }}</td>
+                            <td>{{ s.customer_contact }}</td>
+                            <td>{{ s.seller_product_name }}</td>
+                            <td>{{ s.seller_option_name }}</td>
+                            <td>{{ s.order_number_2 }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="20" class="text-center text-muted">데이터가 없습니다.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </form>
+</div>
+
+<style>
+    .container-fluid {
+        max-width: 1400px;
+    }
+    .card {
+        border: none;
+        border-radius: 15px;
+        background-color: #ffffff;
+        color: #2d3436;
+        padding: 20px;
+    }
+    table {
+        border-collapse: separate;
+        border-spacing: 0;
+        background-color: #ffffff;
+        color: #2d3436;
+        width: 100%;
+    }
+    thead th {
+        background-color: #6c5ce7;
+        color: white;
+        padding: 15px;
+        white-space: nowrap;
+        user-select: none;
+        border-bottom: 2px solid #dfe6e9;
+        position: relative;
+    }
+    tbody tr:nth-child(even) {
+        background-color: rgba(108, 92, 231, 0.1);
+    }
+    tbody tr:hover {
+        background-color: rgba(108, 92, 231, 0.2);
+    }
+    td, th {
+        padding: 12px;
+        vertical-align: middle;
+        border-top: 1px solid #dfe6e9;
+        border-bottom: 1px solid #dfe6e9;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 전체 선택 체크박스
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.option-checkbox');
+
+    selectAllCheckbox.addEventListener('change', function() {
+        checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+    });
+
+    // 행 클릭 시 체크박스 토글
+    const rows = document.querySelectorAll('.clickable-row');
+    rows.forEach(row => {
+        row.addEventListener('click', function(e) {
+            if (e.target.type !== 'checkbox') {
+                const checkbox = this.querySelector('.option-checkbox');
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                }
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

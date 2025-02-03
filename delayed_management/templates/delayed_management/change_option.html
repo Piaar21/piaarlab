@@ -1,0 +1,284 @@
+{% block content %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>옵션 변경</title>
+  <style>
+    /* ================================
+      전역(바디) & 모바일 최적화
+      ================================ */
+    /* 모바일 등에서 배경을 회색, 카드형 배경을 흰색으로 */
+    html, body {
+      height: 100%;            /* 전체 높이 */
+      margin: 0;
+      padding: 0;
+      background-color: #f3f3f3; /* 예: Tailwind bg-gray-100 유사 */
+      box-sizing: border-box;
+    }
+
+    body {
+      /* 모바일 최적화: 상하좌우 1rem 패딩 */
+      min-height: 100vh;
+      padding: 1rem;
+      font-family: 'Noto Sans', sans-serif;
+    }
+
+    /* ================================
+      최상위 컨테이너 (.option-change-container)
+      ================================ */
+    .option-change-container {
+      /* 화면 중앙 배치 + 흰색 카드형 디자인 */
+      max-width: 600px;               /* 혹은 480px, etc. */
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      overflow: hidden;  /* 상단바 영역이 튀어나가지 않도록 */
+      display: flex;     
+      flex-direction: column;
+      /* min-height: 100%;  ← 필요시 */
+    }
+
+    /* ================================
+      상단 헤더바 영역 (h1을 헤더처럼 사용)
+      ================================ */
+    .option-change-container h1 {
+      /* 상단에 색깔 배경 */
+      background-color: #6c5ce7; /* Tailwind 기준 bg-primary */
+      color: #fff;
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0;           /* 기본 margin 제거 */
+      padding: 1rem;       /* 상하좌우 여백 */
+      display: flex;       /* 아이콘, 텍스트를 가로 배치 */
+      align-items: center; /* 수직 가운데 정렬 */
+      justify-content: center; /* 가운데 정렬 (아이콘/문구만 있을 시) */
+    }
+
+    /* === h1 앞쪽에 뒤로가기 아이콘 비슷하게 (React 코드의 <ChevronLeft/> 흉내) === */
+    /* 실제 아이콘 이미지를 넣거나, 배경 SVG를 넣을 수도 있음 */
+    .option-change-container h1::before {
+      content: "";
+      display: inline-block;
+      height: 24px;
+      margin-right: 0.75rem;
+      background: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMu***/') no-repeat center center;
+      background-size: contain;
+    }
+
+    /* ================================
+      본문 (form) 안쪽 여백
+      ================================ */
+    .option-change-container form {
+      /* React 코드에서 .p-4 처럼 여백 */
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin: 0;
+    }
+
+    /* ================================
+      상단 안내문 (원하시는 옵션...) 흉내
+      ※ 실제 HTML에 <p>나 <div>가 없다면 CSS만으로는 추가 불가능
+      ================================ */
+    .option-change-container .intro-text {
+      font-size: 0.875rem;  /* text-sm */
+      color: #666;          /* text-gray-600 */
+      margin-bottom: 1rem;
+    }
+
+    /* ================================
+      개별 상품(.shipment-item) 카드
+      ================================ */
+    .shipment-item {
+      border: 1px solid #e5e7eb; /* 예: border-gray-200 유사 */
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      background-color: #fafafa;
+    }
+    .shipment-item h2 {
+      font-size: 1rem;       /* text-base */
+      font-weight: 600;      /* font-semibold */
+      margin-bottom: 0.5rem;
+    }
+    .shipment-item p {
+      margin: 0.5rem 0;
+      font-size: 0.9rem;
+      color: #333;
+    }
+    /* select, button은 기존 코드와 동일하게 유지 */
+
+    /* ================================
+      전송 버튼
+      ================================ */
+    .submit-button {
+      width: 100%;
+      margin-top: 1rem;
+      background-color: #6c5ce7;  /* bg-primary */
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 500;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      padding: 0.75rem 1rem;
+      transition: background-color 0.2s ease;
+    }
+    .submit-button:hover {
+      background-color: #a29bfe; /* hover */
+    }
+
+    /* ================================
+      반응형
+      ================================ */
+    @media (min-width: 768px) {
+      .option-change-container {
+        max-width: 480px !important;
+        margin: 2rem auto !important;
+      }
+      .shipment-item {
+        margin-bottom: 1rem;
+      }
+    }
+    .option-change-container select {
+      /* 기본 베이스 */
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #ccc;  /* 테두리 회색 */
+      border-radius: 6px;      /* 모서리 둥글게 */
+      font-size: 0.9rem;
+      color: #333;
+      box-sizing: border-box;
+      background-color: #fff;
+
+      /* 사용자 경험을 위한 전환 효과 */
+      transition: border-color 0.2s ease;
+    }
+
+    /* 포커스 시 테두리 진해지게 */
+    .option-change-container select:focus {
+      outline: none;               /* 기본 파란 아웃라인 제거 */
+      border-color: #6c5ce7;       /* 포커스 시 보라색 */
+      box-shadow: 0 0 0 2px rgba(108, 92, 231, 0.2); /* 연한 보라색 그림자 */
+    }
+
+    /* 비어있는 값 등 placeholder처럼 처리하고 싶다면 :invalid 활용 가능
+      (HTML 에서 <option value="" disabled selected hidden>옵션을 선택하세요</option> 식으로 쓰거나,
+        required 설정 시)
+    .option-change-container select:invalid {
+      color: #999;   // placeholder 느낌
+    }
+    */
+
+    /* 옵션 목록 (일반 <option>)은 OS/UI 종속이라 직접 스타일링 제한됨.
+      다만, 약간의 전역 속성은 아래처럼 가능 */
+    .option-change-container select option {
+      color: #333;
+      font-size: 0.9rem;
+      /* 등등... */
+    }
+
+    /* hover 시 조금 진해지는 효과 */
+    .option-change-container select:hover {
+      border-color: #b2acfa; /* 조금 더 연한 보라 */
+    }
+
+    /* 비활성화(disabled) 상황도 스타일 */
+    .option-change-container select:disabled {
+      background-color: #f5f5f5;
+      color: #999;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="option-change-container">
+    <h1>옵션 변경 페이지</h1>
+
+    <form method="post" action="{% url 'option_change_process' %}">
+      {% csrf_token %}
+      <input type="hidden" name="token" value="{{ token }}">
+
+      {% for item in shipments_data %}
+        <div class="shipment-item">
+          <p>상품명: {{ item.shipment.order_product_name }}</p>
+          <p>현재 옵션: {{ item.shipment.order_option_name }} / 수량: {{ item.shipment.quantity }}</p>
+
+          <p>
+            재입고 날짜:
+            {% if item.shipment.range_start and item.shipment.range_end %}
+              {{ item.shipment.range_start|date:"Y.m.d" }} ~ {{ item.shipment.range_end|date:"m.d" }}
+            {% else %}
+              (미정)
+            {% endif %}
+          </p>
+
+          <label>변경가능 옵션:</label>
+          {% if item.exchangeable_options %}
+            <!-- 
+              ★ 주의: name="new_option_for_{{ item.shipment.id }}" 
+                       hidden input name="new_option_code_for_{{ item.shipment.id }}"
+            -->
+            <select name="new_option_for_{{ item.shipment.id }}"
+                    onchange="onOptionChange(this, '{{ item.shipment.id }}')">
+              <option value="">옵션을 선택하세요</option>
+              {% for opt in item.exchangeable_options %}
+                <option value="{{ opt.optionName }}"
+                        data-code="{{ opt.optionCode }}">
+                  {{ opt.optionName }}
+                </option>
+              {% endfor %}
+              <!-- ▼ 항상 맨 아래에 들어갈 고정 옵션 -->
+              <option value="취소 후 나머지 제품 선출고" data-code="CANCEL_REST_SHIP">
+                취소 후 나머지 제품 선출고
+              </option>
+            </select>
+
+            <!-- 선택된 optionCode를 넣을 hidden input -->
+            <input type="hidden" name="new_option_code_for_{{ item.shipment.id }}"
+                  id="new_option_code_for_{{ item.shipment.id }}" />
+
+          {% else %}
+            <!-- 교환가능옵션이 비어있으면 -->
+            <p style="color:red; font-weight:bold;">
+              변경 가능한 옵션이 없습니다. 상담원에게 문의해주세요.
+            </p>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      <button type="submit" class="submit-button">전체 옵션 변경하기</button>
+    </form>
+  </div>
+
+  <script>
+    /**
+     * select 태그에서 onChange 발생 시:
+     *  - data-code 속성을 읽어와서, hidden input에 넣는다.
+     */
+    function onOptionChange(sel, shipmentId) {
+      const selectedOption = sel.options[sel.selectedIndex];
+      const optionCode = selectedOption.getAttribute('data-code') || '';
+      const optionName = selectedOption.textContent || selectedOption.innerText;
+
+      console.log("[DEBUG] onOptionChange:", {
+        shipmentId: shipmentId,
+        optionName: optionName,
+        optionCode: optionCode
+      });
+
+      // hidden input에 optionCode 저장
+      const hiddenInput = document.getElementById(`new_option_code_for_${shipmentId}`);
+      if (hiddenInput) {
+        hiddenInput.value = optionCode;
+      }
+    }
+  </script>
+</body>
+</html>
+{% endblock %}
