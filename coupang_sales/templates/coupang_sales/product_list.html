@@ -1,0 +1,29 @@
+templates/coupang_sales/product_list.html (예시)
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Coupang Product List</title>
+</head>
+<body>
+    <h1>쿠팡 API 업데이트</h1>
+
+    <!-- 쿠팡01 계정 업데이트 버튼 -->
+    <button type="button"
+      onclick="location.href='{% url 'update_coupang_option_list' %}?account_name=쿠팡01'">
+      Update: 쿠팡01
+    </button>
+
+    <br/><br/>
+
+    <!-- 쿠팡02 계정 업데이트 버튼 (필요하다면) -->
+    <button type="button"
+      onclick="location.href='{% url 'update_coupang_option_list' %}?account_name=쿠팡02'">
+      Update: 쿠팡02
+    </button>
+
+    <!-- 기타 페이지 내용 -->
+
+</body>
+</html>

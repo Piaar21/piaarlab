@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'cs_management.apps.CsManagementConfig',  # 또는 'cs_management'
     'webhook',
     'django_extensions',
+    'coupang_sales',
 
 ]
 
