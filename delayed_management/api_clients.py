@@ -1062,7 +1062,6 @@ def naver_update_option_stock(
     import logging, requests
     logger = logging.getLogger(__name__)
 
-
     if not platform_name:
         return False, "[naver_update_option_stock] platform_name이 없습니다."
 
@@ -1081,17 +1080,10 @@ def naver_update_option_stock(
     if not access_token:
         return False, "[naver_update_option_stock] 토큰 발급 실패"
 
-    # (C) 기존 salePrice(상품 판매가)를 뭘로 넣을지 정해야 함.
-    #    - API 문서상 "productSalePrice.salePrice"는 필수로 보이므로,
-    #      임시로 10000 또는 기존값(원한다면 DB에서 가져오기).
-    #    - 여기서는 "변경 X"를 가정하되, API는 필수 필드이므로
-    #      일단 10000으로 예시.
-    #    - 실제로는 원본 상품 조회 -> 해당 상품의 salePrice를 넣으면 안전합니다.
-
+    # (C) 기존 salePrice(상품 판매가) 설정
+    #     여기서는 base_sale_price(정가), keep_price(옵션추가금)를 사용
     if keep_price is None:
-        # (선택) 만약 DB 값이 없으면, 안전하게 네이버 GET API로 상품을 조회해서 가져오거나,
-        #        기본값(예: 10000)이라도 넣는 방식이 필요할 수 있음
-        keep_price = 10000
+        keep_price = 10000  # (예시) DB 값이 없으면 기본값
 
     body = {
         "productSalePrice": {
@@ -1107,7 +1099,7 @@ def naver_update_option_stock(
             ]
         }
     }
-    logger.debug(f"[naver_update_option_stock] body={body}")
+    logger.debug(f"[naver_update_option_stock] request body={body}")
 
     url = f"https://api.commerce.naver.com/external/v1/products/origin-products/{origin_no}/option-stock"
     headers = {
@@ -1116,7 +1108,10 @@ def naver_update_option_stock(
     }
 
     try:
-        resp = requests.put(url, headers=headers, json=body, timeout=30,proxies=proxies)
+        resp = requests.put(url, headers=headers, json=body, timeout=30, proxies=proxies)
+        # 네이버 서버 응답 로깅
+        logger.debug(f"[naver_update_option_stock] Naver response code={resp.status_code}, body={resp.text}")
+
         if resp.status_code == 200:
             data = resp.json()
             logger.debug(f"[naver_update_option_stock] success data={data}")
@@ -1126,8 +1121,10 @@ def naver_update_option_stock(
                 f"[naver_update_option_stock] status={resp.status_code}, text={resp.text}"
             )
             return False, f"HTTP {resp.status_code}, text={resp.text}"
+
     except requests.RequestException as e:
-        logger.error(f"[naver_update_option_stock] 예외: {e}")
+        # 요청 예외 발생 시 에러 로깅
+        logger.error(f"[naver_update_option_stock] 예외: {e}", exc_info=True)
         return False, str(e)
 
 def coupang_update_item_stock(vendor_item_id, new_stock=0, platform_name=None):
