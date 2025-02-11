@@ -14,6 +14,7 @@ import json
 import pytz
 import pandas as pd
 from .maps import product_order_status_map
+from proxy_config import proxies
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ def fetch_naver_access_token(account_info):
         'grant_type': 'client_credentials',
         'type': 'SELF'
     }
-    response = requests.post(url, data=params)
+    response = requests.post(url, data=params, proxies=proxies)
     if response.status_code == 200:
         token_data = response.json()
         access_token = token_data['access_token']
@@ -145,7 +146,8 @@ def fetch_naver_returns(account_info):
                         'https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/last-changed-statuses',
                         headers=headers,
                         params=params,
-                        timeout=30  # timeout 설정
+                        timeout=30,  # timeout 설정
+                        proxies=proxies
                     )
                     if response.status_code == 200:
                         data = response.json()
@@ -233,7 +235,7 @@ def fetch_naver_order_details(account_info, product_order_ids):
         retry_count = 0
         while True:
             try:
-                response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30)
+                response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30, proxies=proxies)
                 if response.status_code == 200:
                     data = response.json()
 
@@ -295,7 +297,7 @@ def approve_naver_return(account_info, product_order_id):
     }
 
     print("API 요청 URL:", url)  # 디버깅용 로그
-    response = requests.post(url, headers=headers)
+    response = requests.post(url, headers=headers, proxies=proxies)
     print("API 응답 코드:", response.status_code)  # 디버깅용 로그
     print("API 응답 내용:", response.text)  # 디버깅용 로그
 
@@ -355,7 +357,7 @@ def get_product_order_details(account_info, product_order_ids):
     logger.debug(f"요청 payload: {payload}")
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.post(url, headers=headers, json=payload, timeout=30, proxies=proxies)
         logger.debug(f"응답 상태코드: {response.status_code}")
         logger.debug(f"응답 본문: {response.text}")
 
@@ -451,7 +453,7 @@ def dispatch_naver_exchange(
 
     # API 호출
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.post(url, headers=headers, json=payload, timeout=30, proxies=proxies)
     except requests.RequestException as e:
         print("[DEBUG] API 요청 중 예외 발생:", e)
         return False, f"API 요청 실패 (RequestException): {e}"

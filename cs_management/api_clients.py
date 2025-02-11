@@ -18,7 +18,7 @@ import os
 from dateutil import parser
 from .models import CenterInquiry
 import pytz
-
+from proxy_config import proxies
 
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ def fetch_naver_access_token(account_info):
         'grant_type': 'client_credentials',
         'type': 'SELF'
     }
-    response = requests.post(url, data=params)
+    response = requests.post(url, data=params, proxies=proxies)
     if response.status_code == 200:
         token_data = response.json()
         access_token = token_data['access_token']
@@ -221,7 +221,8 @@ def fetch_naver_qna_templates(
                     "https://api.commerce.naver.com/external/v1/contents/qnas",
                     headers=headers,
                     params=params,
-                    timeout=30
+                    timeout=30,
+                    proxies=proxies
                 )
                 logger.debug(f"[{acc_name}] status_code={resp.status_code}")
                 logger.debug(f"[{acc_name}] raw response => {resp.text[:1000]}")
@@ -731,7 +732,7 @@ def put_naver_qna_answer(account_info, question_id, comment_content):
     retry_count = 0
     while retry_count < MAX_RETRIES:
         try:
-            resp = requests.put(url, headers=headers, json=payload, timeout=30)
+            resp = requests.put(url, headers=headers, json=payload, timeout=30,proxies=proxies)
             logger.debug(f"[put_naver_qna_answer] status_code={resp.status_code}, resp={resp.text[:200]}")
 
             if resp.status_code in [200, 204]:
@@ -1026,7 +1027,7 @@ def fetch_naver_center_inquiries(
             params["page"] = current_page  # 현재 페이지
             try:
                 url = "https://api.commerce.naver.com/external/v1/pay-user/inquiries"
-                resp = requests.get(url, headers=headers, params=params, timeout=30)
+                resp = requests.get(url, headers=headers, params=params, timeout=30, proxies=proxies)
                 if resp.status_code == 200:
                     data = resp.json()
                     # totalPages, page, size, content[], ...
@@ -1479,7 +1480,7 @@ def put_naver_qna_center_answer(account_info, inquiry_no, answer_comment):
 
     while retry_count < MAX_RETRIES:
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            resp = requests.post(url, headers=headers, json=payload, timeout=30,proxies=proxies)
             # (B) 요청 후 응답 코드와 일부 본문 로깅
             logger.debug(
                 f"[put_naver_qna_center_answer] status_code={resp.status_code}, "
