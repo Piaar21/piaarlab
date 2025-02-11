@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone  # timezone 추가
 import base64
 import bcrypt
 import urllib.parse
+from proxy_config import proxies
 
 
 logger = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ def fetch_naver_access_token(account_info):
         'grant_type': 'client_credentials',
         'type': 'SELF'
     }
-    response = requests.post(url, data=params)
+    response = requests.post(url, data=params,proxies=proxies)
     if response.status_code == 200:
         token_data = response.json()
         access_token = token_data['access_token']
@@ -277,7 +278,7 @@ def fetch_naver_products(account_info):
         retry_count = 0
         while retry_count < MAX_RETRIES:
             try:
-                resp = requests.post(url, headers=headers, json=payload, timeout=30)
+                resp = requests.post(url, headers=headers, json=payload, timeout=30,proxies=proxies)
                 logger.debug(f"[fetch_naver_products] status_code={resp.status_code}")
                 logger.debug(f"[fetch_naver_products] response snippet => {resp.text[:300]}")
 
@@ -371,7 +372,7 @@ def get_naver_minimal_product_info(account_info, origin_product_no):
 
     while retry_count < MAX_RETRIES:
         try:
-            resp = requests.get(url, headers=headers, timeout=30)
+            resp = requests.get(url, headers=headers, timeout=30,proxies=proxies)
 
             if resp.status_code == 429:
                 # 재시도
@@ -931,7 +932,7 @@ def fetch_naver_option_stock(account_info, origin_product_no):
 
     while retry_count < MAX_RETRIES:
         try:
-            resp = requests.get(url, headers=headers, timeout=30)
+            resp = requests.get(url, headers=headers, timeout=30,proxies=proxies)
 
             if resp.status_code == 200:
                 # ▼ 남은 호출 횟수 확인
@@ -1115,7 +1116,7 @@ def naver_update_option_stock(
     }
 
     try:
-        resp = requests.put(url, headers=headers, json=body, timeout=30)
+        resp = requests.put(url, headers=headers, json=body, timeout=30,proxies=proxies)
         if resp.status_code == 200:
             data = resp.json()
             logger.debug(f"[naver_update_option_stock] success data={data}")
@@ -1264,7 +1265,7 @@ def put_naver_option_stock_9999(origin_no, option_id, platform_name=None,base_sa
     }
 
     try:
-        resp = requests.put(url, headers=headers, json=body, timeout=30)
+        resp = requests.put(url, headers=headers, json=body, timeout=30,proxies=proxies)
         if resp.status_code == 200:
             data = resp.json()
             logger.debug(f"[put_naver_option_stock_9999] success data={data}")
