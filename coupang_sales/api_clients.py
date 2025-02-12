@@ -2,15 +2,11 @@ import requests
 import time
 import hmac
 import hashlib
-import json
-from urllib.parse import quote
 from decouple import config
 import logging
-from datetime import datetime, timedelta, timezone  # timezone 추가
-import base64
-import bcrypt
 import urllib.parse
-from proxy_config import proxies
+import json
+
 
 
 logger = logging.getLogger(__name__)
@@ -52,11 +48,13 @@ def generate_coupang_signature(method, url_path, query_params, secret_key):
 
     return signature, datetime_now
 
-def fetch_coupang_all_seller_products(account_info, max_per_page=150):
+def fetch_coupang_all_seller_products(account_info, max_per_page=100):
     """
-    쿠팡 등록상품 목록 '페이징' 조회.
-    '최신 10개'만 가져오려면, 아래에서 all_products -> slice
+    쿠팡 등록상품 목록 '페이징' 조회 후 모든 상품을 합쳐 반환.
+    (쿠팡 정책상 max_per_page는 1~100 범위)
     """
+    logger.info(f"[fetch_coupang_all_seller_products] START: vendor_id={account_info.get('vendor_id')}, max_per_page={max_per_page}")
+
     method = 'GET'
     url_path = "/v2/providers/seller_api/apis/api/v1/marketplace/seller-products"
     vendor_id = account_info.get('vendor_id')
@@ -68,6 +66,8 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
     next_token = ''
     all_products = []
     max_retries = 3
+
+    page_count = 0
 
     while True:
         query_params = {
@@ -93,10 +93,9 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
         encoded_query = urllib.parse.urlencode(sorted_params, safe='~')
         endpoint = f"https://api-gateway.coupang.com{url_path}?{encoded_query}"
 
-        # 기존의 상세 endpoint 로그는 주석 처리
-        # logger.debug(f"[fetch_coupang_all_seller_products] endpoint={endpoint}")
-        retry_count = 0
+        logger.debug(f"[fetch_coupang_all_seller_products] Requesting endpoint={endpoint}")
 
+        retry_count = 0
         while True:
             try:
                 resp = requests.get(endpoint, headers=headers, timeout=30)
@@ -104,7 +103,7 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
                 if retry_count < max_retries:
                     retry_count += 1
                     logger.warning(f"[fetch_coupang_all_seller_products] Timeout → 재시도 {retry_count}/{max_retries}")
-                    time.sleep(0.1)
+                    time.sleep(0.2)
                     continue
                 else:
                     msg = f"[fetch_coupang_all_seller_products] Timeout {max_retries}회 초과"
@@ -116,15 +115,10 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
                 return False, msg
 
             if resp.status_code == 200:
+                # 정상 응답
                 data_json = resp.json()
-
-                # ★★ 여기서 “API로 받아온 JSON”만 이쁘게 로그로 출력 ★★
-                # logger.debug(
-                #     "[fetch_coupang_all_seller_products] Response JSON:\n%s",
-                #     json.dumps(data_json, ensure_ascii=False, indent=2)
-                # )
-
                 code = data_json.get("code")
+
                 if code != "SUCCESS":
                     msg = f"[fetch_coupang_all_seller_products] code != SUCCESS, raw={data_json}"
                     logger.error(msg)
@@ -133,39 +127,40 @@ def fetch_coupang_all_seller_products(account_info, max_per_page=150):
                 data_list = data_json.get("data", [])
                 all_products.extend(data_list)
 
-                # 기존의 페이지 수/누적 개수 로그는 주석 처리
-                # logger.debug(
-                #     f"[fetch_coupang_all_seller_products] 이번 페이지 상품 수={len(data_list)}, "
-                #     f"누적={len(all_products)}"
-                # )
-
                 next_token = data_json.get("nextToken", "")
-                if not next_token:
-                    # logger.debug("[fetch_coupang_all_seller_products] nextToken이 없어 종료.")
-                    break
-                else:
-                    # logger.debug(f"[fetch_coupang_all_seller_products] nextToken={next_token} → 다음 페이지 조회")
-                    break
+                page_count += 1
+
+                logger.info(
+                    f"[fetch_coupang_all_seller_products] Page {page_count} fetched: "
+                    f"{len(data_list)} items, nextToken={next_token}"
+                )
+
+                # 필요 시 JSON 전체를 로깅하고 싶으면 (주의: 매우 길어질 수 있음)
+                # logger.debug(f"Page JSON:\n{json.dumps(data_json, indent=2, ensure_ascii=False)}")
+
+                break  # while True for retry -> break
             else:
+                # 비정상 응답
                 try:
                     err_json = resp.json()
                 except:
                     err_json = {}
-                # msg = f"[fetch_coupang_all_seller_products] HTTP {resp.status_code}, text={resp.text}"
+                msg = f"[fetch_coupang_all_seller_products] HTTP {resp.status_code}, text={resp.text}"
                 logger.error(msg)
                 return False, msg
 
         if not next_token:
             # 더 이상 페이지 없음
+            logger.info(f"[fetch_coupang_all_seller_products] nextToken이 없으므로 종료")
             break
 
         # Rate limit 고려
-        time.sleep(0.1)
+        time.sleep(0.2)
 
-    # logger.info(f"[fetch_coupang_all_seller_products] 최종 상품 수={len(all_products)}")
+    logger.info(f"[fetch_coupang_all_seller_products] All pages fetched. total items={len(all_products)}")
 
-    # (C) '최근 상품' 10개만 slice → 여기서는 5개만 예시
-    recent_10 = all_products[:1000]
+    # 필요 시 전부 반환 대신 일부만 slice
+    recent_10 = all_products[:150]
     return True, recent_10
 
 
@@ -214,10 +209,10 @@ def get_coupang_seller_product(account_info, seller_product_id):
             data = resp.json()
 
             # ★★ 여기서 “API로 받아온 JSON”만 이쁘게 로그로 출력 ★★
-            # logger.debug(
-            #     "[get_coupang_seller_product] Response JSON:\n%s",
-            #     json.dumps(data, ensure_ascii=False, indent=2)
-            # )
+            logger.debug(
+                "[get_coupang_seller_product] Response JSON:\n%s",
+                json.dumps(data, ensure_ascii=False, indent=2)
+            )
 
             code = data.get("code")
             if code != "SUCCESS":

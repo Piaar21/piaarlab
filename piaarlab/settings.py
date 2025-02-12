@@ -215,6 +215,11 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': True,
         },
+        'coupang_sales': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
     },
 }
 
