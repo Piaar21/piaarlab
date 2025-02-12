@@ -6,8 +6,8 @@ proxies = {
     "https": proxy,
 }
 
-url = "https://piaarlab.store/"  
-resp = requests.get(url)
+# url = "https://piaarlab.store/"  
+# resp = requests.get(url)
 
 
 # import requests
