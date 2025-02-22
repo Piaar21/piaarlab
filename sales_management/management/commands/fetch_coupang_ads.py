@@ -55,12 +55,14 @@ class Command(BaseCommand):
         COUPANG_PW = config('COUPANG_PW', default=None)
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
-            )
-            context = browser.new_context(accept_downloads=True)
-            page = context.new_page()
+            logger.info("Launching Chromium in headless mode: %s", True)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--headless", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
+                )
+                context = browser.new_context(accept_downloads=True)
+                page = context.new_page()
 
             try:
                 # (A) 윙 로그인
