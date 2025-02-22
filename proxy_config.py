@@ -1,7 +1,10 @@
-import requests
+from decouple import config
 
-proxy = "http://54.180.117.185:13128"
+
+# 환경 변수로부터 프록시 설정 불러오기
+PROXY = config('PROXY', default='None')
 proxies = {
-    "http": proxy,
-    "https": proxy,
+    "http": PROXY,
+    "https": PROXY,
 }
+
