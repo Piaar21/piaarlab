@@ -1,1 +1,2 @@
 google-chrome-stable_current_amd64.deb filter=lfs diff=lfs merge=lfs -text
+google-chrome-stable_current_amd64[[:space:]]2.deb filter=lfs diff=lfs merge=lfs -text
