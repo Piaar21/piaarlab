@@ -69,7 +69,10 @@ class Command(BaseCommand):
         COUPANG_PW = config('COUPANG_PW', default=None)
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-gpu", "--disable-software-rasterizer"]
+            )
             context = browser.new_context(accept_downloads=True)
             page = context.new_page()
 
