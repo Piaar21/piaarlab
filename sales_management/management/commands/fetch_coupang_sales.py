@@ -5,12 +5,13 @@ import logging
 import decimal
 import pandas as pd
 from datetime import date, timedelta, datetime
+import asyncio
 
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from decouple import config
 
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
 from sales_management.models import CoupangDailySales
 
@@ -30,7 +31,7 @@ def convert_keys(obj):
         return obj
 
 class Command(BaseCommand):
-    help = "쿠팡 윙에서 입력받은 날짜 범위로 엑셀 다운로드 & DB 저장 (Playwright 버전)"
+    help = "쿠팡 윙에서 입력받은 날짜 범위로 엑셀 다운로드 & DB 저장 (Playwright Async API 버전)"
 
     def add_arguments(self, parser):
         parser.add_argument('--start', type=str, help="시작일(YYYY-MM-DD)")
@@ -57,40 +58,35 @@ class Command(BaseCommand):
         download_dir = os.path.join(settings.BASE_DIR, "sales_management", "download")
         os.makedirs(download_dir, exist_ok=True)
 
-        # (1) 다운로드
-        self.login_and_download_coupang(download_dir, start_dt, end_dt)
-        # (2) 파싱 & DB 저장 후 파일 삭제
+        # 비동기 함수 실행
+        asyncio.run(self.login_and_download_coupang(download_dir, start_dt, end_dt))
         self.parse_and_store_to_db(download_dir)
         logger.info("[완료] fetch_coupang_sales 명령이 끝났습니다.")
 
-    def login_and_download_coupang(self, download_dir, start_d, end_d):
-        """인자로 받은 start_d, end_d 범위를 Playwright로 다운로드"""
+    async def login_and_download_coupang(self, download_dir, start_d, end_d):
         COUPANG_ID = config('COUPANG_ID', default=None)
         COUPANG_PW = config('COUPANG_PW', default=None)
 
-        with sync_playwright() as p:
-            logger.info("Launching Chromium in headless mode: %s", True)
-            with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=["--headless", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
-                )
-                context = browser.new_context(accept_downloads=True)
-                page = context.new_page()
-
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--headless", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
+            )
+            context = await browser.new_context(accept_downloads=True)
+            page = await context.new_page()
 
             try:
                 # (B) 로그인
-                page.goto("https://wing.coupang.com/")
-                page.wait_for_timeout(500)  # 0.5초 대기
-                page.fill("#username", COUPANG_ID)
-                page.fill("#password", COUPANG_PW)
-                page.click("#kc-login")
-                page.wait_for_timeout(500)
+                await page.goto("https://wing.coupang.com/")
+                await page.wait_for_timeout(500)
+                await page.fill("#username", COUPANG_ID)
+                await page.fill("#password", COUPANG_PW)
+                await page.click("#kc-login")
+                await page.wait_for_timeout(500)
 
                 # (C) 대시보드 이동
-                page.goto("https://wing.coupang.com/seller/notification/metrics/dashboard")
-                page.wait_for_timeout(500)
+                await page.goto("https://wing.coupang.com/seller/notification/metrics/dashboard")
+                await page.wait_for_timeout(500)
 
                 current = start_d
                 loop_index = 0
@@ -100,30 +96,26 @@ class Command(BaseCommand):
                     logger.info(f"[다운로드] 처리 날짜: {date_str}")
 
                     if loop_index == 0:
-                        # 첫 날짜: 시작일 → 종료일 순서
-                        self.set_date_field(page, "#dateStart", date_str)
-                        self.set_date_field(page, "#dateEnd", date_str)
+                        await self.set_date_field(page, "#dateStart", date_str)
+                        await self.set_date_field(page, "#dateEnd", date_str)
                     else:
-                        # 그 이후: 종료일 → 시작일 순서
-                        self.set_date_field(page, "#dateEnd", date_str)
-                        self.set_date_field(page, "#dateStart", date_str)
+                        await self.set_date_field(page, "#dateEnd", date_str)
+                        await self.set_date_field(page, "#dateStart", date_str)
 
-                    page.wait_for_timeout(1000)  # 1초 대기
+                    await page.wait_for_timeout(1000)
 
-                    # (D) 다운로드 버튼 선택 및 스크롤
-                    download_button = page.wait_for_selector("#download-product-info", timeout=10000)
-                    page.evaluate("element => element.scrollIntoView(true)", download_button)
-                    page.wait_for_timeout(500)
+                    download_button = await page.wait_for_selector("#download-product-info", timeout=10000)
+                    await page.evaluate("element => element.scrollIntoView(true)", download_button)
+                    await page.wait_for_timeout(500)
 
-                    # (E) 다운로드 버튼 클릭 및 다운로드 대기
-                    with page.expect_download(timeout=8000) as download_info:
-                        page.evaluate("element => element.click()", download_button)
+                    async with page.expect_download(timeout=8000) as download_info:
+                        await page.evaluate("element => element.click()", download_button)
                         logger.info(f"{date_str} 다운로드 버튼 클릭 시도")
-                    download = download_info.value
+                    download = await download_info.value
                     target_file = os.path.join(download_dir, download.suggested_filename)
-                    download.save_as(target_file)  # 파일을 원하는 폴더로 저장
+                    await download.save_as(target_file)
                     logger.info(f"{date_str} 파일 저장: {target_file}")
-                    page.wait_for_timeout(5000)  # 다운로드 완료 대기
+                    await page.wait_for_timeout(5000)
 
                     current += timedelta(days=1)
                     loop_index += 1
@@ -131,33 +123,37 @@ class Command(BaseCommand):
             except Exception as e:
                 logger.exception("쿠팡 다운로드 중 오류:")
             finally:
-                context.close()
-                browser.close()
+                await context.close()
+                await browser.close()
 
-    def set_date_field(self, page, selector, date_str):
-        """
-        날짜 필드에 값을 입력한 후 포커스를 강제로 제거하여 달력 UI가 제대로 반영되도록 합니다.
-        """
-        # 날짜 입력
-        page.fill(selector, date_str)
-        
-        # 1. 현재 활성 요소에 blur() 호출
-        page.evaluate("document.activeElement.blur()")
-        page.wait_for_timeout(200)
-        
-        # 2. 키보드 Tab 키를 눌러 포커스를 이동시킵니다.
-        page.keyboard.press("Tab")
-        page.wait_for_timeout(200)
-        
-        # 3. 페이지의 body 상단 좌측 (10,10) 위치를 클릭하여 확실히 포커스 제거 시도
+    async def set_date_field(self, page, selector, date_str):
+        await page.fill(selector, date_str)
+        await page.evaluate("document.activeElement.blur()")
+        await page.wait_for_timeout(200)
+        await page.keyboard.press("Tab")
+        await page.wait_for_timeout(200)
         try:
-            page.click("body", position={"x": 10, "y": 10})
+            await page.click("body", position={"x": 10, "y": 10})
         except Exception as e:
             logger.warning(f"body 클릭 실패: {e}")
-        
-        page.wait_for_timeout(500)
-        actual_val = page.evaluate(f"document.querySelector('{selector}').value")
+        await page.wait_for_timeout(500)
+        actual_val = await page.evaluate(f"document.querySelector('{selector}').value")
         logger.info(f"[set_date_field] {selector} → {date_str}, 실제 입력값: {actual_val}")
+
+    def parse_and_store_to_db(self, download_dir):
+        # 나머지 코드 (동기적으로 실행)
+        file_list = os.listdir(download_dir)
+        for filename in file_list:
+            if filename.lower().endswith((".xls", ".xlsx")):
+                file_path = os.path.join(download_dir, filename)
+                logger.info(f"[엑셀 파싱] {filename}")
+                df = pd.read_excel(file_path, dtype={"옵션ID": str})
+                logger.info(f"[엑셀 파싱] 컬럼: {df.columns.tolist()}")
+                # 파일명에서 날짜 추출 및 DB 저장 로직...
+                # (이하 생략)
+                os.remove(file_path)
+                logger.info(f"[완료] DB 저장 후 파일 삭제: {filename}")
+
 
     def parse_and_store_to_db(self, download_dir):
         file_list = os.listdir(download_dir)
