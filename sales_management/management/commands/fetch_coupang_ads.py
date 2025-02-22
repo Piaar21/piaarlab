@@ -57,7 +57,7 @@ class Command(BaseCommand):
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
-                args=["--disable-gpu", "--disable-software-rasterizer"]
+                args=["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
             )
             context = browser.new_context(accept_downloads=True)
             page = context.new_page()
