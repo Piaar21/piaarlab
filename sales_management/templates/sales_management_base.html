@@ -1,33 +1,33 @@
-{% load static %}
+<!-- templates/return_process/base.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>PIAARLAB</title>
+  <meta charset="UTF-8" />
+  <title>PIAARLAB 반품 프로세스</title>
 
-  <!-- Tailwind CSS (프로젝트에 필요하다면 사용) -->
-  <link rel="stylesheet" href="{% static 'css/style.css' %}">
-
-  <!-- Bootstrap CSS -->
+  <!-- (A) Bootstrap 5.3.0 CSS (integrity 제거) -->
   <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
     rel="stylesheet"
   />
 
-  <!-- Font Awesome -->
+  <!-- (B) Font Awesome (아이콘) -->
   <link
     rel="stylesheet"
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
   />
+  <!-- (선택) Bootstrap Icons -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
+  />
 
   <style>
-    /****************************************************************
-     * (1) 하단 네비게이션 바 스타일
-     ****************************************************************/
     .navbar-tabs {
       position: fixed;
       bottom: 0;
       width: 100%;
+      z-index: 40;
       background-color: #f8f9fa;
       border-top: 1px solid #dee2e6;
     }
@@ -39,28 +39,23 @@
       padding: 10px;
     }
     body {
-      margin: 0;
+      margin-bottom: 60px;
       font-family: sans-serif;
       background-color: #f7fafc;
-      /* 만약 하단 고정 네비게이션 높이만큼 여백을 두시려면 아래 주석 해제
-         margin-bottom: 60px; */
     }
 
-    /****************************************************************
-     * (2) 좌측 접이식 사이드바 스타일
-     ****************************************************************/
     .sidebar-container {
       position: relative;
     }
 
-    /* 사이드바 자체 */
+    /* 사이드바 */
     .sidebar-custom {
       position: fixed;
       top: 0;
       left: 0;
-      width: 16rem; /* Tailwind의 w-64 정도 */
+      width: 16rem; /* tailwind w-64 정도 */
       height: 100vh;
-      background-color: #2d3748; /* 어두운 그레이 (bg-gray-800 유사) */
+      background-color: #2d3748; /* 짙은 회색(bg-gray-800 유사) */
       transform: translateX(0);
       transition: transform 0.3s ease-in-out;
       z-index: 1040;
@@ -68,25 +63,23 @@
       padding: 1rem;
       color: #fff;
     }
-    /* 사이드바가 닫힐 때 */
     .sidebar-custom.closed {
       transform: translateX(-100%);
     }
 
-    /* 사이드바 내부 컨테이너 */
     .sidebar-custom .sidebar-content {
       display: flex;
       flex-direction: column;
       height: 100%;
     }
 
-    /* 닫기 버튼 (X 아이콘) */
+    /* 닫기 버튼 */
     .sidebar-close-btn {
       align-self: flex-end;
       background: transparent;
       border: none;
       cursor: pointer;
-      color: #a0aec0;
+      color: #a0aec0; /* 밝은 회색 */
       margin-bottom: 1rem;
       font-size: 1rem;
     }
@@ -94,17 +87,16 @@
       color: #fff;
     }
 
-    /* 상위 메뉴 UL */
+    /* 상위 메뉴 리스트 */
     .sidebar-nav-list {
       list-style: none;
       padding-left: 0;
-      margin: 0;
     }
     .sidebar-nav-list > li {
       margin-bottom: 0.5rem;
     }
 
-    /* 상위 메뉴 버튼 */
+    /* 상위 메뉴 버튼 스타일 */
     .sidebar-nav-item {
       width: 100%;
       display: flex;
@@ -117,18 +109,19 @@
       cursor: pointer;
       font-size: 1rem;
       text-align: left;
-      border-radius: 0.375rem; /* rounded-lg 정도 */
+      border-radius: 0.375rem; /* 예: rounded-lg */
     }
     .sidebar-nav-item:hover {
-      background-color: #4a5568; /* hover:bg-gray-700 유사 */
+      background-color: #4a5568; /* hover:bg-gray-700 */
     }
 
-    /* 상위 메뉴 안의 아이콘+텍스트 묶음 */
+    /* 아이콘 + 라벨 영역 */
     .sidebar-nav-item-group {
       display: flex;
       align-items: center;
     }
     .sidebar-nav-item-group .icon {
+      display: inline-flex;
       margin-right: 0.75rem;
       font-weight: bold;
     }
@@ -143,16 +136,15 @@
       margin-left: 2.5rem;
       padding-left: 0;
     }
-    /* 펼쳐졌을 때 */
     .sidebar-sub-list.open {
-      max-height: 20rem; /* 서브메뉴 개수에 맞춰 넉넉히 */
+      max-height: 20rem; /* 충분히 큰 값 (서브링크 개수에 맞게 조절) */
       opacity: 1;
     }
 
     .sidebar-sub-list li a {
       display: block;
       padding: 0.5rem 0;
-      color: #a0aec0;
+      color: #a0aec0; /* 조금 밝은 회색 */
       font-size: 0.875rem;
       text-decoration: none;
       border-radius: 0.375rem;
@@ -162,7 +154,7 @@
       color: #fff;
     }
 
-    /* 체브론 아이콘(화살표) 회전 */
+    /* 체브론 아이콘 회전 */
     .chevron {
       display: inline-block;
       transition: transform 0.3s ease;
@@ -171,7 +163,7 @@
       transform: rotate(180deg);
     }
 
-    /* 사이드바 열기 버튼 (메뉴 버튼) */
+    /* 사이드바 열기 버튼 */
     .sidebar-open-btn {
       position: fixed;
       top: 1rem;
@@ -190,18 +182,21 @@
       pointer-events: none;
     }
   </style>
+
+  <!-- (선택) 차트 라이브러리 사용 시 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 </head>
 
 <body>
-  <div class="sidebar-container ">
-    <!-- (A) 사이드바 영역 -->
-    <!-- 기본 상태를 펼쳐두고 싶다면 .closed 제거, 닫혀있게 하려면 .closed 추가 -->
-    <aside class="sidebar-custom " id="sidebar">
+  <div class="sidebar-container">
+    <!-- 접이식 사이드바 -->
+    <aside class="sidebar-custom" id="sidebar">
       <div class="sidebar-content">
         <!-- 닫기 버튼 -->
         <button class="sidebar-close-btn" id="closeSidebarBtn">X</button>
 
-        <!-- 상위 메뉴: 예시 4가지 (반품프로세스, 배송지연관리, 통합CS관리, 로그인/로그아웃) -->
+        <!-- 상위 메뉴 목록: 4개의 메인 메뉴 -->
         <ul class="sidebar-nav-list">
           <!-- (1) 반품프로세스 -->
           <li>
@@ -226,7 +221,7 @@
 
           <!-- (2) 배송지연관리 -->
           <li>
-            <button class="sidebar-nav-item" data-index="1">
+            <button class="sidebar-nav-item open" data-index="1">
               <div class="sidebar-nav-item-group">
                 <span class="icon">⏰</span>
                 <span class="label">배송지연관리</span>
@@ -255,7 +250,7 @@
               <span class="chevron">⬇</span>
             </button>
             <ul class="sidebar-sub-list open" data-sub="2">
-              <li><a href="{% url 'cs_management:inquiry_product_list' %}">상품문의</a></li>
+              <li><a href="{% url 'cs_management:inquiry_product_list' %}">고객문의</a></li>
               <li><a href="{% url 'cs_management:inquiry_center_list' %}">고객센터문의</a></li>
             </ul>
           </li>
@@ -274,8 +269,8 @@
               <li><a href="{% url 'sales_report' %}">네이버</a></li>
             </ul>
           </li>
-
-          <!-- (4) 로그인/로그아웃 -->
+          
+          <!-- (4) 로그인 / 로그아웃 -->
           <li>
             <button class="sidebar-nav-item" data-index="3">
               <div class="sidebar-nav-item-group">
@@ -294,6 +289,7 @@
                   style="margin: 0; padding: 0;"
                 >
                   {% csrf_token %}
+                  <!-- 로그아웃 처리 후 이동할 next 파라미터 필요 시 -->
                   <input type="hidden" name="next" value="{% url 'login' %}" />
                   <button
                     type="submit"
@@ -319,79 +315,84 @@
       </div>
     </aside>
 
-    <!-- 사이드바 열기 버튼 (처음 닫힌 상태면 표시) -->
+    <!-- 사이드바 열기 버튼 -->
     <button class="sidebar-open-btn hidden" id="openSidebarBtn">메뉴</button>
   </div>
 
-  <!-- (B) 여기서 block content - 실제 페이지별 콘텐츠가 들어가는 곳 -->
+  <!-- Django 템플릿 블록 -->
   {% block content %}
   {% endblock %}
 
-  <!-- (C) 하단 네비게이션 바 -->
+  <!-- 기존 하단 탭 네비게이션 -->
   <nav class="navbar-tabs">
     <ul class="nav nav-tabs justify-content-center">
       <li class="nav-item">
-        <a class="nav-link" href="{% url 'cs_management:inquiry_product_list' %}">상품문의</a>
+        <a class="nav-link" href="{% url 'group_management' %}">그룹관리</a>
       </li>
       <li class="nav-item">
-        <a class="nav-link" href="{% url 'cs_management:inquiry_center_list' %}">고객센터문의</a>
+        <a class="nav-link" href="{% url 'product_list' %}">상품리스트</a>
       </li>
+      <!-- <li class="nav-item">
+        <a class="nav-link" href="{% url 'dashboard' %}">대시보드</a>
+      </li> -->
+      <li class="nav-item">
+        <a class="nav-link" href="{% url 'sales_report' %}">매출리포트</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url 'ad_report' %}">광고리포트</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url 'profit_report' %}">순이익리포트</a>
+      </li>
+      <!-- 필요 시 추가 메뉴 -->
     </ul>
   </nav>
 
-  <!-- Bootstrap JS -->
+  <!-- (C) Bootstrap 5.3.0 JS (Bundle: includes Popper) -->  
   <script
-    src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.10.2/dist/umd/popper.min.js"
-    crossorigin="anonymous"
-  ></script>
-  <script
-    src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"
-    crossorigin="anonymous"
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
   ></script>
 
-  <!-- (D) 접이식 사이드바 동작 스크립트 -->
+  <!-- (D) 사이드바 동작 JS -->
   <script>
     const openSidebarBtn = document.getElementById("openSidebarBtn");
     const closeSidebarBtn = document.getElementById("closeSidebarBtn");
     const sidebar = document.getElementById("sidebar");
     const navItems = document.querySelectorAll(".sidebar-nav-item");
 
-    // 현재 열려있는 서브메뉴 인덱스 목록
+    // 현재 열려있는 서브메뉴 인덱스 저장
     let openItems = [];
 
-    // (1) 사이드바 열기
+    // 사이드바 열기
     openSidebarBtn.addEventListener("click", () => {
       sidebar.classList.remove("closed");
       openSidebarBtn.classList.add("hidden");
     });
 
-    // (2) 사이드바 닫기
+    // 사이드바 닫기
     closeSidebarBtn.addEventListener("click", () => {
       sidebar.classList.add("closed");
       openSidebarBtn.classList.remove("hidden");
     });
 
-    // (3) 상위 메뉴 클릭 시 하위 서브메뉴 열기/닫기
+    // 상위 메뉴 클릭 시 서브메뉴 열기/닫기
     navItems.forEach((item) => {
       item.addEventListener("click", () => {
         const index = item.dataset.index;
-
+        // 이미 열려있으면 닫고, 닫혀있으면 열기
         if (openItems.includes(index)) {
-          // 이미 열려있으면 닫는다
           openItems = openItems.filter((i) => i !== index);
         } else {
           openItems.push(index);
         }
-
-        // 해당 인덱스의 서브 UL
+        // 해당 인덱스의 서브메뉴 찾기
         const subList = document.querySelector(
           `.sidebar-sub-list[data-sub="${index}"]`
         );
         if (subList) {
           subList.classList.toggle("open");
         }
-
-        // 체브론(화살표) 회전
+        // 체브론 회전
         const chevron = item.querySelector(".chevron");
         chevron.classList.toggle("rotated");
       });

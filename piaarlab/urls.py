@@ -27,7 +27,7 @@ urlpatterns = [
     path('delayed/', include('delayed_management.urls')),  # /delayed/ 경로에 delayed_management.urls 포함
     path('cs/', include('cs_management.urls')),    # /cs/ 경로에 cs_management.urls 포함
     path('webhook/', include('webhook.urls')),  # 새로 추가
-    path('coupang/', include('coupang_sales.urls')),  # /coupang/ 경로에 coupang_sales.urls 포함
+    path('sales/', include('sales_management.urls')),  
 
 ]
 

@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 from pathlib import Path
 from decouple import config
+from dotenv import load_dotenv
 
 # ALLOWED_HOSTS = [
 #     'piaarlab.store', 
@@ -34,6 +35,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(os.path.join(BASE_DIR, ".env"))  # .env 파일 경로 지정
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -71,12 +73,15 @@ INSTALLED_APPS = [
     'cs_management.apps.CsManagementConfig',  # 또는 'cs_management'
     'webhook',
     'django_extensions',
-    'coupang_sales',
+    'sales_management',
+    'django.contrib.humanize',
+    
 
 ]
 
 CRONJOBS = [
-    ('0 8 * * *', 'django.core.management.call_command', ['update_returns_command'])
+    ('0 14 * * *', 'django.core.management.call_command', ['update_returns_command']),
+    ('0 6 * * *', 'sales_management.cron.fetch_coupang_sales_daily'),
 ]
 
 
@@ -126,6 +131,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 20,  # 20초 등으로 늘려보기
+        }
     }
 }
 
@@ -215,10 +223,10 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': True,
         },
-        'coupang_sales': {
+        'sales_management': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
-            'propagate': True,
+            'propagate': False,  # 이 부분 추가
         },
     },
 }
@@ -241,3 +249,6 @@ SECURE_HSTS_PRELOAD = True
 # 2-3) 쿠키 보안 설정
 SESSION_COOKIE_SECURE = True      # HTTPS를 통해서만 쿠키 전송
 CSRF_COOKIE_SECURE = True         # HTTPS를 통해서만 CSRF 쿠키 전송
+
+# settings.py
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 20000  # 필요에 따라 충분히 큰 수
