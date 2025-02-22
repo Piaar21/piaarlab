@@ -1,0 +1,390 @@
+{% extends 'sales_management_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+
+  <h2 class="mb-4 text-primary">쿠팡 상품 리스트</h2>
+
+  <!-- (A) 상단 영역: "쿠팡 상품데이터 업데이트" + "데이터 전체 삭제" -->
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <!-- 1) 업데이트 버튼 (POST) -->
+    <form action="{% url 'update_coupang_products' %}" method="POST">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-primary">쿠팡 상품데이터 업데이트</button>
+    </form>
+
+    <!-- 2) 전체 삭제 버튼 (POST) -->
+    <form action="{% url 'delete_all_coupang_data' %}" method="POST"
+          onsubmit="return confirm('정말 모든 데이터를 삭제하시겠습니까?');">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-danger">데이터 전체 삭제</button>
+    </form>
+  </div>
+
+  <!-- (B) 상단 영역: 헤더 + 검색창 + 버튼들 -->
+  <div class="card mb-4">
+    <div class="card-body py-2">
+      <!-- 1) 헤더: "피아르 첫째 전체 상품 N개" -->
+      <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+        <div class="fs-5 fw-bold">
+          피아르 첫째
+          <span class="text-muted fs-6 ms-2">전체 상품 {{ total_count }}개</span>
+          <!-- total_count는 뷰에서 넘겨주는 총 상품 개수 -->
+        </div>
+
+      </div>
+
+      <!-- 2) 버튼들: "숨긴 상품 보기", "관심 상품 보기", "프로모션 상품 보기", "숨기기", ... -->
+      <div class="d-flex align-items-center flex-wrap gap-2">
+        <!-- “전체” 드롭다운 + 검색창 -->
+        <form method="get" class="d-flex align-items-center gap-2" style="max-width: 500px;">
+          <select name="search_filter" class="form-select form-select-sm" style="width: 80px;">
+            <option value="">전체</option>
+            <!-- 필요 시 추가 -->
+          </select>
+          <input type="text"
+                 name="search_query"
+                 class="form-control form-control-sm"
+                 placeholder="상품ID, 옵션ID, 상품명, 옵션명을 검색해요."
+                 value="{{ search_query|default_if_none:'' }}">
+          <button type="submit" class="btn btn-sm btn-secondary">검색</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  
+    <!-- (A) 실제 상품 테이블 -->
+    {% if products and products|length > 0 %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle w-100">
+            <thead>
+              <tr>
+                <th></th>
+                <th>상품ID</th>
+                <th>SKU ID</th>
+                <th>옵션코드</th>
+                <th>구분</th>
+                <th>상품명</th>
+                <th>정가</th>
+                <th>판매가(할인가)</th>
+                <th>개당이익금</th>
+                <th>마켓 수수료</th>
+                <th>입출고요금</th>
+                <th>원가</th>
+                <th>배송비</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for spid, data_dict in grouped_data.items %}
+              <!-- 주의: 반드시 "with product_obj=data_dict.product" 형태로 작성 -->
+              {% with product_obj=data_dict.product %}
+              
+              <!-- 상위행 (상품) -->
+              <tr class="product-row">
+                <td>
+                  <button class="btn btn-sm btn-outline-primary toggle-btn" data-spid="{{ spid }}">+</button>
+                </td>
+                <td>{{ spid }}</td>
+                
+                <!-- SKU ID (상품 레벨, 첫 아이템 기준) -->
+                <td>
+                  {% with fi=product_obj.items.first %}
+                    {% if fi.marketplace_vendor_item_id %}
+                      {{ fi.marketplace_vendor_item_id }}
+                    {% elif fi.rocket_vendor_item_id %}
+                      {{ fi.rocket_vendor_item_id }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  {% endwith %}
+                </td>
+                
+                <!-- custom ID (첫 아이템 기준) -->
+                <td>
+                  {% with fi=product_obj.items.first %}
+                    {% if fi %}
+                      {{ fi.rocket_external_vendor_sku|default:fi.marketplace_external_vendor_sku|default:"-" }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  {% endwith %}
+                </td>
+                
+                <!-- 구분 (상품 레벨) -->
+                <td>{{ product_obj.delivery_label }}</td>
+                
+                <!-- 상품명 -->
+                <td>
+                  <!-- 상품명 표시 -->
+                  {{ product_obj.sellerProductName|default:"-" }}
+                
+                  <!-- Coupang 링크 아이콘 (있을 때만) -->
+                  {% if product_obj.productId %}
+                    <a href="https://www.coupang.com/vp/products/{{ product_obj.productId }}"
+                       target="_blank"
+                       class="ms-2 text-decoration-none"
+                       title="Coupang 링크 열기">
+                      <i class="bi bi-link-45deg"></i>
+                    </a>
+                  {% endif %}
+                </td>     
+                <!-- 정가 -->
+                <td>{{ product_obj.top_original_price|floatformat:0 }} 원</td>
+                
+                <!-- 판매가(할인가) -->
+                <td>{{ product_obj.top_sale_price|floatformat:0 }} 원</td>
+                
+                <!-- 개당이익금 -->
+                <td>{{ product_obj.top_profit|floatformat:0 }} 원</td>
+                
+                <!-- 마켓 수수료 -->
+                <td>{{ product_obj.top_fee|floatformat:0 }} 원</td>
+                
+                <!-- 입출고요금 -->
+                <td>
+                  {% if product_obj.delivery_label == "로켓그로스" %}
+                    1,072 원
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                
+                <!-- 원가 -->
+                <td>-</td>
+                
+                <!-- 배송비 -->
+                <td>{{ product_obj.deliveryCharge|default:"0" }} 원</td>
+                
+                <!-- 상태 (첫 아이템 기준) -->
+                <td>
+                  {% if product_obj.items.count > 0 %}
+                    {% with fi=product_obj.items.first %}
+                      {% if fi.rocket_maximum_buy_count|default:0 > 0 or fi.marketplace_maximum_buy_count|default:0 > 0 %}
+                        <span class="text-success">판매중</span>
+                      {% else %}
+                        <span class="text-danger">품절</span>
+                      {% endif %}
+                    {% endwith %}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+            </tr>
+            <tr class="option-subheader" data-parent-id="{{ spid }}" style="display:none;">
+              <th></th>
+              <th>옵션ID</th>
+              <th>SKU ID</th>
+              <th>옵션코드</th>
+              <th>구분</th>
+              <th>옵션명</th>
+              <th>정가</th>
+              <th>판매가(할인가)</th>
+              <th>개당이익금</th>
+              <th>마켓 수수료</th>
+              <th>입출고요금</th>
+              <th>원가</th>
+              <th>배송비</th>
+              <th>상태</th>
+            </tr>
+  
+            <!-- (1) "판매자배송(마켓)" 옵션들 먼저 -->
+            {% for item_obj in product_obj.items.all %}
+              {% if item_obj.marketplace_vendor_item_id %}
+              <tr class="option-row{% if forloop.last %} last-option-row{% endif %}"
+              data-parent-id="{{ spid }}"
+              style="display:none;">
+                <td><i class="bi bi-star-fill text-warning"></i></td>
+                <td>{{ spid }}</td>
+                
+                <!-- 마켓 SKU -->
+                <td>{{ item_obj.marketplace_vendor_item_id }}</td>
+                <td>{{ item_obj.marketplace_external_vendor_sku|default:"-" }}</td>
+                <td>판매자배송</td>
+                
+                <!-- 옵션명 -->
+                <td>{{ item_obj.itemName|default:"-" }}</td>
+                
+                <!-- 정가, 판매가, 개당이익금, 수수료 -->
+                <td>{{ item_obj.marketplace_original_price|floatformat:0 }} 원</td>
+                <td>{{ item_obj.marketplace_sale_price|floatformat:0 }} 원</td>
+                <td>{{ item_obj.calc_profit|floatformat:0 }} 원</td>
+                <td>{{ item_obj.calc_fee|floatformat:0 }} 원</td>
+  
+                <!-- 입출고요금: '-' -->
+                <td>-</td>
+                <td>-</td>
+                <td>{{ product_obj.deliveryCharge|default:"0" }} 원</td>
+  
+                <!-- 상태 -->
+                <td>
+                  {% if item_obj.marketplace_maximum_buy_count|default:0 > 0 %}
+                    <span class="text-success">판매중</span>
+                  {% else %}
+                    <span class="text-danger">품절</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endif %}
+            {% endfor %}
+  
+            <!-- (2) 그 다음, "로켓그로스(로켓)" 옵션들 -->
+            {% for item_obj in product_obj.items.all %}
+              {% if item_obj.rocket_vendor_item_id %}
+              <tr class="option-row" data-parent-id="{{ spid }}" style="display:none;">
+                <td><i class="bi bi-star-fill text-warning"></i></td>
+                <td>{{ spid }}</td>
+                
+                <!-- 로켓 SKU -->
+                <td>{{ item_obj.rocket_vendor_item_id }}</td>
+                <td>{{ item_obj.rocket_external_vendor_sku|default:"-" }}</td>
+                <td>로켓그로스</td>
+                
+                <!-- 옵션명 -->
+                <td>{{ item_obj.itemName|default:"-" }}</td>
+                
+                <!-- 정가, 판매가, 개당이익금, 수수료 -->
+                <td>{{ item_obj.rocket_original_price|floatformat:0 }} 원</td>
+                <td>{{ item_obj.rocket_sale_price|floatformat:0 }} 원</td>
+                <td>{{ item_obj.calc_profit|floatformat:0 }} 원</td>
+                <td>{{ item_obj.calc_fee|floatformat:0 }} 원</td>
+  
+                <!-- 입출고요금: 1,072원 -->
+                <td>1,072 원</td>
+                <td>-</td>
+                <td>{{ product_obj.deliveryCharge|default:"0" }} 원</td>
+  
+                <!-- 상태 -->
+                <td>
+                  {% if item_obj.rocket_maximum_buy_count|default:0 > 0 %}
+                    <span class="text-success">판매중</span>
+                  {% else %}
+                    <span class="text-danger">품절</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endif %}
+            {% endfor %}
+            
+            {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center text-muted mt-5">
+    데이터가 없습니다.
+  </div>
+  {% endif %}
+  
+  
+  
+  
+
+</div>
+
+<!-- 스타일 -->
+<style>
+  .container-fluid {
+    /* max-width: 1400px; */ /* → 이 부분을 활성화하면 최대너비 1400px으로 제한됩니다. */
+    margin-left: 16rem;       /* 사이드바 폭만큼 왼쪽 여백 */
+    width: calc(100% - 16rem); /* 사이드바 폭만큼 뺀 나머지 너비 */
+    
+  }
+
+  .card {
+    border: none;
+    border-radius: 15px;
+    background-color: #ffffff;
+    color: #2d3436;
+    padding: 20px;
+  }
+
+  .table-stretch {
+    width: 100%;
+    table-layout: auto; /* 기본값이지만, 명시 가능 */
+  }
+
+  .table thead th {
+    background-color: #6c5ce7;
+    color: white;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    white-space: nowrap;
+  }
+
+  .table tbody tr:nth-child(even) {
+    background-color: rgba(108, 92, 231, 0.1);
+  }
+  .table tbody tr:hover {
+    background-color: rgba(108, 92, 231, 0.2);
+  }
+
+  /* 테이블 기본 셀 스타일 */
+  .table td, .table th {
+    padding: 12px;
+    vertical-align: middle;
+    border-top: 1px solid #dfe6e9;
+    border-bottom: 1px solid #dfe6e9;
+    white-space: nowrap;      /* 가로 넘침 방지 위해 줄바꿈 허용 시 이걸 제거/주석 가능 */
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  /* 테이블의 세로 스크롤 & 가로 스크롤 모두 허용 */
+  .table-responsive {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: auto; /* ← 가로 스크롤 허용 */
+  }
+
+  .product-row {
+    background-color: #fff; /* 상품행은 흰색 */
+    border-bottom: 1px solid #ccc; /* 상품행과 옵션 구분선 */
+  }
+
+  .option-subheader th {
+    background-color: #f0f4ff;
+    border-top: 2px solid #999; 
+  }
+
+  /* 기본 옵션행 스타일 */
+  .option-row td {
+    border-top: 1px solid #eee;
+  }
+
+  /* 마지막 옵션행일 때 바닥에 굵은 선 */
+  .last-option-row td {
+    border-bottom: 2px solid #999;
+  }
+</style>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const toggleButtons = document.querySelectorAll('.toggle-btn');
+  toggleButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      const spid = btn.dataset.spid;
+      // 상품ID(spid)에 해당하는 "option-subheader" + "option-row" 찾기
+      const subRows = document.querySelectorAll(`
+        tr.option-subheader[data-parent-id="${spid}"],
+        tr.option-row[data-parent-id="${spid}"]
+      `);
+      subRows.forEach(row => {
+        row.style.display = (row.style.display === 'none') ? '' : 'none';
+      });
+      // 버튼 텍스트 +/-
+      btn.textContent = (btn.textContent === '+') ? '-' : '+';
+    });
+  });
+});
+
+  </script>
+
+{% endblock %}
