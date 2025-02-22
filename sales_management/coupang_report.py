@@ -53,7 +53,7 @@ def main():
     # Chrome 옵션 설정
     options = webdriver.ChromeOptions()
     # headless 모드 사용 시 아래 주석을 해제하세요.
-    # options.add_argument("headless")
+    options.add_argument("headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     prefs = {
