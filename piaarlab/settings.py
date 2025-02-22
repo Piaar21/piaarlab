@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'sales_management',
     'django.contrib.humanize',
+    'coupang_sales',  # 추가: coupang_sales 앱
     
 
 ]
