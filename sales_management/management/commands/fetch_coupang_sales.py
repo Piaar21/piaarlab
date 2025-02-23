@@ -108,13 +108,19 @@ class Command(BaseCommand):
                     mail_page = await context.new_page()
                     await mail_page.goto("https://mail.naver.com/v2/folders/-1")
                     await mail_page.wait_for_timeout(1000)
-
-                    # 네이버 메일 로그인: 아이디, 비밀번호 입력
-                    await mail_page.fill("#input_item_id", NAVER_MAIL_ID)
-                    await mail_page.fill("#input_item_pw", NAVER_MAIL_PW)
+                    
+                    # 중간 스크린샷 찍기: 네이버 메일 페이지 로드 후 로그인 전
+                    screenshot_path = os.path.join(self.download_dir, "naver_mail_before_login.png")
+                    await mail_page.screenshot(path=screenshot_path)
+                    logger.info(f"Naver Mail page screenshot before login saved as: {screenshot_path}")
+                    
+                    # 네이버 메일 로그인: 아이디, 비밀번호 입력  
+                    # (입력 필드가 실제 <input> 요소 내부에 있으므로, "input#input_item_id"로 수정)
+                    await mail_page.fill("input#input_item_id", NAVER_MAIL_ID)
+                    await mail_page.fill("input#input_item_pw", NAVER_MAIL_PW)
                     logger.info("네이버 메일 로그인 정보 입력 완료.")
 
-                    # 로그인 버튼 클릭 (실제 셀렉터에 맞게 수정 필요)
+                    # 로그인 버튼 클릭 (셀렉터는 실제 페이지에 맞게 수정 필요)
                     await mail_page.click("button[type='submit']")
                     logger.info("네이버 메일 로그인 버튼 클릭 완료.")
                     await mail_page.wait_for_load_state("networkidle")
@@ -126,6 +132,11 @@ class Command(BaseCommand):
                     logger.info("2FA 인증번호 이메일 선택 완료.")
                     await mail_page.wait_for_timeout(3000)
 
+                    # 스크린샷 찍기: 이메일 선택 후 화면 상태
+                    screenshot_path = os.path.join(self.download_dir, "naver_mail_after_email_click.png")
+                    await mail_page.screenshot(path=screenshot_path)
+                    logger.info(f"Naver Mail page screenshot after clicking email saved as: {screenshot_path}")
+
                     # 확인 버튼 클릭 전, 이메일 페이지의 HTML 로그 출력
                     email_html = await mail_page.content()
                     logger.info("===== Naver Mail 2FA Email Page HTML Start =====")
@@ -133,7 +144,6 @@ class Command(BaseCommand):
                     logger.info("===== Naver Mail 2FA Email Page HTML End =====")
                     
                     # 여기서 이후 확인 버튼 클릭 전까지 멈춤.
-                    # (확인 버튼 셀렉터가 미확정되어 있어, HTML 로그를 통해 추후 업데이트 예정)
                     
                 except Exception as e:
                     logger.info("2FA 화면이 감지되지 않았거나 오류 발생: " + str(e))
