@@ -66,7 +66,7 @@ class Command(BaseCommand):
     async def login_and_download_coupang(self, download_dir, start_d, end_d):
         COUPANG_ID = config('COUPANG_ID', default=None)
         COUPANG_PW = config('COUPANG_PW', default=None)
-
+        logger.info(f"COUPANG_ID: {COUPANG_ID}, COUPANG_PW: {COUPANG_PW}")
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
