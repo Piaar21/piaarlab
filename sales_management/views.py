@@ -539,11 +539,11 @@ def sales_report_view(request):
         except ValueError:
             # 날짜 파싱 실패 시, 기본 7일
             start_date = date.today() - timedelta(days=7)
-            end_date   = date.today()
+            end_date   = date.today() - timedelta(days=1)
     else:
         # 파라미터 없으면 기본 7일
         start_date = date.today() - timedelta(days=7)
-        end_date   = date.today()
+        end_date   = date.today() - timedelta(days=1)
 
     # 2) 전체 날짜 리스트 (오름차순)
     day_count = (end_date - start_date).days + 1
@@ -825,15 +825,15 @@ def ad_report_view(request):
     start_str = request.GET.get('start_date', '')
     end_str   = request.GET.get('end_date', '')
     if not start_str or not end_str:
-        start_d = date.today() - timedelta(days=7)
-        end_d = date.today()
+        start_d = date.today() - timedelta(days=8)
+        end_d = date.today() - timedelta(days=1)
     else:
         try:
             start_d = datetime.strptime(start_str, '%Y-%m-%d').date()
             end_d   = datetime.strptime(end_str, '%Y-%m-%d').date()
         except ValueError:
-            start_d = date.today() - timedelta(days=7)
-            end_d   = date.today()
+            start_d = date.today() - timedelta(days=8)
+            end_d   = date.today() - timedelta(days=1)
 
     # --------------------------
     # 2) 배송라벨 결정 로직
@@ -1597,15 +1597,15 @@ def profit_report_view(request):
     start_str = request.GET.get('start_date', '')
     end_str = request.GET.get('end_date', '')
     if not start_str or not end_str:
-        start_d = date.today() - timedelta(days=7)
-        end_d = date.today()
+        start_d = date.today() - timedelta(days=8)
+        end_d = date.today() - timedelta(days=1)
     else:
         try:
             start_d = datetime.strptime(start_str, "%Y-%m-%d").date()
             end_d = datetime.strptime(end_str, "%Y-%m-%d").date()
         except ValueError:
-            start_d = date.today() - timedelta(days=7)
-            end_d = date.today()
+            start_d = date.today() - timedelta(days=8)
+            end_d = date.today() - timedelta(days=1)
 
     # ---------------------------
     # (A) 일자별 통계(요약) 집계
