@@ -1124,7 +1124,7 @@ def ad_report_view(request):
         sum_ad_spend = sum(item["ad_spend"] for item in label_map.values())
         sum_profit = sum(item["profit"] for item in label_map.values())
 
-        total_orders = sum(item["orders", 0] for item in label_map.values())
+        total_orders = sum(item["orders"] for item in label_map.values())
         total_clicks = sum(item.get("clicks", 0) for item in label_map.values())
         day_conv = (total_orders / total_clicks * 100) if total_clicks else 0
 
