@@ -52,6 +52,12 @@
           <button type="submit" class="btn btn-sm btn-primary">
             쿠팡 매출 업데이트
           </button>
+
+        </form>
+        <form method="POST" action="{% url 'upload_excel' %}" enctype="multipart/form-data" id="uploadExcelForm" class="d-flex align-items-center gap-2">
+          {% csrf_token %}
+          <input type="file" name="excel_file" accept=".xls,.xlsx" class="form-control-file" required>
+          <button type="submit" class="btn btn-sm btn-secondary">엑셀 업로드</button>
         </form>
       </div><!-- // d-flex justify-content-end -->
       
