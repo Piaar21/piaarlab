@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import Q
+from decimal import Decimal
 
 class CoupangProduct(models.Model):
     """
@@ -348,7 +349,7 @@ class CoupangAdsReport(models.Model):
     def save(self, *args, **kwargs):
         # 새로운 객체일 때 광고비에 부가세 10%(1.1배)를 적용하여 저장합니다.
         if not self.pk:
-            self.ad_spend = int(self.ad_spend * 1.1)
+            self.ad_spend = int(self.ad_spend * Decimal("1.1"))
         super().save(*args, **kwargs)
     
 
