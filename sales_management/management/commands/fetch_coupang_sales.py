@@ -70,14 +70,11 @@ class Command(BaseCommand):
         NAVER_MAIL_PW = config('NAVER_MAIL_PW', default=None)
         
         async with async_playwright() as p:
-            # browser = await p.chromium.launch(
-            #     headless=True,
-            #     args=["--headless", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
-            # )
             browser = await p.chromium.launch(
-                headless=False,  # headed 모드로 실행
-                args=["--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
+                headless=True,
+                args=["--headless", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
             )
+
             context = await browser.new_context(accept_downloads=True)
             page = await context.new_page()
 
