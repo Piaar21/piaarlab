@@ -83,12 +83,43 @@ class Command(BaseCommand):
                 await page.fill("#password", COUPANG_PW)
                 await page.click("#kc-login")
                 await page.wait_for_timeout(500)
-                # 로그인 후 스크린샷 및 페이지 HTML 저장
-                login_screenshot = os.path.join(self.download_dir, "login.png")
-                await page.screenshot(path=login_screenshot)
-                logger.info(f"Login screenshot saved as '{login_screenshot}'")
-                login_html = await page.content()
-                logger.debug("Login page HTML:\n" + login_html)
+
+                # 2FA가 필요한지 여부 체크
+                two_factor_text = "2단계 인증"
+                if two_factor_text in (await page.content()):
+                    logger.info("2단계 인증 페이지 감지 → 자동 처리를 시도합니다.")
+                    
+                    # HTML 로그 출력
+                    html_content = await page.content()
+                    logger.info("===== 2FA Page HTML Start =====")
+                    logger.info(html_content)
+                    logger.info("===== 2FA Page HTML End =====")
+                    
+                    # "이메일로 인증하기" 버튼 클릭 - id "#btnEmail" 사용
+                    await page.wait_for_selector("#btnEmail", timeout=5000)
+                    await page.click("#btnEmail")
+                    logger.info("이메일 인증하기 버튼(#btnEmail) 클릭 완료.")
+                    await page.wait_for_timeout(1000)
+
+                    # (2) 인증 메일에서 코드를 가져오는 로직 (예시)
+                    logger.info("인증코드가 이메일로 전송되었습니다. 콘솔에 코드를 입력해주세요.")
+                    code = input("Enter the 2FA code from email: ").strip()
+
+                    # (3) 코드 입력 필드에 코드 입력 (셀렉터는 실제 상황에 맞게 수정 필요)
+                    await page.fill('#code', code)
+                    
+                    # (4) 확인/다음 버튼 클릭 (셀렉터는 실제 상황에 맞게 수정 필요)
+                    await page.click('button:has-text("인증")')
+                    
+                    # 인증 완료 대기
+                    await page.wait_for_timeout(2000)
+                    
+                    if two_factor_text in (await page.content()):
+                        raise Exception("2FA 인증 실패 혹은 타임아웃.")
+                    
+                    logger.info("2단계 인증이 완료되었습니다.")
+                else:
+                    logger.info("2단계 인증 페이지가 감지되지 않았습니다(2FA 불필요).")
 
                 # (C) 대시보드 이동
                 logger.info("Navigating to 대시보드 페이지...")
