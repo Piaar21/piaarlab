@@ -1,11 +1,10 @@
 import os
 import re
-import time
 import logging
 import decimal
 import pandas as pd
-from datetime import date, timedelta, datetime
 import asyncio
+from datetime import date, timedelta, datetime
 
 from django.core.management.base import BaseCommand
 from django.conf import settings
@@ -57,6 +56,7 @@ class Command(BaseCommand):
 
         download_dir = os.path.join(settings.BASE_DIR, "sales_management", "download")
         os.makedirs(download_dir, exist_ok=True)
+        self.download_dir = download_dir  # 인스턴스 변수에 저장하여 set_date_field에서 사용
 
         # 비동기 함수 실행
         asyncio.run(self.login_and_download_coupang(download_dir, start_dt, end_dt))
@@ -128,6 +128,7 @@ class Command(BaseCommand):
     async def set_date_field(self, page, selector, date_str):
         # 요소가 보일 때까지 최대 30초 대기
         await page.wait_for_selector(selector, state="visible", timeout=30000)
+        # download 폴더에 스크린샷 저장
         debug_path = os.path.join(self.download_dir, "debug.png")
         await page.screenshot(path=debug_path)
         logger.info(f"Screenshot saved as '{debug_path}' for debugging.")
@@ -144,21 +145,6 @@ class Command(BaseCommand):
         await page.wait_for_timeout(500)
         actual_val = await page.evaluate(f"document.querySelector('{selector}').value")
         logger.info(f"[set_date_field] {selector} → {date_str}, 실제 입력값: {actual_val}")
-
-    def parse_and_store_to_db(self, download_dir):
-        # 나머지 코드 (동기적으로 실행)
-        file_list = os.listdir(download_dir)
-        for filename in file_list:
-            if filename.lower().endswith((".xls", ".xlsx")):
-                file_path = os.path.join(download_dir, filename)
-                logger.info(f"[엑셀 파싱] {filename}")
-                df = pd.read_excel(file_path, dtype={"옵션ID": str})
-                logger.info(f"[엑셀 파싱] 컬럼: {df.columns.tolist()}")
-                # 파일명에서 날짜 추출 및 DB 저장 로직...
-                # (이하 생략)
-                os.remove(file_path)
-                logger.info(f"[완료] DB 저장 후 파일 삭제: {filename}")
-
 
     def parse_and_store_to_db(self, download_dir):
         file_list = os.listdir(download_dir)
@@ -189,17 +175,14 @@ class Command(BaseCommand):
 
                 # (3) 엑셀 행 순회 및 DB 저장
                 for idx, row in df.iterrows():
-                    # 1. 합계 행(요약 행) 건너뛰기
                     if str(row.get("노출상품ID", "")).strip() == "합 계":
                         logger.info(f"[{filename}] 행({idx}) Summary row detected, skipping: {row.to_dict()}")
                         continue
 
-                    # 2. 필수 컬럼 검사
                     if pd.isna(row["노출상품ID"]) or pd.isna(row["순 판매 금액(전체 거래 금액 - 취소 금액)"]):
                         logger.info(f"[{filename}] 행({idx}) 필수 데이터 누락 → 스킵: {row.to_dict()}")
                         continue
 
-                    # 3. 아이템위너 비율(%) 처리
                     item_winner_ratio_raw = row.get("아이템위너 비율(%)", "0")
                     if pd.isna(item_winner_ratio_raw):
                         item_winner_ratio_raw = "0"
@@ -211,7 +194,6 @@ class Command(BaseCommand):
                         logger.info(f"'{raw_ratio}' → 숫자 변환 실패, 행({idx}) 스킵")
                         continue
 
-                    # 4. 옵션명 쉼표 분리 → product_name, option_name
                     raw_item_name = str(row["옵션명"])
                     if "," in raw_item_name:
                         parts = raw_item_name.split(",", 1)
@@ -221,7 +203,6 @@ class Command(BaseCommand):
                         product_str = raw_item_name
                         option_str = None
 
-                    # 5. 기타 숫자형 필드 처리
                     try:
                         net_sales_val = int(row["순 판매 금액(전체 거래 금액 - 취소 금액)"])
                     except:
