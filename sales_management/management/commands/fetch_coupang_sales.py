@@ -76,16 +76,29 @@ class Command(BaseCommand):
 
             try:
                 # (B) 로그인
+                logger.info("Navigating to 로그인 페이지...")
                 await page.goto("https://wing.coupang.com/")
                 await page.wait_for_timeout(500)
                 await page.fill("#username", COUPANG_ID)
                 await page.fill("#password", COUPANG_PW)
                 await page.click("#kc-login")
                 await page.wait_for_timeout(500)
+                # 로그인 후 스크린샷 및 페이지 HTML 저장
+                login_screenshot = os.path.join(self.download_dir, "login.png")
+                await page.screenshot(path=login_screenshot)
+                logger.info(f"Login screenshot saved as '{login_screenshot}'")
+                login_html = await page.content()
+                logger.debug("Login page HTML:\n" + login_html)
 
                 # (C) 대시보드 이동
+                logger.info("Navigating to 대시보드 페이지...")
                 await page.goto("https://wing.coupang.com/seller/notification/metrics/dashboard")
                 await page.wait_for_timeout(500)
+                dashboard_screenshot = os.path.join(self.download_dir, "dashboard.png")
+                await page.screenshot(path=dashboard_screenshot)
+                logger.info(f"Dashboard screenshot saved as '{dashboard_screenshot}'")
+                dashboard_html = await page.content()
+                logger.debug("Dashboard page HTML:\n" + dashboard_html)
 
                 current = start_d
                 loop_index = 0
@@ -126,13 +139,25 @@ class Command(BaseCommand):
                 await browser.close()
 
     async def set_date_field(self, page, selector, date_str):
-        # 요소가 보일 때까지 최대 30초 대기
-        await page.wait_for_selector(selector, state="visible", timeout=30000)
-        # download 폴더에 스크린샷 저장
+        try:
+            logger.info(f"Waiting for selector '{selector}' to be visible...")
+            await page.wait_for_selector(selector, state="visible", timeout=30000)
+        except Exception as e:
+            logger.exception(f"Timeout waiting for selector {selector}: {e}")
+            # 스크린샷과 HTML 기록 후 에러 재발생
+            error_path = os.path.join(self.download_dir, "error_selector.png")
+            await page.screenshot(path=error_path)
+            logger.info(f"Error screenshot saved as '{error_path}'")
+            html_error = await page.content()
+            logger.debug("Page HTML at error:\n" + html_error)
+            raise
+
+        # 스크린샷 찍기
         debug_path = os.path.join(self.download_dir, "debug.png")
         await page.screenshot(path=debug_path)
-        logger.info(f"Screenshot saved as '{debug_path}' for debugging.")
+        logger.info(f"Screenshot saved as '{debug_path}' for debugging before filling {selector}.")
 
+        # 강제 입력 시도 (필요하면 force=True 옵션 추가 가능)
         await page.fill(selector, date_str)
         await page.evaluate("document.activeElement.blur()")
         await page.wait_for_timeout(200)
@@ -153,9 +178,12 @@ class Command(BaseCommand):
                 file_path = os.path.join(download_dir, filename)
                 logger.info(f"[엑셀 파싱] {filename}")
 
-                # (1) 엑셀 파일 읽기 (옵션ID 열은 문자열로 지정)
-                df = pd.read_excel(file_path, dtype={"옵션ID": str})
-                logger.info(f"[엑셀 파싱] 컬럼: {df.columns.tolist()}")
+                try:
+                    df = pd.read_excel(file_path, dtype={"옵션ID": str})
+                    logger.info(f"[엑셀 파싱] 컬럼: {df.columns.tolist()}")
+                except Exception as e:
+                    logger.warning(f"[{filename}] 엑셀 읽기 실패: {e}")
+                    continue
 
                 # (2) 파일명에서 날짜 추출 (예: Statistics-20250212~20250212_(0).xlsx)
                 date_from_filename = None
