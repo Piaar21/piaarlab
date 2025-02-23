@@ -16,6 +16,13 @@ import json
 from django.contrib import messages
 from django.core.management import call_command
 from django.views.decorators.http import require_POST
+import os
+import re
+import pandas as pd
+from django.conf import settings
+import decimal
+from decimal import Decimal
+
 
 from .api_clients import COUPANG_ACCOUNTS, fetch_coupang_all_seller_products, get_coupang_seller_product,fetch_seller_tool_option_info
 
@@ -538,11 +545,11 @@ def sales_report_view(request):
             end_date   = datetime.strptime(end_str,   "%Y-%m-%d").date()
         except ValueError:
             # 날짜 파싱 실패 시, 기본 7일
-            start_date = date.today() - timedelta(days=7)
+            start_date = date.today() - timedelta(days=14)
             end_date   = date.today() - timedelta(days=1)
     else:
         # 파라미터 없으면 기본 7일
-        start_date = date.today() - timedelta(days=7)
+        start_date = date.today() - timedelta(days=14)
         end_date   = date.today() - timedelta(days=1)
 
     # 2) 전체 날짜 리스트 (오름차순)
@@ -728,7 +735,151 @@ def update_coupang_sales_view(request):
         return redirect('sales_report')  # or 다른 URL
     else:
         return redirect('sales_report')
+    
+def sales_excel_file(file_path):
+    """
+    업로드된 엑셀 파일을 읽어 DB에 저장하는 함수.
+    파일명에서 날짜를 추출하고, 각 행을 순회하며 CoupangDailySales 모델에 저장합니다.
+    """
+    try:
+        df = pd.read_excel(file_path, dtype={"옵션ID": str})
+        logger.info(f"[엑셀 파싱] 컬럼: {df.columns.tolist()}")
+    except Exception as e:
+        logger.warning(f"엑셀 파일 읽기 실패: {e}")
+        return "엑셀 파일 읽기 실패"
 
+    date_from_filename = None
+    # 파일명에서 날짜 정보 추출 (예: Statistics-20250212~20250212_(0).xlsx)
+    match = re.search(r"Statistics-.*?(\d{8})~(\d{8})", os.path.basename(file_path))
+    if match:
+        start_str, end_str = match.group(1), match.group(2)
+        # 두 날짜 문자열이 동일한지 검사
+        if start_str != end_str:
+            logger.info("8자리 날짜가 동일하지 않습니다. 파일 건너뜁니다.")
+            return "날짜 범위 불일치"
+        try:
+            date_from_filename = datetime.strptime(start_str, "%Y%m%d").date()
+        except Exception as e:
+            logger.error("날짜 파싱 실패: " + str(e))
+            return "날짜 파싱 실패"
+    else:
+        logger.error("날짜 추출 실패. 파일명을 확인해주세요.")
+        return "날짜 추출 실패"
+    if date_from_filename is None:
+        logger.error("날짜 추출 실패. 파일명을 확인해주세요.")
+        return "날짜 추출 실패"
+
+    # 엑셀 각 행 순회 및 DB 저장
+    for idx, row in df.iterrows():
+        if str(row.get("노출상품ID", "")).strip() == "합 계":
+            logger.info(f"[{idx}] Summary row detected, skipping.")
+            continue
+
+        if pd.isna(row["노출상품ID"]) or pd.isna(row["순 판매 금액(전체 거래 금액 - 취소 금액)"]):
+            logger.info(f"[{idx}] 필수 데이터 누락 → 스킵")
+            continue
+
+        item_winner_ratio_raw = row.get("아이템위너 비율(%)", "0")
+        if pd.isna(item_winner_ratio_raw):
+            item_winner_ratio_raw = "0"
+        raw_ratio = str(item_winner_ratio_raw)
+        ratio_str = raw_ratio.replace('%', '').strip() or '0'
+        try:
+            item_winner_val = decimal.Decimal(ratio_str)
+        except decimal.InvalidOperation:
+            logger.info(f"[{idx}] '{raw_ratio}' 숫자 변환 실패, skipping")
+            continue
+
+        raw_item_name = str(row["옵션명"])
+        if "," in raw_item_name:
+            parts = raw_item_name.split(",", 1)
+            product_str = parts[0].strip()
+            option_str = parts[1].strip()
+        else:
+            product_str = raw_item_name
+            option_str = None
+
+        try:
+            net_sales_val = int(row["순 판매 금액(전체 거래 금액 - 취소 금액)"])
+        except:
+            net_sales_val = 0
+        try:
+            total_trans_val = int(row["전체 거래 금액"])
+        except:
+            total_trans_val = 0
+        try:
+            total_cancel_val = int(row["총 취소 금액"])
+        except:
+            total_cancel_val = 0
+        try:
+            net_sold_items_val = int(row["순 판매 상품 수(전체 거래 상품 수 - 취소 상품 수)"])
+        except:
+            net_sold_items_val = 0
+        try:
+            total_trans_items_val = int(row["전체 거래 상품 수"])
+        except:
+            total_trans_items_val = 0
+        try:
+            total_cancel_items_val = int(row["총 취소 상품 수"])
+        except:
+            total_cancel_items_val = 0
+        try:
+            immediate_cancel_items_val = int(row["즉시 취소 상품 수"])
+        except:
+            immediate_cancel_items_val = 0
+
+        sku_str = str(row["옵션ID"])
+
+        record = CoupangDailySales(
+            displayed_product_id=row["노출상품ID"],
+            sku_id=sku_str,
+            item_name=raw_item_name,
+            product_name=product_str,
+            option_name=option_str,
+            delivery_label=row["상품타입"],
+            category_name=row["카테고리"],
+            item_winner_ratio=item_winner_val,
+            net_sales_amount=net_sales_val,
+            net_sold_items=net_sold_items_val,
+            total_transaction_amount=total_trans_val,
+            total_transaction_items=total_trans_items_val,
+            total_cancellation_amount=total_cancel_val,
+            total_cancelled_items=total_cancel_items_val,
+            immediate_cancellation_items=immediate_cancel_items_val,
+            date=date_from_filename,
+        )
+        try:
+            record.save()
+        except Exception as e:
+            logger.exception(f"DB 저장 실패, 행({idx}): {e}")
+
+    os.remove(file_path)
+    logger.info(f"파일 처리 완료 후 삭제: {os.path.basename(file_path)}")
+    # sales_excel_file 함수에서는 redirect를 리턴하지 않고 결과 메시지를 반환
+    return "파일 처리 완료"
+
+
+def upload_excel_view(request):
+    """
+    엑셀 파일 업로드 폼을 렌더링하거나, 업로드된 파일을 처리하는 뷰.
+    POST 요청 시 파일을 임시 디렉토리에 저장한 후, sales_excel_file 함수를 호출하고
+    사용자가 있던 이전 URL로 리다이렉트합니다.
+    """
+    if request.method == 'POST':
+        excel_file = request.FILES.get('excel_file')
+        if not excel_file:
+            return HttpResponse("업로드된 파일이 없습니다.")
+        tmp_dir = os.path.join(settings.BASE_DIR, "tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        file_path = os.path.join(tmp_dir, excel_file.name)
+        with open(file_path, 'wb') as f:
+            for chunk in excel_file.chunks():
+                f.write(chunk)
+        result = sales_excel_file(file_path)
+        # 이전 URL이 존재하면 그쪽으로 리다이렉트, 없으면 'sales_report'로 리다이렉트
+        return redirect(request.META.get('HTTP_REFERER', 'sales_report'))
+    else:
+        return render(request, 'sales_report.html')
 #광고 리포트 시작
 def update_ads_report(request):
     """
@@ -825,14 +976,14 @@ def ad_report_view(request):
     start_str = request.GET.get('start_date', '')
     end_str   = request.GET.get('end_date', '')
     if not start_str or not end_str:
-        start_d = date.today() - timedelta(days=8)
+        start_d = date.today() - timedelta(days=14)
         end_d = date.today() - timedelta(days=1)
     else:
         try:
             start_d = datetime.strptime(start_str, '%Y-%m-%d').date()
             end_d   = datetime.strptime(end_str, '%Y-%m-%d').date()
         except ValueError:
-            start_d = date.today() - timedelta(days=8)
+            start_d = date.today() - timedelta(days=14)
             end_d   = date.today() - timedelta(days=1)
 
     # --------------------------
@@ -1552,6 +1703,206 @@ def ad_report_view(request):
 
     return render(request, "sales_management/ad_report.html", context)
 
+
+
+def ads_excel_file(file_path):
+    """
+    업로드된 광고 리포트 엑셀 파일을 읽어 DB에 저장하는 함수.
+    파일 내 각 행을 순회하며 CoupangAdsReport 모델에 저장합니다.
+    """
+    logger.info(f"Processing ads report Excel file: {os.path.basename(file_path)}")
+    try:
+        df = pd.read_excel(file_path)
+        logger.info(f"[엑셀 파싱] 컬럼: {df.columns.tolist()}")
+    except Exception as e:
+        logger.warning(f"엑셀 파일 읽기 실패: {e}")
+        return "엑셀 파일 읽기 실패"
+
+    saved_count = 0
+    row_count = len(df)
+    logger.info(f"총 {row_count}행 (Header 제외)")
+
+    # 헬퍼 함수들
+    def parse_excel_date(raw):
+        if raw is None or pd.isna(raw):
+            return None
+        if isinstance(raw, datetime):
+            return raw.date()
+        if isinstance(raw, (int, float)):
+            raw = str(int(raw))
+        if isinstance(raw, str):
+            raw = raw.strip()
+            if len(raw) == 8 and raw.isdigit():
+                try:
+                    return datetime.strptime(raw, "%Y%m%d").date()
+                except:
+                    pass
+            for fmt in ("%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"):
+                try:
+                    return datetime.strptime(raw, fmt).date()
+                except:
+                    pass
+            try:
+                return datetime.strptime(raw, "%Y년 %m월 %d일").date()
+            except:
+                pass
+        return None
+
+    def to_str(val):
+        if pd.isna(val):
+            return ""
+        return str(val).strip()
+
+    def to_int(val):
+        if pd.isna(val):
+            return 0
+        try:
+            return int(val)
+        except:
+            return 0
+
+    def to_decimal(val):
+        if pd.isna(val):
+            return Decimal("0.00")
+        if isinstance(val, str):
+            val = val.strip().replace(",", "").replace("%", "")
+        try:
+            return Decimal(str(val))
+        except:
+            return Decimal("0.00")
+
+    def parse_percent(val):
+        if pd.isna(val):
+            return Decimal("0.00")
+        if isinstance(val, str):
+            tmp = val.strip().replace("%", "").replace(",", "")
+            if not tmp:
+                return Decimal("0.00")
+            try:
+                return Decimal(tmp)
+            except:
+                return Decimal("0.00")
+        try:
+            return Decimal(str(val))
+        except:
+            return Decimal("0.00")
+
+    def split_product_option(full_name_str):
+        if not full_name_str:
+            return ("", "")
+        parts = full_name_str.split(",", 1)
+        if len(parts) == 2:
+            return (parts[0].strip(), parts[1].strip())
+        else:
+            return (full_name_str.strip(), "")
+
+    for i, row in df.iterrows():
+        if row.isna().all():
+            logger.debug(f"Row {i}: 전체 NaN → 스킵")
+            continue
+
+        logger.debug(f"Row {i} 원본: {row.to_dict()}")
+
+        raw_date = row.get("날짜", None)
+        parsed_date = parse_excel_date(raw_date)
+        if not parsed_date:
+            logger.debug(f"Row {i}: 날짜 파싱 실패(raw_date={raw_date}) → 스킵")
+            continue
+
+        ad_type_val = to_str(row.get("광고유형", ""))
+        campaign_id_val = to_str(row.get("캠페인 ID", ""))
+        campaign_name_val = to_str(row.get("캠페인명", ""))
+        ad_group_val = to_str(row.get("광고그룹", ""))
+
+        executed_product_name_val = to_str(row.get("광고집행 상품명", ""))
+        product_name_val, option_name_val = split_product_option(executed_product_name_val)
+        executed_option_id_val = to_str(row.get("광고집행 옵션ID", ""))
+
+        converting_product_name_val = to_str(row.get("광고전환매출발생 상품명", ""))
+        converting_option_id_val = to_str(row.get("광고전환매출발생 옵션ID", ""))
+        ad_placement_val = to_str(row.get("광고 노출 지면", ""))
+
+        impressions_val = to_int(row.get("노출수", 0))
+        clicks_val = to_int(row.get("클릭수", 0))
+        ad_spend_val = to_decimal(row.get("광고비", 0))
+        ctr_val = parse_percent(row.get("클릭률", "0"))
+        orders_val = to_int(row.get("총 주문수(1일)", 0))
+        sold_qty_val = to_int(row.get("총 판매수량(1일)", 0))
+        sales_amt_val = to_decimal(row.get("총 전환매출액(1일)", 0))
+        roas_val = to_decimal(row.get("총광고수익률(1일)", 0))
+
+        # 명시적으로 Decimal 타입으로 강제 변환 (이미 Decimal일 경우 영향 없음)
+        ad_spend_val = Decimal(ad_spend_val)
+        ctr_val = Decimal(ctr_val)
+        sales_amt_val = Decimal(sales_amt_val)
+        roas_val = Decimal(roas_val)
+
+        logger.debug(
+            f"Row {i}: date={parsed_date}, ad_type={ad_type_val}, "
+            f"campaign_id={campaign_id_val}, campaign_name={campaign_name_val}, "
+            f"impressions={impressions_val}, clicks={clicks_val}, "
+            f"ad_spend={ad_spend_val}({type(ad_spend_val)}), ctr={ctr_val}({type(ctr_val)}), "
+            f"orders={orders_val}, sold_qty={sold_qty_val}, sales_amt={sales_amt_val}({type(sales_amt_val)}), "
+            f"roas={roas_val}({type(roas_val)})"
+        )
+
+        try:
+            rec = CoupangAdsReport(
+                date=parsed_date,
+                ad_type=ad_type_val,
+                campaign_id=campaign_id_val,
+                campaign_name=campaign_name_val,
+                ad_group=ad_group_val,
+                executed_product_name=executed_product_name_val,
+                product_name=product_name_val,
+                option_name=option_name_val,
+                executed_option_id=executed_option_id_val,
+                converting_product_name=converting_product_name_val,
+                converting_option_id=converting_option_id_val,
+                ad_placement=ad_placement_val,
+                impressions=impressions_val,
+                clicks=clicks_val,
+                ad_spend=ad_spend_val,
+                ctr=ctr_val,
+                orders=orders_val,
+                sold_quantity=sold_qty_val,
+                sales_amount=sales_amt_val,
+                roas=roas_val
+            )
+            rec.save()
+            saved_count += 1
+        except Exception as ex:
+            logger.warning(f"Row {i} DB 저장 실패: {ex}")
+
+    logger.info(f"AdsReport 저장 완료: {saved_count}건")
+    os.remove(file_path)
+    logger.info(f"파일 처리 완료 후 삭제: {os.path.basename(file_path)}")
+    return "파일 처리 완료"
+
+
+def upload_ads_excel_view(request):
+    """
+    광고 리포트 엑셀 업로드 폼을 렌더링하거나, 업로드된 파일을 처리하는 뷰.
+    POST 요청 시 파일을 저장하고, process_ads_excel_file 함수를 호출한 후
+    'sales_report' (또는 원하는 URL 이름)로 리다이렉트합니다.
+    """
+    if request.method == 'POST':
+        excel_file = request.FILES.get('excel_file')
+        if not excel_file:
+            return HttpResponse("업로드된 파일이 없습니다.")
+        tmp_dir = os.path.join(settings.BASE_DIR, "tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        file_path = os.path.join(tmp_dir, excel_file.name)
+        with open(file_path, 'wb') as f:
+            for chunk in excel_file.chunks():
+                f.write(chunk)
+        result = ads_excel_file(file_path)
+        # 결과에 따라 성공 메시지를 세션에 저장하거나, URL에 쿼리 파라미터를 붙여 리다이렉트할 수 있습니다.
+        return redirect('ad_report')  # 'sales_report'라는 이름의 URL로 리다이렉트
+    else:
+        return render(request, 'sales_management/ad-report.html')
+    
+    
 #순수익 리포트 시작
 
 
@@ -1597,14 +1948,14 @@ def profit_report_view(request):
     start_str = request.GET.get('start_date', '')
     end_str = request.GET.get('end_date', '')
     if not start_str or not end_str:
-        start_d = date.today() - timedelta(days=8)
+        start_d = date.today() - timedelta(days=14)
         end_d = date.today() - timedelta(days=1)
     else:
         try:
             start_d = datetime.strptime(start_str, "%Y-%m-%d").date()
             end_d = datetime.strptime(end_str, "%Y-%m-%d").date()
         except ValueError:
-            start_d = date.today() - timedelta(days=8)
+            start_d = date.today() - timedelta(days=14)
             end_d = date.today() - timedelta(days=1)
 
     # ---------------------------
