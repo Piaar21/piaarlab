@@ -127,6 +127,8 @@ class Command(BaseCommand):
                 await browser.close()
 
     async def set_date_field(self, page, selector, date_str):
+        # 요소가 보일 때까지 최대 30초 대기
+        await page.wait_for_selector(selector, state="visible", timeout=30000)
         await page.fill(selector, date_str)
         await page.evaluate("document.activeElement.blur()")
         await page.wait_for_timeout(200)
