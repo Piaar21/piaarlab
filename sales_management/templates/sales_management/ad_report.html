@@ -178,7 +178,7 @@
         </form>
         <form method="POST" action="{% url 'upload_ads_excel' %}" enctype="multipart/form-data" id="uploadExcelForm" class="d-flex align-items-center gap-2">
           {% csrf_token %}
-          <input type="file" name="excel_file" accept=".xls,.xlsx" class="form-control-file" required>
+          <input type="file" name="excel_file" accept=".xls,.xlsx" class="form-control-file" multiple required>
           <button type="submit" class="btn btn-sm btn-secondary">엑셀 업로드</button>
         </form>
       </div>

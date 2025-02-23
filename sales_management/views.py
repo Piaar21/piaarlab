@@ -861,25 +861,31 @@ def sales_excel_file(file_path):
 
 def upload_excel_view(request):
     """
-    엑셀 파일 업로드 폼을 렌더링하거나, 업로드된 파일을 처리하는 뷰.
-    POST 요청 시 파일을 임시 디렉토리에 저장한 후, sales_excel_file 함수를 호출하고
+    엑셀 파일 업로드 폼을 렌더링하거나, 업로드된 파일들을 처리하는 뷰.
+    POST 요청 시 파일들을 임시 디렉토리에 저장한 후, sales_excel_file 함수를 각 파일에 대해 호출하고
     사용자가 있던 이전 URL로 리다이렉트합니다.
     """
     if request.method == 'POST':
-        excel_file = request.FILES.get('excel_file')
-        if not excel_file:
+        excel_files = request.FILES.getlist('excel_file')
+        if not excel_files:
             return HttpResponse("업로드된 파일이 없습니다.")
         tmp_dir = os.path.join(settings.BASE_DIR, "tmp")
         os.makedirs(tmp_dir, exist_ok=True)
-        file_path = os.path.join(tmp_dir, excel_file.name)
-        with open(file_path, 'wb') as f:
-            for chunk in excel_file.chunks():
-                f.write(chunk)
-        result = sales_excel_file(file_path)
-        # 이전 URL이 존재하면 그쪽으로 리다이렉트, 없으면 'sales_report'로 리다이렉트
+        results = []
+        for excel_file in excel_files:
+            file_path = os.path.join(tmp_dir, excel_file.name)
+            with open(file_path, 'wb') as f:
+                for chunk in excel_file.chunks():
+                    f.write(chunk)
+            result = sales_excel_file(file_path)
+            results.append(f"{excel_file.name}: {result}")
+        # 업로드 후 이전 페이지로 리다이렉트합니다.
+        # 필요하면 results를 세션에 저장하거나 쿼리 파라미터로 전달할 수 있습니다.
         return redirect(request.META.get('HTTP_REFERER', 'sales_report'))
     else:
         return render(request, 'sales_report.html')
+
+
 #광고 리포트 시작
 def update_ads_report(request):
     """
@@ -1118,8 +1124,8 @@ def ad_report_view(request):
         sum_ad_spend = sum(item["ad_spend"] for item in label_map.values())
         sum_profit = sum(item["profit"] for item in label_map.values())
 
-        total_orders = sum(item["orders"] for item in label_map.values())
-        total_clicks = sum(item["clicks"] for item in label_map.values())
+        total_orders = sum(item["orders", 0] for item in label_map.values())
+        total_clicks = sum(item.get("clicks", 0) for item in label_map.values())
         day_conv = (total_orders / total_clicks * 100) if total_clicks else 0
 
         day_roas = (sum_ad_rev / sum_ad_spend * 100) if sum_ad_spend else 0
@@ -1882,26 +1888,30 @@ def ads_excel_file(file_path):
 
 def upload_ads_excel_view(request):
     """
-    광고 리포트 엑셀 업로드 폼을 렌더링하거나, 업로드된 파일을 처리하는 뷰.
-    POST 요청 시 파일을 저장하고, process_ads_excel_file 함수를 호출한 후
-    'sales_report' (또는 원하는 URL 이름)로 리다이렉트합니다.
+    광고 리포트 엑셀 업로드 폼을 렌더링하거나, 업로드된 파일들을 처리하는 뷰.
+    POST 요청 시 업로드된 파일들을 임시 디렉토리에 저장 후, ads_excel_file 함수를 각 파일에 대해 호출하고,
+    모든 파일 처리 후, 'ad_report' URL로 리다이렉트합니다.
     """
     if request.method == 'POST':
-        excel_file = request.FILES.get('excel_file')
-        if not excel_file:
+        excel_files = request.FILES.getlist('excel_file')
+        if not excel_files:
             return HttpResponse("업로드된 파일이 없습니다.")
         tmp_dir = os.path.join(settings.BASE_DIR, "tmp")
         os.makedirs(tmp_dir, exist_ok=True)
-        file_path = os.path.join(tmp_dir, excel_file.name)
-        with open(file_path, 'wb') as f:
-            for chunk in excel_file.chunks():
-                f.write(chunk)
-        result = ads_excel_file(file_path)
-        # 결과에 따라 성공 메시지를 세션에 저장하거나, URL에 쿼리 파라미터를 붙여 리다이렉트할 수 있습니다.
-        return redirect('ad_report')  # 'sales_report'라는 이름의 URL로 리다이렉트
+        messages = []
+        for excel_file in excel_files:
+            file_path = os.path.join(tmp_dir, excel_file.name)
+            with open(file_path, 'wb') as f:
+                for chunk in excel_file.chunks():
+                    f.write(chunk)
+            result = ads_excel_file(file_path)
+            messages.append(f"{excel_file.name}: {result}")
+        # 결과 메시지를 세션이나 쿼리 파라미터로 전달해도 좋습니다.
+        # 여기서는 간단히 ad_report 페이지로 리다이렉트합니다.
+        # 필요시 messages 내용을 로그나 세션에 저장할 수 있습니다.
+        return redirect('ad_report')
     else:
-        return render(request, 'sales_management/ad-report.html')
-    
+        return render(request, 'sales_management/ad-report.html')    
     
 #순수익 리포트 시작
 
