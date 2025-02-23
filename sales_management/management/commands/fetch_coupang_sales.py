@@ -128,6 +128,10 @@ class Command(BaseCommand):
     async def set_date_field(self, page, selector, date_str):
         # 요소가 보일 때까지 최대 30초 대기
         await page.wait_for_selector(selector, state="visible", timeout=30000)
+        debug_path = os.path.join(self.download_dir, "debug.png")
+        await page.screenshot(path=debug_path)
+        logger.info(f"Screenshot saved as '{debug_path}' for debugging.")
+
         await page.fill(selector, date_str)
         await page.evaluate("document.activeElement.blur()")
         await page.wait_for_timeout(200)
