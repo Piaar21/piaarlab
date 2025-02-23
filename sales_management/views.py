@@ -1653,6 +1653,8 @@ def ad_report_view(request):
         else:
             ad_rev = 0
             ad_spend = 0
+            orders = 0
+            clicks = 0  # 추가
             roas_val = 0
             conv_rate = 0
             impressions = 0
