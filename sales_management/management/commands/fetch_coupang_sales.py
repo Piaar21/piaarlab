@@ -71,10 +71,9 @@ class Command(BaseCommand):
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(
-                headless=True,
-                args=["--headless", "--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
+                headless=True,  # 필요에 따라 headed 모드로 전환 (Xvfb 등 가상디스플레이 환경 필요)
+                args=["--disable-gpu", "--disable-software-rasterizer", "--no-sandbox"]
             )
-
             context = await browser.new_context(accept_downloads=True)
             page = await context.new_page()
 
@@ -92,64 +91,55 @@ class Command(BaseCommand):
                 await page.wait_for_timeout(500)
                 await page.screenshot(path=os.path.join(self.download_dir, "03_after_kc-login.png"))
                 
-                # 2FA가 필요한지 여부 체크 (요소 기반)
-                try:
-                    await page.wait_for_selector("#btnEmail", timeout=5000)
-                    logger.info("2FA 화면 감지: '#btnEmail' 요소 발견")
-                    
-                    # 2FA 페이지 스크린샷 및 HTML 로그
-                    html_content = await page.content()
-                    logger.info("===== 2FA Page HTML Start =====")
-                    logger.info(html_content)
-                    logger.info("===== 2FA Page HTML End =====")
-                    await page.screenshot(path=os.path.join(self.download_dir, "04_2fa_page.png"))
-                    
-                    # "이메일로 인증하기" 버튼 클릭 - id "#btnEmail" 사용
-                    await page.click("#btnEmail")
-                    logger.info("이메일 인증하기 버튼(#btnEmail) 클릭 완료.")
-                    await page.wait_for_timeout(1000)
-                    await page.screenshot(path=os.path.join(self.download_dir, "05_after_btnEmail_click.png"))
-                    
-                    # 네이버 메일을 통해 2FA 인증번호 이메일 확인
-                    logger.info("네이버 메일로 이동하여 2FA 인증번호 이메일 확인을 시작합니다.")
-                    mail_page = await context.new_page()
-                    await mail_page.goto("https://mail.naver.com/v2/folders/-1")
-                    await mail_page.wait_for_timeout(1000)
-                    
-                    # 네이버 메일 페이지 로그인 전 스크린샷
-                    await mail_page.screenshot(path=os.path.join(self.download_dir, "06_naver_mail_before_login.png"))
-                    
-                    # 네이버 메일 로그인: 아이디, 비밀번호 입력 (입력 필드는 input 태그로 수정)
-                    await mail_page.fill("input#input_item_id", NAVER_MAIL_ID)
-                    await mail_page.fill("input#input_item_pw", NAVER_MAIL_PW)
-                    await mail_page.screenshot(path=os.path.join(self.download_dir, "07_naver_mail_filled.png"))
-                    logger.info("네이버 메일 로그인 정보 입력 완료.")
-                    
-                    # 로그인 버튼 클릭 (셀렉터는 실제 페이지에 맞게 수정 필요)
-                    await mail_page.click("button[type='submit']")
-                    logger.info("네이버 메일 로그인 버튼 클릭 완료.")
-                    await mail_page.wait_for_load_state("networkidle")
-                    await mail_page.wait_for_timeout(3000)
-                    await mail_page.screenshot(path=os.path.join(self.download_dir, "08_naver_mail_after_login.png"))
-                    
-                    # "[쿠팡] 이메일 인증번호가 도착하였습니다." 메일 클릭
-                    await mail_page.wait_for_selector('[aria-label*="[쿠팡] 이메일 인증번호가 도착하였습니다."]', timeout=10000)
-                    await mail_page.click('[aria-label*="[쿠팡] 이메일 인증번호가 도착하였습니다."]')
-                    logger.info("2FA 인증번호 이메일 선택 완료.")
-                    await mail_page.wait_for_timeout(3000)
-                    await mail_page.screenshot(path=os.path.join(self.download_dir, "09_naver_mail_after_email_click.png"))
-                    
-                    # 확인 버튼 클릭 전, 이메일 페이지의 HTML 로그 출력
-                    email_html = await mail_page.content()
-                    logger.info("===== Naver Mail 2FA Email Page HTML Start =====")
-                    logger.info(email_html)
-                    logger.info("===== Naver Mail 2FA Email Page HTML End =====")
-                    
-                    # 여기서 이후 확인 버튼 클릭 전까지 멈춤.
-                    
-                except Exception as e:
-                    logger.info("2FA 화면이 감지되지 않았거나 오류 발생: " + str(e))
-                    await page.screenshot(path=os.path.join(self.download_dir, "2fa_error.png"))
+                # 무조건 2차 인증 진행 (2FA 강제 실행)
+                logger.info("무조건 2차 인증 실행: 2FA 진행을 강제합니다.")
+                await page.wait_for_selector("#btnEmail", timeout=5000)
+                logger.info("2FA 화면 감지: '#btnEmail' 요소 발견")
+                html_content = await page.content()
+                logger.info("===== 2FA Page HTML Start =====")
+                logger.info(html_content)
+                logger.info("===== 2FA Page HTML End =====")
+                await page.screenshot(path=os.path.join(self.download_dir, "04_2fa_page.png"))
+                
+                # "이메일로 인증하기" 버튼 클릭 - id "#btnEmail" 사용
+                await page.click("#btnEmail")
+                logger.info("이메일 인증하기 버튼(#btnEmail) 클릭 완료.")
+                await page.wait_for_timeout(1000)
+                await page.screenshot(path=os.path.join(self.download_dir, "05_after_btnEmail_click.png"))
+                
+                # 네이버 메일을 통해 2FA 인증번호 이메일 확인
+                logger.info("네이버 메일로 이동하여 2FA 인증번호 이메일 확인을 시작합니다.")
+                mail_page = await context.new_page()
+                await mail_page.goto("https://mail.naver.com/v2/folders/-1")
+                await mail_page.wait_for_timeout(1000)
+                await mail_page.screenshot(path=os.path.join(self.download_dir, "06_naver_mail_before_login.png"))
+                
+                # 네이버 메일 로그인: 아이디, 비밀번호 입력
+                await mail_page.fill("input#input_item_id", NAVER_MAIL_ID)
+                await mail_page.fill("input#input_item_pw", NAVER_MAIL_PW)
+                await mail_page.screenshot(path=os.path.join(self.download_dir, "07_naver_mail_filled.png"))
+                logger.info("네이버 메일 로그인 정보 입력 완료.")
+                
+                # 로그인 버튼 클릭 (셀렉터는 실제 페이지에 맞게 수정 필요)
+                await mail_page.click("button[type='submit']")
+                logger.info("네이버 메일 로그인 버튼 클릭 완료.")
+                await mail_page.wait_for_load_state("networkidle")
+                await mail_page.wait_for_timeout(3000)
+                await mail_page.screenshot(path=os.path.join(self.download_dir, "08_naver_mail_after_login.png"))
+                
+                # "[쿠팡] 이메일 인증번호가 도착하였습니다." 메일 클릭
+                await mail_page.wait_for_selector('[aria-label*="[쿠팡] 이메일 인증번호가 도착하였습니다."]', timeout=10000)
+                await mail_page.click('[aria-label*="[쿠팡] 이메일 인증번호가 도착하였습니다."]')
+                logger.info("2FA 인증번호 이메일 선택 완료.")
+                await mail_page.wait_for_timeout(3000)
+                await mail_page.screenshot(path=os.path.join(self.download_dir, "09_naver_mail_after_email_click.png"))
+                
+                # 확인 버튼 클릭 전, 이메일 페이지의 HTML 로그 출력
+                email_html = await mail_page.content()
+                logger.info("===== Naver Mail 2FA Email Page HTML Start =====")
+                logger.info(email_html)
+                logger.info("===== Naver Mail 2FA Email Page HTML End =====")
+                # 여기서 인증번호 추출 후 확인 버튼 클릭 등의 로직을 추가하면 됩니다.
 
                 # (C) 대시보드 이동
                 logger.info("Navigating to 대시보드 페이지...")
