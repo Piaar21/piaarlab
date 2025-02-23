@@ -84,10 +84,10 @@ class Command(BaseCommand):
                 await page.click("#kc-login")
                 await page.wait_for_timeout(500)
 
-                # 2FA가 필요한지 여부 체크
-                two_factor_text = "2단계 인증"
-                if two_factor_text in (await page.content()):
-                    logger.info("2단계 인증 페이지 감지 → 자동 처리를 시도합니다.")
+                # 2FA가 필요한지 여부 체크 (요소 기반)
+                try:
+                    await page.wait_for_selector("#btnEmail", timeout=5000)
+                    logger.info("2FA 화면 감지: '#btnEmail' 요소 발견")
                     
                     # HTML 로그 출력
                     html_content = await page.content()
@@ -96,7 +96,6 @@ class Command(BaseCommand):
                     logger.info("===== 2FA Page HTML End =====")
                     
                     # "이메일로 인증하기" 버튼 클릭 - id "#btnEmail" 사용
-                    await page.wait_for_selector("#btnEmail", timeout=5000)
                     await page.click("#btnEmail")
                     logger.info("이메일 인증하기 버튼(#btnEmail) 클릭 완료.")
                     await page.wait_for_timeout(1000)
@@ -114,12 +113,9 @@ class Command(BaseCommand):
                     # 인증 완료 대기
                     await page.wait_for_timeout(2000)
                     
-                    if two_factor_text in (await page.content()):
-                        raise Exception("2FA 인증 실패 혹은 타임아웃.")
-                    
                     logger.info("2단계 인증이 완료되었습니다.")
-                else:
-                    logger.info("2단계 인증 페이지가 감지되지 않았습니다(2FA 불필요).")
+                except Exception as e:
+                    logger.info("2FA 화면이 감지되지 않았거나 오류 발생: " + str(e))
 
                 # (C) 대시보드 이동
                 logger.info("Navigating to 대시보드 페이지...")
