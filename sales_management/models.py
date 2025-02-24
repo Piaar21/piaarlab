@@ -394,3 +394,177 @@ class CostModel(models.Model):
 
         class Meta:
             db_table = 'cost_model'            
+
+
+#네이버 시작
+
+
+class naverItem(models.Model):
+    """
+    naverItem 모델
+    
+    모델명        help          데이터명
+    --------------------------------------------
+    productID    상품ID        originProductNo
+    skuID        SKUID         optionCombinations.id (unique)
+    optioncode   옵션코드       optionCombinations.sellerManagerCode
+    delivery_label 구분        '판매자배송' (예: 고정값)
+    itemName     상품명        name
+    option_name  옵션명        optionCombinations.optionName1
+    product_price 정가         discountedPrice
+    option_price 옵션가        optionCombinations.price
+    account_name 브랜드         account_name
+    market_fee   마켓수수료     4% (0.04)
+    sale_price   판매가        product_price + option_price
+    profit       개당이익금     sale_price - (sale_price * market_fee)
+    """
+
+    productID = models.CharField(
+        max_length=50,
+        help_text="상품ID(originProductNo)"
+    )
+    skuID = models.CharField(
+        max_length=50,
+        unique=True,  # ★ 유니크 설정
+        help_text="SKUID(optionCombinations.id)"
+    )
+    optioncode = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="옵션코드(optionCombinations.sellerManagerCode)"
+    )
+    # 구분(판매자배송) - 만약 항상 '판매자배송' 고정이라면 default 로 설정
+    delivery_label = models.CharField(
+        max_length=20,
+        default="판매자배송",
+        help_text="구분(판매자배송)"
+    )
+    itemName = models.CharField(
+        max_length=200,
+        help_text="상품명(name)"
+    )
+    option_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="옵션명(optionCombinations.optionName1)"
+    )
+    # 정가(=discountedPrice) - 금액이므로 int 혹은 DecimalField 등 상황에 맞게 선택
+    product_price = models.IntegerField(
+        help_text="정가(discountedPrice)"
+    )
+    # 옵션가(=optionCombinations.price)
+    option_price = models.IntegerField(
+        default=0,
+        help_text="옵션가(optionCombinations.price)"
+    )
+    # 브랜드명(account_name)
+    account_name = models.CharField(
+        max_length=100,
+        help_text="브랜드(account_name)"
+    )
+    # 마켓수수료(4%) - float(0.04) 또는 DecimalField 로 저장 가능
+    market_fee = models.FloatField(
+        default=0.04,
+        help_text="마켓수수료(4%)"
+    )
+    # 판매가: (정가 + 옵션가)
+    sale_price = models.IntegerField(
+        default=0,
+        help_text="판매가(product_price + option_price)"
+    )
+    # 개당이익금: sale_price - (sale_price * market_fee)
+    profit = models.IntegerField(
+        default=0,
+        help_text="개당이익금(sale_price - sale_price*market_fee)"
+    )
+
+    def save(self, *args, **kwargs):
+        """
+        레코드 저장 시, sale_price와 profit을 자동 계산하여 반영.
+        """
+        # 판매가 = 정가 + 옵션가
+        self.sale_price = self.product_price + self.option_price
+
+        # 개당이익금 = 판매가 - (판매가 * 마켓수수료)
+        # 수수료 계산 시 소수점 처리가 필요하다면 float/Decimal 처리를 고려
+        self.profit = int(self.sale_price - (self.sale_price * self.market_fee))
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"[{self.productID}] {self.itemName}"
+    
+
+
+class NaverDailySales(models.Model):
+    """
+    NaverDailySales 모델
+
+    데이터명         help                      api 데이터명
+    ---------------------------------------------------------
+    order_ID         주문ID                   productOrder.productOrderId
+    product_name     상품명                   productOrder.productName
+    product_id       상품ID                   productOrder.productOrderId
+    option_name      옵션명                   productOrder.productOption
+    option_id        옵션ID                   productOrder.optionCode
+    sales_qty        결제수량                 productOrder.quantity
+    sales_revenue    결제금액                 productOrder.totalPaymentAmount
+    refunded_qty     환불수량                 productOrder.quantity
+    refunded_revenue 환불금액                 productOrder.totalPaymentAmount
+    (12) 마켓수수료(market_fee)  -> paymentCommission + knowledgeShoppingSellingInterlockCommission
+    """
+    date = models.CharField(
+        max_length=10,
+        help_text="날짜(left(orderDate,10))"
+    )
+    store = models.CharField(
+        max_length=50,
+        help_text="스토어(account_name)"
+    )
+    order_ID = models.CharField(
+        max_length=50,
+        unique=True,  # ★ 유니크 설정
+        help_text="주문ID(productOrder.productOrderId)"
+    )
+    product_name = models.CharField(
+        max_length=200,
+        help_text="상품명(productOrder.productName)"
+    )
+    product_id = models.CharField(
+        max_length=50,
+        help_text="상품ID(productOrder.productOrderId)"
+    )
+    option_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="옵션명(productOrder.productOption)"
+    )
+    option_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="옵션ID(productOrder.optionCode)"
+    )
+    sales_qty = models.IntegerField(
+        default=0,
+        help_text="결제수량(productOrder.quantity)"
+    )
+    sales_revenue = models.IntegerField(
+        default=0,
+        help_text="결제금액(productOrder.productDiscountAmount)"
+    )
+    refunded_qty = models.IntegerField(
+        default=0,
+        help_text="환불수량(productOrder.quantity)"
+    )
+    refunded_revenue = models.IntegerField(
+        default=0,
+        help_text="환불금액(productOrder.productDiscountAmount)"
+    )
+    market_fee = models.IntegerField(
+        default=0,
+        help_text="마켓수수료(paymentCommission + knowledgeShoppingSellingInterlockCommission)"
+    )
+
+
+    def __str__(self):
+        return f"[{self.order_ID}] {self.product_name}"

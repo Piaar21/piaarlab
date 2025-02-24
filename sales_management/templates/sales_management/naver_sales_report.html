@@ -1,0 +1,634 @@
+{% extends 'naver_sales_management_base.html' %}
+{% load dict_extras %}
+{% block content %}
+
+<div class="container-fluid mt-4">
+  <h2 class="mb-4 text-primary">네이버 매출 리포트</h2>
+
+
+  <!-- (B) 날짜 범위(등록일) 필터 -->
+  <div class="card mb-4">
+    <div class="card-body">
+  
+      <div class="d-flex justify-content-start align-items-center gap-3 flex-wrap">
+        <!-- (A) 폼1: "날짜 필터" (GET) -->
+        <form method="GET" action="" id="filterForm" class="d-flex align-items-center gap-2">
+          <!-- 버튼들: 오늘/7일/30일 -->
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('today')">오늘</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('7days')">7일</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('30days')">30일</button>
+  
+          <!-- 날짜 범위 -->
+          <div class="d-flex align-items-center">
+            <input type="date"
+                   name="start_date"
+                   id="start_date"
+                   class="form-control"
+                   style="width:auto;"
+                   value="{{ start_date|date:'Y-m-d'|default_if_none:'' }}" />
+            <span class="mx-2">~</span>
+            <input type="date"
+                   name="end_date"
+                   id="end_date"
+                   class="form-control"
+                   style="width:auto;"
+                   value="{{ end_date|date:'Y-m-d'|default_if_none:'' }}" />
+          </div>
+  
+          <!-- "적용" 버튼 -->
+          <button type="submit" class="btn btn-sm btn-secondary">
+            적용
+          </button>
+        </form>
+  
+        <!-- (B) 폼2: "네이버 매출 업데이트" (POST) -->
+        <form method="POST" action="{% url 'naver_update_sales' %}" id="updateNaverForm"
+              class="d-flex align-items-center gap-2">
+          {% csrf_token %}
+          <!-- (선택) 날짜를 넘기기 위한 hidden 필드 -->
+          <input type="hidden" name="fetch_start_date" value="{{ start_date|date:'Y-m-d'|default_if_none:'' }}" />
+          <input type="hidden" name="fetch_end_date"   value="{{ end_date|date:'Y-m-d'|default_if_none:'' }}" />
+  
+          <button type="submit" class="btn btn-sm btn-primary">
+            네이버 매출 업데이트
+          </button>
+
+        </form>
+        
+        <form action="{% url 'naver_delete_sales' %}" method="POST" 
+              onsubmit="return confirm('정말 모든 데이터를 삭제하시겠습니까?');">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-danger">
+            데이터 전체 삭제
+          </button>
+        </form>
+      </div><!-- // d-flex justify-content-end -->
+      
+    </div><!-- // card-body -->
+  </div><!-- // card -->
+  
+
+  <!-- (C) 첫 번째 차트(매출 현황) -->
+  <div class="chart-wrapper">
+    <h4>매출 현황</h4>
+    <div class="chart-flex">
+      <div class="chart-container">
+        <canvas id="revenueChart"></canvas>
+      </div>
+      <div class="chart-filter">
+        <h5>필터</h5>
+        <label>
+          <input type="checkbox" id="rev-toggle-0" checked>
+          전체 거래 금액
+        </label>
+        <br>
+        <label>
+          <input type="checkbox" id="rev-toggle-1" checked>
+          순 매출
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- (D) 두 번째 차트(판매량 현황) -->
+  <div class="chart-wrapper">
+    <h4>판매량 현황</h4>
+    <div class="chart-flex">
+      <div class="chart-container">
+        <canvas id="quantityChart"></canvas>
+      </div>
+      <div class="chart-filter">
+        <h5>필터</h5>
+        <label>
+          <input type="checkbox" id="qty-toggle-0" checked>
+          전체 거래 상품 수
+        </label>
+        <br>
+        <label>
+          <input type="checkbox" id="qty-toggle-1" checked>
+          순 판매 상품 수
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- (E) 일자별 판매 테이블 (역정렬 dates) -->
+  <div class="card mb-4">
+    <div class="card-body">
+      {% if grouped_data %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle w-100">
+          <thead>
+            <tr>
+              <th class="left-header-col1" rowspan="2">상품명</th>
+              <th class="left-header-col2 text-center" rowspan="2">구분</th>
+              {% for d in dates %}  <!-- 역정렬 -->
+                <th colspan="2" class="text-center">{{ d }}</th>
+              {% endfor %}
+              <th colspan="2" class="text-center">기간 합계</th>
+            </tr>
+            <tr>
+              {% for d in dates %}
+                <th class="text-center">판매량</th>
+                <th class="text-center">매출</th>
+              {% endfor %}
+              <th class="text-center">판매량</th>
+              <th class="text-center">매출</th>
+            </tr>
+            <tr>
+              <th colspan="2" class="left-header-col3 bg-light text-start">일자별 합계</th>
+              {% for d in dates %}
+                {% with ds=date_sums|get_item:d %}
+                  <th class="bg-light text-end">{{ ds.qty|default:0 }}</th>
+                  <th class="bg-light text-end">{{ ds.revenue|default:0 }} 원</th>
+                {% endwith %}
+              {% endfor %}
+              <th class="bg-light text-end">{{ grand_total.qty|default:0 }}</th>
+              <th class="bg-light text-end">{{ grand_total.revenue|default:0 }} 원</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pd in grouped_data %}
+            <!-- 상위행(상품) -->
+            <tr class="fw-bold product-row">
+            <!-- 상품명 칸 -->
+            <td class="left-col1">
+                <!-- (1) 토글 버튼: 초기 표시 "+" -->
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary toggle-btn"
+                        data-idx="{{ forloop.counter }}">+</button>
+
+                <!-- 상품명 텍스트 (버튼 뒤에) -->
+                {{ pd.product_name }}
+            </td>
+
+            <!-- 구분 열 -->
+            <td class="left-col2 text-center">{{ pd.delivery_label }}</td>
+
+            <!-- 날짜 열들 (판매량, 매출) -->
+            {% for d in dates %}
+                {% with ps=pd.product_sales|get_item:d %}
+                <td class="text-end">{{ ps.qty|default:0 }}</td>
+                <td class="text-end">{{ ps.revenue|default:0 }} 원</td>
+                {% endwith %}
+            {% endfor %}
+            <!-- 기간합계 2칸 -->
+            <td class="text-end">{{ pd.product_total.qty|default:0 }}건</td>
+            <td class="text-end">{{ pd.product_total.revenue|default:0 }} 원</td>
+            </tr>
+            {% for opt in pd.options %}
+            <!-- 하위행(옵션) -->
+            <tr style="display:none;"
+                data-parent-idx="{{ forloop.parentloop.counter }}">
+            <!-- 옵션명 칸 -->
+            <td class="left-col1">&nbsp;&nbsp;└ {{ opt.option_name }}</td>
+            
+            <!-- 구분 -->
+            <td class="left-col2 text-center">{{ opt.delivery_label }}</td>
+
+            <!-- 날짜 열들 -->
+            {% for d in dates %}
+                {% with os=opt.option_sales|get_item:d %}
+                <td class="text-end">{{ os.qty|default:0 }}</td>
+                <td class="text-end">{{ os.revenue|default:0 }} 원</td>
+                {% endwith %}
+            {% endfor %}
+            
+            <!-- 옵션 기간합계 2칸 -->
+            <td class="text-end">{{ opt.option_total.qty|default:0 }}건</td>
+            <td class="text-end">{{ opt.option_total.revenue|default:0 }} 원</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted mt-5">데이터가 없습니다.</div>
+      {% endif %}
+    </div>
+  </div>
+</div><!-- //container-fluid -->
+
+
+<!-- (D) 커스텀 스타일 -->
+<style>
+.left-col1,
+.left-col2,
+.left-header-col1,
+.left-header-col2,
+.left-header-col3 {
+  background-color: #f0f0f0 !important;
+  box-shadow: none !important;
+  color:#2d3436;
+}
+.container-fluid {
+  margin-left: 16rem;
+  width: calc(100% - 16rem);
+}
+
+.card {
+  border: none;
+  border-radius: 15px;
+  background-color: #fff;
+  color: #2d3436;
+  padding: 20px;
+}
+
+/* 1) 헤더 2행 고정 
+   첫 행: top:0
+   둘째 행: top:36px (실제 첫 행 높이에 따라 조절)
+*/
+thead tr:nth-child(1) th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #f0f0f0;
+  color: #2d3436;
+}
+thead tr:nth-child(2) th {
+  position: sticky;
+  top: 49px;  /* 예시값, 조정 가능 */
+  z-index: 10;
+  background-color: #f0f0f0;
+  color: #2d3436;
+}
+
+
+/* 2) 왼쪽 헤더(상품명/구분) (rowspan=2) 
+   z-index 높게 → 오른쪽 헤더보다 위로 
+*/
+.left-header-col1 {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 20 !important; /* ← 여기 */
+  background-color: #6c5ce7;
+  color: #2d3436;
+  min-width: 250px;
+
+}
+.left-header-col2 {
+  position: sticky;
+  top: 0;
+  left: 250px; /* 첫 열 폭만큼 띄움, 필요시 조정 */
+  z-index: 20 !important; /* ← 여기 */
+  background-color: #6c5ce7;
+  color: #2d3436;
+  max-width: 150px;
+
+}
+
+.left-header-col3 {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 18 !important; /* ← 여기 */
+  background-color: #6c5ce7;
+  color: #2d3436;
+  min-width: 250px;
+}
+
+/* 3) 본문(데이터) 왼쪽 2열 (수평 고정, 세로 스크롤 따라감) */
+.left-col1 {
+  position: sticky;
+  left: 0;
+  z-index: 15 !important;
+  background-color: #fff;
+  color: #000;
+  min-width: 250px;
+
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  /* ↓↓↓ 핵심: 줄바꿈 허용 + 상위 nowrap override ↓↓↓ */
+  white-space: normal !important; 
+  word-break: break-word;
+  
+}
+.left-col2 {
+  position: sticky;
+  left: 250px;
+  z-index: 15 !important; /* ← 여기 */
+  background-color: #fff;
+  color: #000;
+  min-width: 150px;
+}
+
+/* 4) 짝수행 & hover */
+.table tbody tr:nth-child(even) {
+  background-color: rgba(108, 92, 231, 0.1);
+}
+.table tbody tr:hover {
+  background-color: rgba(108, 92, 231, 0.2);
+}
+/* 고정 열에도 동일 색상 */
+.table tbody tr:nth-child(even) .left-col1,
+.table tbody tr:nth-child(even) .left-col2 {
+  background-color: rgba(108, 92, 231, 0.1);
+}
+.table tbody tr:hover .left-col1,
+.table tbody tr:hover .left-col2 {
+  background-color: rgba(108, 92, 231, 0.2);
+}
+
+/* 5) 테이블 기본 스타일 */
+.table td, .table th {
+  padding: 12px;
+  vertical-align: middle;
+  border-top: 1px solid #dfe6e9;
+  border-bottom: 1px solid #dfe6e9;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+/* 6) 최대 높이 → 세로 스크롤 */
+.table-responsive {
+  max-height: 70vh;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.product-row {
+  background-color: #fff; 
+  border-bottom: 1px solid #ccc; 
+}
+.chart-wrapper {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 20px;
+  background-color: #fff;
+  margin-bottom: 1rem;
+  width: 1000px; /* 원하는 너비 */
+}
+
+/* (A) Flex 레이아웃 */
+.chart-flex {
+  display: flex;       /* 수평으로 나란히 */
+  align-items: flex-start; /* 위쪽 정렬 */
+  gap: 20px;           /* 요소 사이 20px 간격 */
+}
+
+/* (B) 차트 영역 */
+.chart-container {
+  flex: 1;            /* 남은 공간 모두 차트에 할당 (가변 크기) */
+  min-width: 700px;   /* 최소 폭 (원하는 값) */
+  height: 400px;      /* 고정 높이 or max-height 가능 */
+  position: relative; /* 필요 시, 차트 내에서 tooltip이 절대 배치 etc. */
+}
+.chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* (C) 필터 영역 */
+.chart-filter {
+  width: 150px;       /* 원하는 폭 */
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px;
+  position: static;   /* ← 기본, 부모 flex 내부에서 정적 배치 */
+  /* margin-left: 20px; (위에 gap:20px이 이미 있어서 필요 없을 수도 있음) */
+}
+.chart-filter h5 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+/* 1) thead 첫 번째 행: nth-child(1)
+   "2열부터 시작, 1열마다" → 열 인덱스 >=2 (즉 nth-child(n+2)) */
+   thead tr:nth-child(1) th:nth-child(n+2) {
+  border-right: 1px solid #999 !important;
+}
+
+/* 2) thead 두 번째 행: nth-child(2)
+   "2열부터 시작, 2열마다" → 열 #2, #4, #6, ...
+   → nth-child(2n+2) = 2,4,6,8... */
+thead tr:nth-child(2) th:nth-child(2n+2) {
+  border-right: 1px solid #999 !important;
+}
+
+/* 3) thead 세 번째 행: nth-child(3)
+   "1열부터 시작, 2열마다" → 열 #1, #3, #5, #7, ...
+   → nth-child(2n+1) = 1,3,5,7... */
+thead tr:nth-child(3) th:nth-child(2n+1) {
+  border-right: 1px solid #999 !important;
+}
+
+/* 4) tbody (4행부터):
+   "2열부터 시작, 2열마다" → 열 #2, #4, #6, ...
+   → nth-child(2n+2) */
+tbody tr td:nth-child(2n+2) {
+  border-right: 1px solid #999 !important;
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<script>
+function setDateRange(type) {
+  const today = new Date();
+  const start = new Date();
+  if (type === 'today') {
+    // 시작일=종료일=오늘
+  } else if (type === '7days') {
+    start.setDate(today.getDate() - 7);
+  } else if (type === '30days') {
+    start.setDate(today.getDate() - 30);
+  }
+  document.getElementById('start_date').value = formatDate(start);
+  document.getElementById('end_date').value   = formatDate(today);
+}
+function formatDate(d){
+  const yyyy = d.getFullYear();
+  const mm   = String(d.getMonth()+1).padStart(2,'0');
+  const dd   = String(d.getDate()).padStart(2,'0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+  // 2) 차트 데이터 (예: 파이썬->JSON 직렬화)
+  const chartData = JSON.parse('{{ chart_data_json|escapejs }}');
+  // chartData.labels (오름차순, ex: ["2025-02-01","2025-02-02",...])
+  // chartData.total_t_amount, chartData.net_s_amount, etc.
+
+  // (A) 매출 차트
+  const ctxRev = document.getElementById('revenueChart').getContext('2d');
+  const revenueChart = new Chart(ctxRev, {
+    type: 'line',
+    data: {
+      labels: chartData.labels,
+      datasets: [
+        {
+          label: '전체 거래 금액',
+          data: chartData.total_t_amount,
+          borderColor: '#888',
+          backgroundColor: 'rgba(136,136,136,0.2)',
+          fill: false,
+          borderWidth: 2,
+          tension: 0.4,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+        {
+          label: '순 매출',
+          data: chartData.net_s_amount,
+          borderColor: '#000',
+          backgroundColor: 'rgba(0,0,0,0.2)',
+          fill: false,
+          borderWidth: 2,
+          tension: 0.4,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: '매출액(원)' }
+        },
+        x: {
+          title: { display: true, text: '일자' }
+        }
+      },
+      plugins: {
+      // (A) datalabels 옵션
+      datalabels: {
+        display: true,             // 각 데이터 포인트에 라벨 표시
+        color: 'black',            // 라벨 색상
+        align: 'top',              // 라벨 위치 (top/center/bottom 등)
+        offset: 4,                 // 포인트와 라벨 간격
+        formatter: function(value, context) {
+          // 1200000 → "1,200,000" 처럼 천단위 콤마 가능
+          return value.toLocaleString();  
+        },
+        font: {
+          weight: 'bold',
+          size: 12
+        }
+      }
+    }
+    },
+    plugins: [ChartDataLabels]
+
+  });
+
+  // 매출 차트 필터 -> 체크박스
+  document.getElementById('rev-toggle-0').addEventListener('change', function(e) {
+    revenueChart.setDatasetVisibility(0, e.target.checked);
+    revenueChart.update();
+  });
+  document.getElementById('rev-toggle-1').addEventListener('change', function(e) {
+    revenueChart.setDatasetVisibility(1, e.target.checked);
+    revenueChart.update();
+  });
+
+  // (B) 판매량 차트
+  const ctxQty = document.getElementById('quantityChart').getContext('2d');
+  const quantityChart = new Chart(ctxQty, {
+    type: 'line',
+    data: {
+      labels: chartData.labels,
+      datasets: [
+        {
+          label: '전체 거래 상품 수',
+          data: chartData.total_t_items,
+          borderColor: 'blue',
+          backgroundColor: 'rgba(0,0,255,0.2)',
+          fill: false,
+          borderWidth: 2,
+          tension: 0.4,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+        {
+          label: '순 판매 상품 수',
+          data: chartData.net_s_items,
+          borderColor: 'red',
+          backgroundColor: 'rgba(255,0,0,0.2)',
+          fill: false,
+          borderWidth: 2,
+          tension: 0.4,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: '판매량(개)' }
+        },
+        x: {
+          title: { display: true, text: '일자' }
+        }
+      },
+      plugins: {
+      // (A) datalabels 옵션
+      datalabels: {
+        display: true,             // 각 데이터 포인트에 라벨 표시
+        color: 'black',            // 라벨 색상
+        align: 'top',              // 라벨 위치 (top/center/bottom 등)
+        offset: 4,                 // 포인트와 라벨 간격
+        formatter: function(value, context) {
+          // 1200000 → "1,200,000" 처럼 천단위 콤마 가능
+          return value.toLocaleString();  
+        },
+        font: {
+          weight: 'bold',
+          size: 12
+        }
+      }
+    }
+    },
+    plugins: [ChartDataLabels]
+
+  });
+
+  // 판매량 차트 필터 -> 체크박스
+  document.getElementById('qty-toggle-0').addEventListener('change', function(e) {
+    quantityChart.setDatasetVisibility(0, e.target.checked);
+    quantityChart.update();
+  });
+  document.getElementById('qty-toggle-1').addEventListener('change', function(e) {
+    quantityChart.setDatasetVisibility(1, e.target.checked);
+    quantityChart.update();
+  });
+  document.addEventListener('DOMContentLoaded', function() {
+  // 모든 토글 버튼 가져오기
+  const toggleButtons = document.querySelectorAll('.toggle-btn');
+
+  toggleButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      // (1) 상위행 식별자
+      const idx = btn.dataset.idx;
+
+      // (2) 해당 idx를 parent-idx로 가진 하위행(옵션행 + 합계행) 찾기
+      const subRows = document.querySelectorAll(`tr[data-parent-idx="${idx}"]`);
+
+      // (3) 표시/숨김 토글
+      subRows.forEach(row => {
+        if (row.style.display === 'none') {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+
+      // (4) 버튼 텍스트 [+] ↔ [-] 변경
+      btn.textContent = (btn.textContent === '+') ? '-' : '+';
+    });
+  });
+});
+</script>
+{% endblock %}

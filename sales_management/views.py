@@ -2639,3 +2639,702 @@ def update_costs_from_seller_tool_view(request):
         messages.error(request, f"에러 발생: {str(e)}")
 
     return redirect('profit_report')
+
+
+
+
+
+#네이버 시작
+
+import json
+from collections import defaultdict
+from django.http import JsonResponse
+from django.shortcuts import render
+
+from .api_clients import NAVER_ACCOUNTS, fetch_naver_products_with_details, fetch_naver_sales
+from .models import naverItem, NaverDailySales
+def naver_product_list_view(request):
+    from django.db.models import Q
+    from .models import naverItem
+
+    search_query = request.GET.get('search_query', '').strip()
+
+    qs = naverItem.objects.all()
+    if search_query:
+        qs = qs.filter(
+            Q(productID__icontains=search_query)
+            | Q(skuID__icontains=search_query)
+            | Q(itemName__icontains=search_query)
+            | Q(option_name__icontains=search_query)
+            | Q(optioncode__icontains=search_query)
+            | Q(account_name__icontains=search_query)
+        ).distinct()
+
+    total_count = qs.count()
+
+    # (A) productID별로 grouped_data 구성
+    grouped_data = {}
+    for item in qs:
+        pid = item.productID
+        if pid not in grouped_data:
+            grouped_data[pid] = {
+                'items': []
+            }
+        grouped_data[pid]['items'].append(item)
+
+    # (B) 여기서 **수수료 금액** 계산해서, 각 item에 임시 속성으로 추가
+    #     수수료 금액 = sale_price * market_fee
+    for pid, data_dict in grouped_data.items():
+        for item_obj in data_dict['items']:
+            # int로 반올림(원 단위). 필요하다면 math.floor/ceil/Decimal 등 추가 처리
+            item_obj.calculated_fee = int(item_obj.sale_price * item_obj.market_fee)
+
+    context = {
+        'search_query': search_query,
+        'total_count': total_count,
+        'grouped_data': grouped_data,
+    }
+    return render(request, 'sales_management/naver_product_list.html', context)
+
+
+
+def naver_update_products(request):
+    """
+    1) fetch_naver_products_with_details 로 전체 상품 + 옵션 정보를 가져온다.
+    2) naverItem DB 테이블에 저장/갱신한다.
+    """
+    if request.method == 'POST':
+        # (A) 어떤 네이버 계정을 쓸지 결정 (예시는 첫 번째)
+        account_info = NAVER_ACCOUNTS[0]
+
+        # (B) 상품 + 옵션 목록 가져오기
+        success, product_list = fetch_naver_products_with_details(account_info)
+        if not success:
+            # 실패 시 product_list는 에러 메시지
+            messages.error(request, f"네이버 상품 목록 조회 실패: {product_list}")
+            return redirect('product_list')
+
+        # (C) DB 저장
+        count_saved = save_naver_products_to_db(product_list, account_info)
+
+        # (D) 성공 메시지
+        messages.success(request, f"네이버 상품데이터 {count_saved}건 저장/갱신 완료.")
+        return redirect('naver_product_list')
+
+    else:
+        # GET이면 그냥 리다이렉트
+        return redirect('naver_product_list')
+    
+def save_naver_products_to_db(product_list, account_info):
+    """
+    네이버 상품 목록(product_list)을 받아 naverItem 모델에 저장/갱신한다.
+    - product_list = [
+        {
+          "originProductNo": ...,
+          "productName": ...,
+          "representativeImage": ...,
+          "salePrice": ...,
+          "discountedPrice": ...,
+          "stockQuantity": ...,
+          "sellerCodeInfo": { "sellerManagerCode": ... },
+          "optionCombinations": [
+              { "id":..., "optionName1":..., "sellerManagerCode":..., "price":..., ... },
+              ...
+          ]
+        }, ...
+      ]
+    """
+    from .models import naverItem
+
+    # 예: account_info['names'][0] 에 스토어명/브랜드명 등이 들어있다고 가정
+    brand_name = account_info['names'][0] if 'names' in account_info else "(브랜드미지정)"
+    
+    count = 0
+    
+    for product in product_list:
+        productID       = product.get("originProductNo")  # 상품ID
+        productName     = product.get("productName")      # 상품명
+        discountedPrice = product.get("discountedPrice", 0)  # 정가(할인가)
+        
+        option_combos   = product.get("optionCombinations") or []
+        
+        # 옵션 정보가 하나 이상 있으면, 옵션별로 저장
+        if option_combos:
+            for combo in option_combos:
+                sku_id     = combo.get("id")                 # SKUID
+                if not sku_id:
+                    # sku_id가 없으면 건너뜀
+                    continue
+                
+                optioncode = combo.get("sellerManagerCode", "")
+                optionName = combo.get("optionName1", "")
+                optionPrice= combo.get("price", 0)
+
+                # (A) update_or_create 로 DB에 저장/갱신
+                obj, created = naverItem.objects.update_or_create(
+                    skuID=sku_id,  # unique 필드
+                    defaults={
+                        'productID': productID,
+                        'optioncode': optioncode,
+                        'delivery_label': "판매자배송",  # 고정
+                        'itemName': productName,
+                        'option_name': optionName,
+                        'product_price': discountedPrice,
+                        'option_price': optionPrice,
+                        'account_name': brand_name,
+                        'market_fee': 0.04,  # 4%
+                        # sale_price와 profit은 model의 save()에서 자동 계산됨
+                    }
+                )
+                count += 1
+
+        else:
+            # 만약 옵션이 전혀 없는 상품이라면 => 단일 상품으로 처리
+            # 이때 skuID가 필요하다면 "originProductNo"로 대체하거나, 다른 고유값을 정해둬야 함
+            # 예시로 skuID=originProductNo 로 처리:
+            sku_id = productID
+            obj, created = naverItem.objects.update_or_create(
+                skuID=sku_id,
+                defaults={
+                    'productID': productID,
+                    'optioncode': "",
+                    'delivery_label': "판매자배송",
+                    'itemName': productName,
+                    'option_name': "",  # 옵션 없음
+                    'product_price': discountedPrice,
+                    'option_price': 0,
+                    'account_name': brand_name,
+                    'market_fee': 0.04,
+                }
+            )
+            count += 1
+
+    return count
+
+
+def update_naver_option_list(request):
+    """
+    네이버 API로부터 상품/옵션 리스트를 받아, OutOfStock 모델에 매핑해서 업데이트한다.
+    """
+    account_name = request.GET.get("account_name", "").strip()
+    if not account_name:
+        return JsonResponse({"error": "account_name이 없습니다."}, status=400)
+
+    # 1) 네이버 계정 찾기
+    account_info = None
+    for acct in NAVER_ACCOUNTS:
+        if account_name in acct["names"]:
+            account_info = acct
+            break
+
+    if not account_info:
+        msg = f"[update_naver_option_list] 계정 '{account_name}'을 NAVER_ACCOUNTS에서 찾을 수 없습니다."
+        logger.warning(msg)
+        return JsonResponse({"error": msg}, status=400)
+
+    # 2) 네이버 상품/옵션 목록 가져오기
+    is_ok, detailed_list = fetch_naver_products_with_details(account_info)
+    if not is_ok:
+        logger.error(f"[update_naver_option_list] fetch fail: {detailed_list}")
+        return JsonResponse({"error": "네이버 상품목록 조회 실패", "detail": detailed_list}, status=400)
+
+    logger.debug(f"[update_naver_option_list] detailed_list count={len(detailed_list)}")
+
+    # 업데이트된 OutOfStock 레코드(또는 생성된 레코드) 수
+    updated_count = 0
+
+    for prod_data in detailed_list:
+        # 공통 영역(상품 레벨)
+        origin_no      = prod_data.get("originProductNo")            # 상품ID
+        rep_image_dict = prod_data.get("representativeImage", {})     # 대표이미지
+        if isinstance(rep_image_dict, dict):
+            rep_img_url = rep_image_dict.get("url", "")
+        else:
+            rep_img_url = ""
+
+        # 네이버에서 사용하는 '정가(salePrice)'와 '할인가(discountedPrice)'
+        naver_sale_price       = prod_data.get("salePrice", 0)        # 정가
+        naver_discounted_price = prod_data.get("discountedPrice", 0)  # 할인가
+        product_name           = prod_data.get("productName", "")     # 주문상품명(주문 시 노출되는 상품명)
+
+        # (옵션 목록 파싱)
+        option_combos = prod_data.get("optionCombinations", [])
+        if not option_combos:
+            # 옵션이 없는 단일상품인 경우도 처리 가능
+            # 여기서는 단일상품이라면 option_id를 임의로 처리하거나 생략할 수 있습니다.
+            # 예시) option_id를 origin_no 로 대체
+            single_option_id_stock = prod_data.get("stockQuantity", 0)
+
+            _, created = OutOfStock.objects.update_or_create(
+                option_id=str(origin_no),  # 옵션ID가 꼭 있어야 unique한 항목이므로
+                defaults={
+                    "platform_name":          account_name,     # 플랫폼명
+                    "representative_image":   rep_img_url,      # 대표이미지
+                    "product_id":             origin_no,        # 상품ID
+                    "option_id_stock":        single_option_id_stock,
+                    "expected_restock_date":  None,             # API상 별도 필드가 없으므로 None
+                    "order_product_name":     product_name,
+                    "order_option_name_01":   "",               # 단일상품이므로 옵션명 비어있음
+                    "order_option_name_02":   "",               # 단일상품이므로 옵션명 비어있음
+                    "option_code":            "",               # 단일상품이므로 (or sellerManagerCode가 없으므로)
+                    "original_price":         naver_sale_price,
+                    "sale_price":             naver_discounted_price,
+                    "add_option_price":       0,                # 단일상품이라 추가옵션가 없음
+                    # out_of_stock_at, updated_at 은 자동 or 상황에 따라 세팅
+                }
+            )
+            updated_count += 1
+            continue
+
+        # 옵션이 여러 개 존재하는 경우
+        for combo in option_combos:
+            opt_id      = combo.get("id")                     # 옵션ID
+            opt_stk     = combo.get("stockQuantity", 0)       # 옵션ID재고
+            opt_name1   = combo.get("optionName1", "")        # 주문옵션명01
+            opt_name2   = combo.get("optionName2", "")        # 주문옵션명02
+            opt_code    = combo.get("sellerManagerCode", "")  # 옵션코드
+            add_opt_prc = combo.get("price", 0)               # 추가옵션가
+
+            # OutOfStock 업데이트 (option_id 가 unique)
+            _, created = OutOfStock.objects.update_or_create(
+                option_id=str(opt_id),  # 필드 unique=True
+                defaults={
+                    "platform_name":         account_name,       # 플랫폼명
+                    "representative_image":  rep_img_url,        # 대표이미지
+                    "product_id":            origin_no,          # 상품ID
+                    "option_id_stock":       opt_stk,            # 옵션ID재고
+                    "expected_restock_date": None,               # 현재 API 데이터 없음
+                    "order_product_name":    product_name,       # 주문상품명 = productName
+                    "order_option_name_01":  opt_name1,          # 주문옵션명01
+                    "order_option_name_02":  opt_name2,          # 주문옵션명02 (추가)
+                    "option_code":           opt_code,           # 옵션코드 = sellerManagerCode
+                    "original_price":        naver_sale_price,   # 정가 = salePrice
+                    "sale_price":            naver_discounted_price,  # 할인가 = discountedPrice
+                    "add_option_price":      add_opt_prc,        # 추가옵션가 = combo.price
+                    # out_of_stock_at, updated_at → 필요 시 추가 로직
+                }
+            )
+            updated_count += 1
+
+    return JsonResponse({
+        "message": f"{account_name} 상품/옵션 {updated_count}건 업데이트 완료",
+        "count": updated_count,
+    })
+
+def naver_update_sales_view(request):
+    logger.info("===== [naver_update_sales_view] CALLED =====")
+    if request.method == 'POST':
+        logger.info("POST로 들어옴!")
+        start_str = request.POST.get('fetch_start_date')
+        end_str   = request.POST.get('fetch_end_date')
+        logger.info(f"[DEBUG] start_str={start_str}, end_str={end_str}")
+
+        if start_str and end_str:
+            try:
+                from datetime import datetime
+                import json
+
+                start_dt = datetime.strptime(start_str, '%Y-%m-%d')
+                end_dt   = datetime.strptime(end_str,   '%Y-%m-%d')
+
+                account_info = NAVER_ACCOUNTS[0]
+                logger.info("[DEBUG naver_update_sales_view] calling fetch_naver_sales with start=%s end=%s", start_dt, end_dt)
+
+                result = fetch_naver_sales(account_info, start_dt, end_dt)
+
+                # (A) ★ 여기서 result를 로그로 찍어본다 (최대 1000자)
+                logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales 'result' =>\n%s",
+                    json.dumps(result, ensure_ascii=False, indent=2)[:1000]
+                )
+
+                # (B) 이하 기존 로직
+                if isinstance(result, dict):
+                    orders = result.get("data", [])
+                    logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales returned dict with len(orders)=%d", len(orders))
+                elif isinstance(result, list):
+                    orders = result
+                    logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales returned list len=%d", len(orders))
+                else:
+                    orders = []
+                    logger.warning("[DEBUG naver_update_sales_view] fetch_naver_sales returned unknown type: %s", type(result))
+
+                if orders:
+                    logger.info("[DEBUG] calling update_naver_daily_sales with orders len=%d", len(orders))
+                    update_naver_daily_sales(orders, account_info)
+                else:
+                    logger.info("[DEBUG] no orders to save, skip update_naver_daily_sales")
+
+                messages.success(request, f"네이버 매출 ({start_str} ~ {end_str}) 업데이트 완료!")
+            except Exception as e:
+                logger.error("[ERROR] 네이버 매출 업데이트 중 예외 발생", exc_info=True)
+                messages.error(request, f"네이버 매출 업데이트 오류: {str(e)}")
+        else:
+            messages.warning(request, "날짜를 선택해주세요!")
+
+        return redirect('naver_sales_report')
+    else:
+        return redirect('naver_sales_report') 
+
+def naver_sales_report_view(request):
+    logger.info("===== [naver_sales_report_view] START =====")
+
+    # 1) GET 파라미터(start_date, end_date) 받아오기
+    start_str = request.GET.get('start_date', '')
+    end_str   = request.GET.get('end_date', '')
+
+    if start_str and end_str:
+        try:
+            start_date = datetime.strptime(start_str, "%Y-%m-%d").date()
+            end_date   = datetime.strptime(end_str,   "%Y-%m-%d").date()
+        except ValueError:
+            # 날짜 파싱 실패 시, 기본 14일 전 ~ 어제
+            start_date = date.today() - timedelta(days=14)
+            end_date   = date.today() - timedelta(days=1)
+    else:
+        # 파라미터 없으면 기본 14일 전 ~ 어제
+        start_date = date.today() - timedelta(days=14)
+        end_date   = date.today() - timedelta(days=1)
+
+    # 2) 전체 날짜 리스트 (오름차순)
+    day_count = (end_date - start_date).days + 1
+    date_list = [start_date + timedelta(days=i) for i in range(day_count)]
+
+    # (A) 테이블용 dates = 역정렬 (최근 날짜가 왼쪽)
+    table_dates = [d.strftime('%Y-%m-%d') for d in date_list]
+    table_dates.reverse()  # ex) ["2025-02-22","2025-02-21", ...]
+
+    # (B) 차트용 dates = 오름차순 그대로
+    chart_dates = [d.strftime('%Y-%m-%d') for d in date_list]
+
+    # 3) DB 필터링
+    #    date 필드는 "YYYY-MM-DD" 문자열이라고 가정
+    daily_qs = NaverDailySales.objects.filter(
+        date__gte=start_date.strftime('%Y-%m-%d'),
+        date__lte=end_date.strftime('%Y-%m-%d')
+    ).order_by('date')
+
+    # ---------------------------
+    # (I) 테이블용 grouped_data (역정렬)
+    # ---------------------------
+    from collections import defaultdict
+
+    grouped_data_dict = {}
+    # date_sums: 각 날짜별 합계 { "2025-02-21": { "qty":..., "revenue":... }, ... }
+    date_sums = {td: {"qty":0, "revenue":0} for td in table_dates}
+
+    grand_total_qty = 0
+    grand_total_rev = 0
+
+    for row in daily_qs:
+        product_name = row.product_name or "(상품명없음)"
+        option_name  = row.option_name or "(옵션없음)"
+
+        # "net" 판매량, 매출 => (결제 - 환불)
+        net_qty     = row.sales_qty - row.refunded_qty
+        net_revenue = row.sales_revenue - row.refunded_revenue
+
+        # 테이블에 날짜는 row.date ex) "2025-02-21"
+        dstr = row.date
+
+        # 1) grouped_data_dict[product_name] 초기화
+        if product_name not in grouped_data_dict:
+            grouped_data_dict[product_name] = {
+                "product_name": product_name,
+                "delivery_label": "판매자배송",  # 전부 판매자배송
+                "product_sales": {},  # { date_str: { qty, revenue } }
+                "options": {}
+            }
+
+        # 2) 옵션 레벨 초기화
+        if option_name not in grouped_data_dict[product_name]["options"]:
+            grouped_data_dict[product_name]["options"][option_name] = {
+                "option_name": option_name,
+                "delivery_label": "판매자배송",
+                "option_sales": {}
+            }
+
+        # 3) 옵션 레벨 sales
+        opt_sales = grouped_data_dict[product_name]["options"][option_name]["option_sales"]
+        if dstr not in opt_sales:
+            opt_sales[dstr] = {"qty":0, "revenue":0}
+        opt_sales[dstr]["qty"]     += net_qty
+        opt_sales[dstr]["revenue"] += net_revenue
+
+        # 4) 상품 레벨 sales
+        prod_sales = grouped_data_dict[product_name]["product_sales"]
+        if dstr not in prod_sales:
+            prod_sales[dstr] = {"qty":0, "revenue":0}
+        prod_sales[dstr]["qty"]     += net_qty
+        prod_sales[dstr]["revenue"] += net_revenue
+
+    # 이제 date_sums, grand_total
+    grouped_data = []
+    for p_key, p_val in grouped_data_dict.items():
+        # 상품별 합계
+        product_total_qty = 0
+        product_total_rev = 0
+
+        # 상품 레벨 dict ex) p_val["product_sales"] = { "2025-02-21":{qty:..,rev:..}, ... }
+        for d_str, val in p_val["product_sales"].items():
+            product_total_qty += val["qty"]
+            product_total_rev += val["revenue"]
+            # date_sums
+            if d_str in date_sums:
+                date_sums[d_str]["qty"]     += val["qty"]
+                date_sums[d_str]["revenue"] += val["revenue"]
+
+        # 옵션 목록
+        option_list = []
+        for o_key, o_val in p_val["options"].items():
+            # 옵션별 합계
+            opt_total_qty = 0
+            opt_total_rev = 0
+            for d_str, oval in o_val["option_sales"].items():
+                opt_total_qty += oval["qty"]
+                opt_total_rev += oval["revenue"]
+
+            option_list.append({
+                "option_name": o_val["option_name"],
+                "delivery_label": o_val["delivery_label"],
+                "option_sales": o_val["option_sales"],
+                "option_total": {
+                    "qty": opt_total_qty,
+                    "revenue": opt_total_rev
+                }
+            })
+
+        grouped_data.append({
+            "product_name": p_val["product_name"],
+            "delivery_label": p_val["delivery_label"],
+            "product_sales": p_val["product_sales"],
+            "product_total": {
+                "qty": product_total_qty,
+                "revenue": product_total_rev
+            },
+            "options": option_list
+        })
+
+        grand_total_qty += product_total_qty
+        grand_total_rev += product_total_rev
+
+    # ---------------------------
+    # (II) 차트용 데이터 (오름차순)
+    # chart_dates= ["2025-02-10","2025-02-11",... ascending]
+    # "total_t_amount" / "net_s_amount" / "total_t_items" / "net_s_items" 
+    #   => 여기서는 단순히 sales_qty/revenue vs refunded, 
+    #   => or "net" vs "total" 구분 가능. 
+    #   아래 예: total= sales, net= (sales - refunded)
+    #   but user said "네이버에는 순매출, 순판매상품수 이런건 없어" 
+    #   We can adapt them to show "sales_revenue" & "net_revenue" etc.
+    daily_dict = defaultdict(lambda: {
+        "total_t_amount": 0,
+        "net_s_amount": 0,
+        "total_t_items": 0,
+        "net_s_items": 0
+    })
+
+    for row in daily_qs:
+        dstr = row.date
+        # total => 결제, net => (결제-환불)
+        total_amount = row.sales_revenue
+        net_amount   = row.sales_revenue - row.refunded_revenue
+        total_items  = row.sales_qty
+        net_items    = row.sales_qty - row.refunded_qty
+
+        daily_dict[dstr]["total_t_amount"] += total_amount
+        daily_dict[dstr]["net_s_amount"]   += net_amount
+        daily_dict[dstr]["total_t_items"]  += total_items
+        daily_dict[dstr]["net_s_items"]    += net_items
+
+    chart_data = {
+        "labels": chart_dates,  # 오름차순
+        "total_t_amount": [],
+        "net_s_amount": [],
+        "total_t_items": [],
+        "net_s_items": []
+    }
+
+    # 차트용 fill
+    for d in chart_dates:
+        chart_data["total_t_amount"].append(daily_dict[d]["total_t_amount"])
+        chart_data["net_s_amount"].append(daily_dict[d]["net_s_amount"])
+        chart_data["total_t_items"].append(daily_dict[d]["total_t_items"])
+        chart_data["net_s_items"].append(daily_dict[d]["net_s_items"])
+
+    chart_data_json = json.dumps(chart_data)
+
+    # 4) context
+    context = {
+        "start_date": start_date,
+        "end_date": end_date,
+
+        # 테이블(역정렬) 데이터
+        "dates": table_dates,
+        "grouped_data": grouped_data,
+        "date_sums": date_sums,
+        "grand_total": {"qty": grand_total_qty, "revenue": grand_total_rev},
+
+        # 차트(오름차순)
+        "chart_data_json": chart_data_json,
+    }
+
+    logger.info("===== [naver_sales_report_view] END =====")
+    return render(request, "sales_management/naver_sales_report.html", context)
+
+
+
+def update_naver_daily_sales(order_list, account_info):
+    """
+    :param order_list: 네이버 API로부터 받아온 주문 목록 
+                      (각 item: { productOrder: {...}, order: {...} })
+    :param account_info: { "names": ["스토어명1", ...], ... } 형태
+    """
+    from .models import NaverDailySales
+
+    logger.info("===== [update_naver_daily_sales] START =====")
+
+    # (A) account_info에서 스토어 이름 추출
+    if "names" in account_info and account_info["names"]:
+        store_name = account_info["names"][0]
+    else:
+        store_name = "(네이버스토어)"
+
+    # (B) 결제(+)로 간주할 상태 목록
+    PAID_STATUSES = ("PAYED", "DELIVERING", "DELIVERED", "PURCHASE_DECIDED")
+
+    for item in order_list:
+        product_part = item.get("productOrder", {})
+        order_part   = item.get("order", {})
+
+        # 주요 필드
+        order_id       = product_part.get("productOrderId", "")
+        product_status = product_part.get("productOrderStatus", "")
+        qty            = product_part.get("quantity", 0)
+        total_pay_amt  = product_part.get("totalPaymentAmount", 0)
+
+        # 수수료(paymentCommission + knowledgeShoppingSellingInterlockCommission)
+        payment_commission   = product_part.get("paymentCommission", 0)
+        knowledge_commission = product_part.get("knowledgeShoppingSellingInterlockCommission", 0)
+        market_fee_val       = payment_commission + knowledge_commission
+
+        # 상품명/옵션
+        product_name = product_part.get("productName", "")
+        product_opt  = product_part.get("productOption", "")
+        option_code  = product_part.get("optionCode", "")
+
+        # 날짜(결제일)
+        payment_date_str = order_part.get("paymentDate", "")
+        date_str = payment_date_str[:10] if len(payment_date_str) >= 10 else ""
+
+        logger.info(f"[update_naver_daily_sales] orderID={order_id}, status={product_status}, store={store_name}")
+
+        # (C) DB에서 기존 레코드 조회
+        try:
+            sales_obj = NaverDailySales.objects.get(order_ID=order_id)
+            logger.info(" -> existing record found.")
+        except NaverDailySales.DoesNotExist:
+            sales_obj = None
+
+        # (D) 상태별 처리
+        if product_status in PAID_STATUSES:
+            # ------------------
+            # 1) 결제(+) 처리
+            # ------------------
+            if not sales_obj:
+                # 레코드가 없다면 새로 생성
+                sales_obj = NaverDailySales(
+                    date=date_str,
+                    store=store_name,
+                    order_ID=order_id,
+                    product_name=product_name,
+                    product_id=order_id,
+                    option_name=product_opt,
+                    option_id=option_code,
+                    sales_qty=qty,
+                    sales_revenue=total_pay_amt,
+                    refunded_qty=0,
+                    refunded_revenue=0,
+                    market_fee=market_fee_val,
+                )
+                logger.info(f" -> create new record: +qty={qty}, +rev={total_pay_amt}, +fee={market_fee_val}")
+                sales_obj.save()
+            else:
+                # 레코드가 이미 있으면 => 결제정보 '갱신 안 함' (skip)
+                logger.info(" -> record already exists => skip update (+)")
+
+        elif product_status == "RETURNED":
+            # ------------------
+            # 2) 반품 => 환불(-)
+            # ------------------
+            if not sales_obj:
+                # 없는 경우 → 새로 만들 수도, 스킵할 수도 있음
+                sales_obj = NaverDailySales(
+                    date=date_str,
+                    store=store_name,
+                    order_ID=order_id,
+                    product_name=product_name,
+                    product_id=order_id,
+                    option_name=product_opt,
+                    option_id=option_code,
+                    sales_qty=0,
+                    sales_revenue=0,
+                    refunded_qty=qty,
+                    refunded_revenue=total_pay_amt,
+                    market_fee=market_fee_val,
+                )
+                logger.info(f" -> create new record for RETURNED: -qty={qty}, -rev={total_pay_amt}")
+                sales_obj.save()
+            else:
+                # 기존 레코드가 있다면 환불수량/금액 - 반영
+                sales_obj.refunded_qty     += qty
+                sales_obj.refunded_revenue += total_pay_amt
+                logger.info(f" -> update record for RETURNED: -qty={qty}, -rev={total_pay_amt}")
+                sales_obj.save()
+
+        elif product_status == "CANCELED":
+            # ------------------
+            # 3) 취소 => 환불(-) (기존 레코드 있어야만)
+            # ------------------
+            if sales_obj:
+                sales_obj.refunded_qty     += qty
+                sales_obj.refunded_revenue += total_pay_amt
+                logger.info(f" -> update record for CANCELED: -qty={qty}, -rev={total_pay_amt}")
+                sales_obj.save()
+            else:
+                logger.info(f" -> canceled but no record => skip")
+
+        else:
+            logger.info(f" -> status={product_status}, skip")
+
+    logger.info("===== [update_naver_daily_sales] END =====")
+
+
+
+
+def deleted_naver_sales(request):
+    if request.method == 'POST':
+        from django.contrib import messages
+        # NaverDailySales 모델 임포트
+        from .models import NaverDailySales
+
+        # 모든 레코드 삭제
+        NaverDailySales.objects.all().delete()
+
+        messages.success(request, "네이버 매출 데이터 전체 삭제 완료!")
+        return redirect('naver_sales_report')  # 혹은 원하는 페이지로
+
+    # GET이면 그냥 리다이렉트
+    return redirect('naver_sales_report')
+
+
+
+
+
+def naver_ad_report_view(request):
+    return render(request, 'sales_management/naver_ad_report.html')
+
+def naver_profit_report_view(request):
+    return render(request, 'sales_management/naver_profit_report.html')
+
+
+

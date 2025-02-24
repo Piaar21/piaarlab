@@ -458,3 +458,561 @@ def fetch_seller_tool_option_info(option_codes):
     # 응답 JSON
     data = response.json()
     return data
+
+
+
+
+#네이버시작
+import requests
+import time
+import hmac
+import hashlib
+from decouple import config
+import logging
+import urllib.parse
+import json
+from datetime import datetime, timedelta,timezone
+import pytz
+import bcrypt
+import base64
+from proxy_config import proxies
+from collections import defaultdict
+
+# 네이버 계정 정보 불러오기
+NAVER_ACCOUNTS = [
+    {
+        'names': ['니뜰리히'],  # 예: 동일 계정에 여러 변형된 이름
+        'client_id': config('NAVER_CLIENT_ID_01', default=None),
+        'client_secret': config('NAVER_CLIENT_SECRET_01', default=None),
+    },
+    {
+        'names': ['수비다', '수비다 SUBIDA'],  # 예: 여러 스토어명 변형
+        'client_id': config('NAVER_CLIENT_ID_02', default=None),
+        'client_secret': config('NAVER_CLIENT_SECRET_02', default=None),
+    },
+    {
+        'names': ['노는개최고양', '노는 개 최고양'],  # 예: 스페이스나 변형된 이름
+        'client_id': config('NAVER_CLIENT_ID_03', default=None),
+        'client_secret': config('NAVER_CLIENT_SECRET_03', default=None),
+    },
+    {
+        'names': ['아르빙'],  # 예: 공백 추가 변형
+        'client_id': config('NAVER_CLIENT_ID_04', default=None),
+        'client_secret': config('NAVER_CLIENT_SECRET_04', default=None),
+    },
+    # 필요에 따라 추가
+]
+
+
+# 네이버 API 액세스 토큰 가져오기
+def fetch_naver_access_token(account_info):
+    # 타임스탬프 생성 (밀리초 단위)
+    timestamp = str(int(time.time() * 1000) - 3000)
+    pwd = f"{account_info['client_id']}_{timestamp}".encode('utf-8')
+
+    # bcrypt를 사용하여 client_secret_sign 생성
+    bcrypt_salt = account_info['client_secret'].encode('utf-8')
+    hashed_pwd = bcrypt.hashpw(pwd, bcrypt_salt)
+    client_secret_sign = base64.urlsafe_b64encode(hashed_pwd).decode('utf-8')
+
+    url = 'https://api.commerce.naver.com/external/v1/oauth2/token'
+    params = {
+        'client_id': account_info['client_id'],
+        'timestamp': timestamp,
+        'client_secret_sign': client_secret_sign,
+        'grant_type': 'client_credentials',
+        'type': 'SELF'
+    }
+    response = requests.post(url, data=params,proxies=proxies)
+    if response.status_code == 200:
+        token_data = response.json()
+        access_token = token_data['access_token']
+        expires_in = token_data.get('expires_in', 0)
+        account_info['access_token'] = access_token
+        account_info['token_expires_at'] = datetime.now() + timedelta(seconds=expires_in)
+        return access_token
+    else:
+        logger.error(f"{account_info['names'][0]} 액세스 토큰 발급 실패: {response.text}")
+        return None
+
+
+    
+def get_access_token(account_info):
+    print("account_info in fetch_naver_access_token:", account_info)
+    access_token = account_info.get('access_token')
+    expires_at = account_info.get('token_expires_at')
+
+    if access_token and expires_at and expires_at > datetime.now():
+        return access_token
+    else:
+        return fetch_naver_access_token(account_info)
+
+
+
+def fetch_naver_products(account_info, max_count=5):
+    access_token = fetch_naver_access_token(account_info)
+    if not access_token:
+        logger.error(f"{account_info['names'][0]}: 액세스 토큰 발급 실패!")
+        return False, "토큰 발급 실패"
+
+    url = "https://api.commerce.naver.com/external/v1/products/search"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    PAGE_SIZE = 50
+    MAX_RETRIES = 3
+
+    all_products = []
+    current_page = 1
+
+    while True:
+        payload = {
+            "searchKeywordType": "SELLER_CODE",
+            "productStatusTypes": ["SALE","OUTOFSTOCK"],
+            "page": current_page,
+            "size": PAGE_SIZE,
+            "orderType": "NO",
+        }
+
+        logger.debug(f"[fetch_naver_products] Request(page={current_page}) => {url}, payload={payload}")
+
+        retry_count = 0
+        while retry_count < MAX_RETRIES:
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=30, proxies=proxies)
+                logger.debug(f"[fetch_naver_products] status_code={resp.status_code}")
+                logger.debug(f"[fetch_naver_products] response snippet => {resp.text[:300]}")
+
+                if resp.status_code == 429:
+                    logger.warning("Rate Limit 발생! 10초 후 재시도...")
+                    time.sleep(10)
+                    retry_count += 1
+                    continue
+
+                elif resp.status_code == 200:
+                    data = resp.json()
+                    products = data.get("contents", [])
+                    total_el = data.get("totalElements", 0)
+
+                    all_products.extend(products)
+
+                    # 만약 누적된 상품이 max_count(5개) 이상이면 그만 가져옴
+                    if len(all_products) >= max_count:
+                        # 필요한 만큼만 잘라서 반환
+                        return True, all_products[:max_count]
+
+                    # 다음 페이지 갈지 말지 결정
+                    if len(products) < PAGE_SIZE or len(all_products) >= total_el:
+                        # 더 이상 페이지가 없으면 반환 (5개 미만일 수도 있지만)
+                        return True, all_products
+
+                    current_page += 1
+                    break
+
+                else:
+                    detail_msg = f"{resp.status_code}, {resp.text}"
+                    logger.error(f"{account_info['names'][0]} 상품목록 조회 실패: {detail_msg}")
+                    return False, detail_msg
+
+            except requests.exceptions.RequestException as e:
+                msg = f"{account_info['names'][0]} 상품목록 조회 중 예외 발생: {str(e)}"
+                logger.error(msg)
+                return False, msg
+
+        if retry_count >= MAX_RETRIES:
+            msg = f"{account_info['names'][0]} 429 재시도 {MAX_RETRIES}회 초과, 목록 조회 중단"
+            logger.error(msg)
+            return False, msg
+
+def get_naver_minimal_product_info(account_info, origin_product_no):
+    """
+    네이버 원상품(originProduct) 상세 정보를 조회하고,
+    대표이미지/판매가/재고수량/옵션정보 등을 추출해 dict로 반환.
+    """
+    access_token = fetch_naver_access_token(account_info)
+    if not access_token:
+        msg = f"{account_info['names'][0]}: 액세스 토큰 발급 실패!"
+        return False, msg
+
+    url = f"https://api.commerce.naver.com/external/v2/products/origin-products/{origin_product_no}"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    MAX_RETRIES = 3
+    retry_count = 0
+
+    while retry_count < MAX_RETRIES:
+        try:
+            resp = requests.get(url, headers=headers, timeout=30, proxies=proxies)
+
+            if resp.status_code == 429:
+                time.sleep(10)
+                retry_count += 1
+                continue
+
+            elif resp.status_code == 200:
+                data = resp.json()
+                logger.debug(
+                    "[DETAIL] originNo=%s response data:\n%s",
+                    origin_product_no,
+                    json.dumps(data, ensure_ascii=False, indent=2)
+                )
+
+                origin_prod = data.get("originProduct", {})
+                sale_price  = origin_prod.get("salePrice")
+                stock_qty   = origin_prod.get("stockQuantity")
+
+                images_part = origin_prod.get("images", {})
+                rep_img_dict = images_part.get("representativeImage", {})
+
+                detail_attr = origin_prod.get("detailAttribute", {})
+                option_info   = detail_attr.get("optionInfo", {})
+                option_combos = option_info.get("optionCombinations", [])
+
+                # 옵션 파싱
+                option_rows = []
+                for combo in option_combos:
+                    row = {
+                        "id": combo.get("id"),
+                        "optionName1": combo.get("optionName1"),
+                        "optionName2": combo.get("optionName2"),
+                        "stockQuantity": combo.get("stockQuantity"),
+                        "price": combo.get("price"),
+                        "sellerManagerCode": combo.get("sellerManagerCode"),
+                    }
+                    option_rows.append(row)
+
+                seller_code_dict = detail_attr.get("sellerCodeInfo", {})
+                seller_mgmt_code = seller_code_dict.get("sellerManagerCode", "")
+
+                result = {
+                    "representativeImage": rep_img_dict,
+                    "salePrice": sale_price,
+                    "stockQuantity": stock_qty,
+                    "optionCombinations": option_rows,
+                    "sellerCodeInfo": {
+                        "sellerManagerCode": seller_mgmt_code
+                    }
+                }
+
+                return True, result
+
+            else:
+                msg = (
+                    f"[get_naver_minimal_product_info] 원상품 조회 실패 "
+                    f"originNo={origin_product_no}: {resp.status_code}, {resp.text}"
+                )
+                return False, msg
+
+        except requests.exceptions.RequestException as e:
+            msg = f"[get_naver_minimal_product_info] 요청 중 예외 발생 originNo={origin_product_no}: {str(e)}"
+            return False, msg
+
+    msg = f"[get_naver_minimal_product_info] 429 재시도 {MAX_RETRIES}회 초과, originNo={origin_product_no} 요청 중단"
+    return False, msg
+
+
+
+def fetch_naver_products_with_details(account_info):
+    """
+    1) fetch_naver_products (상품목록) 호출
+    2) 각 상품별 get_naver_minimal_product_info (원상품 상세조회)
+    3) 옵션정보까지 병합한 detailed_list 를 반환
+    """
+    logger.info("===== [fetch_naver_products_with_details] START =====")
+    import time
+
+    # (A) 상품 목록 조회
+    is_ok, base_list = fetch_naver_products(account_info)
+    if not is_ok:
+        return False, base_list  # base_list가 에러 메시지
+
+    detailed_list = []
+    for i, item in enumerate(base_list, start=1):
+        origin_no = item.get("originProductNo")
+        ch_products = item.get("channelProducts", [])
+
+        # 상품명 추출
+        product_name = "(상품명없음)"
+        if ch_products:
+            product_name = ch_products[0].get("name", product_name)
+
+        # (B) 채널에서 할인 가격(있다면) 추출
+        discounted_price_api = 0
+        if ch_products:
+            discounted_price_api = ch_products[0].get("discountedPrice", 0)
+            # 모바일 할인가 등을 우선적으로 쓰고 싶다면 이 부분 수정 가능
+
+        if not origin_no:
+            # originProductNo가 없으면 건너뜀
+            continue
+
+        # (C) 원상품 상세 조회
+        is_ok2, detail_info = get_naver_minimal_product_info(account_info, origin_no)
+        if not is_ok2:
+            return False, detail_info  # detail_info가 에러 메시지
+
+        # (D) 상세정보 + 목록 정보 병합
+        merged = {
+            "originProductNo": origin_no,
+            "productName": product_name,
+            "representativeImage": detail_info.get("representativeImage"),
+            "salePrice": detail_info.get("salePrice"),
+            "discountedPrice": discounted_price_api,
+            "stockQuantity": detail_info.get("stockQuantity"),
+            "sellerCodeInfo": detail_info.get("sellerCodeInfo"),
+            "optionCombinations": detail_info.get("optionCombinations", []),
+        }
+        detailed_list.append(merged)
+
+        # API 호출 과도 시 429 방지용 sleep
+        time.sleep(1)
+
+    logger.info("[fetch_naver_products_with_details] 최종 detailed_list 개수=%d", len(detailed_list))
+    return True, detailed_list
+
+#매출리포트 시작
+
+def fetch_naver_sales(account_info, start_date, end_date):
+    logger.info("===== [fetch_naver_sales] START =====")
+
+    access_token = fetch_naver_access_token(account_info)
+    if not access_token:
+        return {
+            "code": 401,
+            "message": "No AccessToken",
+            "data": []
+        }
+
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+
+    kst = timezone(timedelta(hours=9))
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=kst)
+    if end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=kst)
+
+    delta = timedelta(hours=24)
+    current_date = start_date
+
+    # ★ 중복 제거 set
+    all_product_order_ids = set()
+    max_retries = 3
+
+    while current_date <= end_date:
+        last_changed_from = current_date.isoformat(timespec='milliseconds')
+        last_changed_to   = (current_date + delta).isoformat(timespec='milliseconds')
+
+        params = {
+            'lastChangedFrom': last_changed_from,
+            'lastChangedTo':   last_changed_to,
+            'limitCount': 300,
+        }
+
+        more_sequence = None
+
+        while True:
+            if more_sequence:
+                params['moreSequence'] = more_sequence
+
+            retry_count = 0
+            while True:
+                try:
+                    response = requests.get(
+                        'https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/last-changed-statuses',
+                        headers=headers,
+                        params=params,
+                        timeout=30,
+                        proxies=proxies,
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        last_change_statuses = data.get('data', {}).get('lastChangeStatuses', [])
+
+                        for order in last_change_statuses:
+                            product_order_id = order.get('productOrderId')
+                            if product_order_id:
+                                all_product_order_ids.add(product_order_id)
+
+                        more = data.get('data', {}).get('more', {})
+                        if more:
+                            more_sequence = more.get('moreSequence')
+                            params['lastChangedFrom'] = more.get('moreFrom')
+                            time.sleep(1)
+                        else:
+                            break
+                        retry_count = 0
+
+                    elif response.status_code == 429:
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            logger.error("Rate limit. retry %d/%d", retry_count, max_retries)
+                            time.sleep(5)
+                            continue
+                        else:
+                            logger.error("Rate limit repeated. stop this range.")
+                            break
+                    else:
+                        logger.error("Order list fail: %d %s", response.status_code, response.text)
+                        break
+                    break
+
+                except requests.exceptions.Timeout:
+                    if retry_count < max_retries:
+                        retry_count += 1
+                        logger.warning("Timeout. retry %d/%d", retry_count, max_retries)
+                        time.sleep(3)
+                        continue
+                    else:
+                        logger.error("Timeout repeated. stop.")
+                        break
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"Request error: {e}")
+                    break
+            else:
+                pass
+            break
+
+        current_date += delta
+
+    # (2) orderIds → fetch_naver_order_details
+    unique_ids_list = list(all_product_order_ids)
+    orders_details = fetch_naver_order_details(account_info, unique_ids_list)
+
+    logger.info("===== [fetch_naver_sales] Logging each order detail =====")
+
+    for idx, item in enumerate(orders_details):
+        product_part = item.get("productOrder", {})
+        order_id = product_part.get("productOrderId", "(no-orderId)")
+        product_status = product_part.get("productOrderStatus", "(no-status)")
+        claim_status = product_part.get("claimStatus", "(no-claimStatus)")
+
+        order_part = item.get("order", {})
+        payment_date = order_part.get("paymentDate", "(no-paymentDate)")
+        last_changed = product_part.get("lastChangedDate", "(no-lastChangedDate)")
+
+        # 기본 로그
+        logger.info(
+            f"[{idx}] order_id={order_id}, "
+            f"product_status={product_status}, "
+            f"claim_status={claim_status}, "
+            f"payment_date={payment_date}, "
+            f"last_changed={last_changed}"
+        )
+        if product_status == "PAYED":
+            logger.info("   -> PAYED(결제완료)")
+        else:
+            logger.info("   -> 다른상태 or None")
+
+        # ★ 추가: 만약 last_changed == "(no-lastChangedDate)"면, 전체 data 로그를 찍는다
+        if last_changed == "(no-lastChangedDate)":
+            import json
+            raw_item_str = json.dumps(item, ensure_ascii=False, indent=2)
+            logger.info(f"===== [No lastChangedDate item full data] =====\n{raw_item_str}")
+
+    logger.info("===== [fetch_naver_sales] Done logging orders_details =====")
+
+    return {
+        "code": 200,
+        "message": "OK",
+        "data": orders_details
+    }
+
+
+def fetch_naver_order_details(account_info, product_order_ids):
+    logger.info("===== [fetch_naver_order_details] START =====")
+    access_token = fetch_naver_access_token(account_info)
+    if not access_token:
+        return []
+    
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+    
+    url = 'https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/query'
+    batch_size = 100
+    orders_details = []
+    max_retries = 3
+
+    TARGET_ID = "2025021967238061"  # ★ 우리가 로그를 보고 싶은 특정 productOrderId
+
+    for i in range(0, len(product_order_ids), batch_size):
+        batch_ids = product_order_ids[i:i+batch_size]
+        payload = {
+            "productOrderIds": batch_ids,
+            "quantityClaimCompatibility": True
+        }
+
+        retry_count = 0
+        while True:
+            try:
+                response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30, proxies=proxies)
+                if response.status_code == 200:
+                    data = response.json()
+
+                    if isinstance(data, list):
+                        product_orders = data
+                    elif isinstance(data, dict):
+                        if 'data' in data and isinstance(data['data'], list):
+                            product_orders = data['data']
+                        else:
+                            product_orders = []
+                    else:
+                        product_orders = []
+                    
+                    logger.info(f"추출된 product_orders 수: {len(product_orders)}")
+
+                    # (A) 각 product_orders 아이템을 확인하면서,
+                    #     productOrderId == TARGET_ID 면 로그로 전체 item 출력
+                    for item in product_orders:
+                        product_part = item.get("productOrder", {})
+                        order_id = product_part.get("productOrderId")
+                        if order_id == TARGET_ID:
+                            # 여기서 전체 JSON을 찍음
+                            item_str = json.dumps(item, ensure_ascii=False, indent=2)
+                            logger.info(
+                                f"===== [fetch_naver_order_details] FOUND TARGET ID={TARGET_ID} =====\n{item_str}"
+                            )
+                    
+                    # (B) orders_details 확장
+                    orders_details.extend(product_orders)
+                    break
+                elif response.status_code == 429:
+                    if retry_count < max_retries:
+                        retry_count += 1
+                        logger.error(f"{account_info['names'][0]} 주문 상세 정보 조회 API 호출 제한. 재시도 {retry_count}/{max_retries}")
+                        time.sleep(5)
+                        continue
+                    else:
+                        logger.error(f"{account_info['names'][0]} 주문 상세 정보 조회 API 호출 제한 반복 발생. 이 배치 처리 중단.")
+                        break
+                else:
+                    logger.error(f"{account_info['names'][0]} 주문 상세 정보 조회 실패: {response.status_code}, {response.text}")
+                    break
+            except requests.exceptions.Timeout:
+                if retry_count < max_retries:
+                    retry_count += 1
+                    logger.warning(f"{account_info['names'][0]} 주문 상세 정보 조회 타임아웃 발생. 재시도 {retry_count}/{max_retries}")
+                    time.sleep(3)
+                    continue
+                else:
+                    logger.error(f"{account_info['names'][0]} 주문 상세 정보 조회 타임아웃 반복 발생. 이 배치 처리 중단.")
+                    break
+            except requests.exceptions.RequestException as e:
+                logger.error(f"요청 중 예외 발생: {e}")
+                break
+
+        time.sleep(1)  # Rate Limit 고려
+
+    return orders_details
+
+
+
