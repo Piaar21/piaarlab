@@ -1,0 +1,768 @@
+{% extends 'naver_sales_management_base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+  <h2 class="mb-4 text-primary">광고 판매 현황</h2>
+
+  <!-- KPI 카드 탭 영역 -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <!-- 탭 버튼 -->
+      <div class="kpi-tabs mb-2">
+        <button class="kpi-tab-btn btn btn-outline-primary active" data-tab="roas-high">ROAS 600% 이상</button>
+        <button class="kpi-tab-btn btn btn-outline-primary" data-tab="roas-low">ROAS 200% 이하</button>
+        <button class="kpi-tab-btn btn btn-outline-primary" data-tab="conv-low">전환율 평균 이하</button>
+      </div>
+      <!-- 탭 콘텐츠 -->
+      <div class="kpi-tab-content">
+        <!-- ROAS 600% 이상 탭 -->
+        <div id="roas-high" class="kpi-card">
+          {% if roas_high %}
+            <table class="table table-sm mb-0">
+              <thead>
+                <tr>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 0)" style="cursor:pointer;">
+                    상품명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 1)" style="cursor:pointer;">
+                    옵션명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 2)" style="cursor:pointer;">
+                    광고전환매출 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 3)" style="cursor:pointer;">
+                    광고집행비 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 4)" style="cursor:pointer;">
+                    ROAS <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in roas_high %}
+                  <tr>
+                    <td class="one-line">{{ item.product_name }}</td>
+                    <td class="one-line">{{ item.option_name }}</td>
+                    <td class="text-nowrap">{{ item.ad_revenue|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.roas|floatformat:2 }}%</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="mb-0">해당 조건의 데이터가 없습니다.</p>
+          {% endif %}
+        </div>
+        <!-- ROAS 200% 이하 탭 -->
+        <div id="roas-low" class="kpi-card" style="display:none;">
+          {% if roas_low %}
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 0)" style="cursor:pointer;">
+                  상품명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 1)" style="cursor:pointer;">
+                  옵션명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 2)" style="cursor:pointer;">
+                  광고전환매출 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 3)" style="cursor:pointer;">
+                  광고집행비 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 4)" style="cursor:pointer;">
+                  ROAS <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+              </tr>
+            </thead>
+              <tbody>
+                {% for item in roas_low %}
+                  <tr>
+                    <td class="one-line">{{ item.product_name }}</td>
+                    <td class="one-line">{{ item.option_name }}</td>
+                    <td class="text-nowrap">{{ item.ad_revenue|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.roas|floatformat:2 }}%</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="mb-0">해당 조건의 데이터가 없습니다.</p>
+          {% endif %}
+        </div>
+        <!-- 전환율 평균 이하 탭 -->
+        <div id="conv-low" class="kpi-card" style="display:none;">
+          {% if conv_low %}
+            <table class="table table-sm mb-0">
+              <thead>
+                <tr>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 0)" style="cursor:pointer;">
+                    상품명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 1)" style="cursor:pointer;">
+                    옵션명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 2)" style="cursor:pointer;">
+                    광고전환매출 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 3)" style="cursor:pointer;">
+                    광고집행비 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 4)" style="cursor:pointer;">
+                    노출수 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 5)" style="cursor:pointer;">
+                    클릭수 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 6)" style="cursor:pointer;">
+                    클릭률(CTR) <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 7)" style="cursor:pointer;">
+                    전환율 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in conv_low %}
+                  <tr>
+                    <td class="one-line">{{ item.product_name }}</td>
+                    <td class="one-line">{{ item.option_name }}</td>
+                    <td class="text-nowrap">{{ item.ad_revenue|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.total_impressions|default:"0"|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.total_clicks|default:"0"|intcomma }}</td>
+                    <td class="text-nowrap">
+                      {% if item.total_impressions and item.total_impressions|floatformat:"0" != "0" %}
+                        {{ item.ctr|floatformat:2 }}%
+                      {% else %}
+                        0%
+                      {% endif %}
+                    </td>
+                    <td class="text-nowrap">{{ item.conversion_rate|floatformat:2 }}%</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p class="mb-0">해당 조건의 데이터가 없습니다.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 날짜 범위 필터 -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-start align-items-center gap-3 flex-wrap">
+        <form method="GET" action="" id="filterForm" class="d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('today')">오늘</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('7days')">7일</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('30days')">30일</button>
+          <div class="d-flex align-items-center">
+            <input type="date" name="start_date" id="start_date" class="form-control" style="width:auto;" value="{{ start_date|date:'Y-m-d'|default_if_none:'' }}"/>
+            <span class="mx-2">~</span>
+            <input type="date" name="end_date" id="end_date" class="form-control" style="width:auto;" value="{{ end_date|date:'Y-m-d'|default_if_none:'' }}"/>
+          </div>
+          <button type="submit" class="btn btn-sm btn-secondary">적용</button>
+        </form>
+        <form method="POST" action="{% url 'update_ads_report' %}" id="updateCoupangForm" class="d-flex align-items-center gap-2">
+          {% csrf_token %}
+          <input type="hidden" name="fetch_start_date" value="{{ start_date|date:'Y-m-d'|default_if_none:'' }}" />
+          <input type="hidden" name="fetch_end_date" value="{{ end_date|date:'Y-m-d'|default_if_none:'' }}" />
+          <button type="submit" class="btn btn-sm btn-primary">쿠팡 데이터 업데이트</button>
+        </form>
+        <form method="POST" action="{% url 'upload_ads_excel' %}" enctype="multipart/form-data" id="uploadExcelForm" class="d-flex align-items-center gap-2">
+          {% csrf_token %}
+          <input type="file" name="excel_file" accept=".xls,.xlsx" class="form-control-file" multiple required>
+          <button type="submit" class="btn btn-sm btn-secondary">엑셀 업로드</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 광고 판매 테이블 (일자별 집계) -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle w-100">
+          <thead>
+            <tr style="background-color: #dfe6e9;">
+              <th class="left-header-col1">일자</th>
+              <th class="left-header-col2 text-center">구분</th>
+              <th class="text-center">판매수량</th>
+              <th class="text-center">광고판매수량</th>
+              <th class="text-center">전환율</th>
+              <th class="text-center">매출</th>
+              <th class="text-center">순매출</th>
+              <th class="text-center">광고전환매출</th>
+              <th class="text-center">광고집행비</th>
+              <th class="text-center">매출-광고비</th>
+              <th class="text-center">ROAS</th>
+              <th class="text-center">광고판매비율</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 전체 기간 소계 행 -->
+            <tr class="fw-bold product-row" style="background-color: #f0f0f0;">
+              <td class="left-col1">
+                <button type="button" class="btn btn-sm btn-outline-primary toggle-btn" data-idx="period">+</button>
+                전체 기간
+              </td>
+              <td class="left-col2 text-center">
+                소계
+                <span class="text-primary show-modal-icon ms-2" style="cursor: pointer;" data-date="period">
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </td>
+              <td class="text-end">{{ period_summary.total_qty|intcomma }}</td>
+              <td class="text-end">{{ period_summary.total_ad_qty|intcomma }}</td>
+              <td class="text-end">{{ period_summary.conversion_rate|floatformat:2 }} %</td>
+              <td class="text-end">{{ period_summary.total_revenue|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.net_sales_amount|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.ad_revenue|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.ad_spend|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.profit|intcomma }} 원</td>
+              <td class="text-end">
+                {% if period_summary.ad_spend > 0 %}
+                  {{ period_summary.roas|floatformat:2 }} %
+                {% else %}
+                  0%
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if period_summary.net_sales_amount > 0 %}
+                  {{ period_summary.ad_sales_rate|floatformat:2 }} %
+                {% else %}
+                  0%
+                {% endif %}
+              </td>
+            </tr>
+            <!-- 전체 기간 상세 하위 행 (토글 대상) -->
+            {% if period_details %}
+              {% for kind, detail in period_details.items %}
+                <tr style="display:none;" data-parent-idx="period">
+                  <td class="left-col1" colspan="2">└ {{ kind }}</td>
+                  <td class="text-end">{{ detail.qty|intcomma }}</td>
+                  <td class="text-end">{{ detail.ad_qty|intcomma }}</td>
+                  <td class="text-end">{{ detail.conversion_rate|floatformat:2 }} %</td>
+                  <td class="text-end">{{ detail.revenue|intcomma }} 원</td>
+                  <td class="text-end">{{ detail.net_sales_amount|intcomma }} 원</td>
+                  <td class="text-end">{{ detail.ad_revenue|intcomma }} 원</td>
+                  <td class="text-end">{{ detail.ad_spend|intcomma }} 원</td>
+                  <td class="text-end">{{ detail.profit|intcomma }} 원</td>
+                  <td class="text-end">
+                    {% if detail.ad_spend > 0 %}
+                      {{ detail.roas|floatformat:2 }} %
+                    {% else %}
+                      0%
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if detail.net_sales_amount > 0 %}
+                      {{ detail.ad_sales_rate|floatformat:2 }} %
+                    {% else %}
+                      0%
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr data-parent-idx="period">
+                <td colspan="12" class="text-center">해당 기간에 대한 상세 데이터가 없습니다.</td>
+              </tr>
+            {% endif %}
+            
+            <!-- 일자별 데이터 -->
+            {% for day in daily_reports %}
+              <tr class="fw-bold product-row">
+                <td class="left-col1">
+                  <button type="button" class="btn btn-sm btn-outline-primary toggle-btn" data-idx="{{ forloop.counter }}">+</button>
+                  {{ day.date_str }}
+                </td>
+                <td class="left-col2 text-center">
+                  소계
+                  <span class="text-primary show-modal-icon ms-2" style="cursor: pointer;" data-date="{{ day.date_str }}">
+                    <i class="fas fa-info-circle"></i>
+                  </span>
+                </td>
+                <td class="text-end">{{ day.qty|intcomma }}</td>
+                <td class="text-end">{{ day.ad_qty|intcomma }}</td>
+                <td class="text-end">{{ day.conversion_rate|floatformat:2 }} %</td>
+                <td class="text-end">{{ day.revenue|intcomma }} 원</td>
+                <td class="text-end">{{ day.net_sales_amount|intcomma }} 원</td>
+                <td class="text-end">{{ day.ad_revenue|intcomma }} 원</td>
+                <td class="text-end">{{ day.ad_spend|intcomma }} 원</td>
+                <td class="text-end">{{ day.profit|intcomma }} 원</td>
+                <td class="text-end">
+                  {% if day.ad_spend > 0 %}
+                    {{ day.roas|floatformat:2 }} %
+                  {% else %}
+                    0%
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  {% if day.net_sales_amount > 0 %}
+                    {{ day.ad_sales_rate|floatformat:2 }} %
+                  {% else %}
+                    0%
+                  {% endif %}
+                </td>
+              </tr>
+              {% for det in day.details %}
+                <tr style="display:none;" data-parent-idx="{{ forloop.parentloop.counter }}">
+                  <td class="left-col1" colspan="2">└ {{ det.kind }}</td>
+                  <td class="text-end">{{ det.qty|intcomma }}</td>
+                  <td class="text-end">{{ det.ad_qty|intcomma }}</td>
+                  <td class="text-end">{{ det.conversion_rate|floatformat:2 }} %</td>
+                  <td class="text-end">{{ det.revenue|intcomma }} 원</td>
+                  <td class="text-end">{{ det.net_sales_amount|intcomma }} 원</td>
+                  <td class="text-end">{{ det.ad_revenue|intcomma }} 원</td>
+                  <td class="text-end">{{ det.ad_spend|intcomma }} 원</td>
+                  <td class="text-end">{{ det.profit|intcomma }} 원</td>
+                  <td class="text-end">
+                    {% if det.ad_spend > 0 %}
+                      {{ det.roas|floatformat:2 }} %
+                    {% else %}
+                      0%
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if det.net_sales_amount > 0 %}
+                      {{ det.ad_sales_rate|floatformat:2 }} %
+                    {% else %}
+                      0%
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div><!-- // container-fluid -->
+
+<!-- 모달 영역 -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl" style="max-width: 100% !important;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="detailModalLabel">상세보기</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-content-area">
+          <p>날짜별/전체기간 상품/옵션 상세 테이블이 여기에 표시됩니다.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // (1) 백엔드에서 넘긴 JSON 데이터
+  const dayProductsMap = JSON.parse('{{ day_products_map_json|escapejs }}');
+  const periodProductsMap = JSON.parse('{{ period_products_map_json|escapejs }}');
+
+  document.addEventListener('DOMContentLoaded', function(){
+    // (A) 일자별 토글 버튼
+    const toggleButtons = document.querySelectorAll('.toggle-btn');
+    toggleButtons.forEach(btn => {
+      btn.addEventListener('click', function(){
+        const idx = btn.dataset.idx;
+        const subRows = document.querySelectorAll(`tr[data-parent-idx="${idx}"]`);
+        subRows.forEach(row => {
+          row.style.display = (row.style.display === 'none' || row.style.display === '')
+            ? 'table-row'
+            : 'none';
+        });
+        btn.textContent = (btn.textContent.trim() === '+') ? '-' : '+';
+      });
+    });
+
+    // (B) 모달 설정
+    const detailModalEl = document.getElementById('detailModal');
+    const detailModal = new bootstrap.Modal(detailModalEl);
+
+    // (C) 모달 아이콘 클릭
+    const iconButtons = document.querySelectorAll('.show-modal-icon');
+    iconButtons.forEach(icon => {
+      icon.addEventListener('click', function(){
+        const dayValue = this.dataset.date;
+        document.getElementById('detailModalLabel').innerText = `${dayValue} 상품/옵션 상세`;
+
+        let data;
+        if(dayValue === 'period'){
+          data = periodProductsMap;
+        } else {
+          // 일자별 모달
+          data = dayProductsMap[dayValue];
+        }
+
+        const tableHtml = buildProductOptionTable(data);
+        document.getElementById('modal-content-area').innerHTML =
+          `<h5 class="mb-3">${dayValue} 상품/옵션 상세</h5>` + tableHtml;
+
+        detailModal.show();
+
+        // 모달 안에서의 토글
+        const productToggles = document.querySelectorAll('.modal-product-toggle');
+        productToggles.forEach(btn => {
+          btn.addEventListener('click', function(){
+            const pid = btn.dataset.productId;
+            const optionRows = document.querySelectorAll(`tr[data-parent="${pid}"]`);
+            optionRows.forEach(r => {
+              r.style.display = (r.style.display === 'none' || r.style.display === '')
+                ? 'table-row'
+                : 'none';
+            });
+            btn.textContent = (btn.textContent.trim() === '+') ? '-' : '+';
+          });
+        });
+      });
+    });
+  });
+
+  // (2) 상품/옵션 테이블 생성
+  function buildProductOptionTable(data){
+    if(!data){
+      return `<p>해당 데이터가 없습니다.</p>`;
+    }
+
+    // (A) 전체 합계
+    let total_qty = 0;
+    let total_ad_qty = 0;
+    let total_net = 0;
+    let total_ad_spend = 0;
+    let total_profit = 0;
+    let total_ad_rev = 0;
+
+    for(let prodKey in data){
+      const pinfo = data[prodKey];
+      total_qty      += Number(pinfo.qty) || 0;
+      total_ad_qty   += Number(pinfo.ad_qty) || 0;
+      total_net      += Number(pinfo.net_sales_amount) || 0;
+      total_ad_spend += Number(pinfo.ad_spend) || 0;
+      total_profit   += Number(pinfo.profit) || 0;
+      total_ad_rev   += Number(pinfo.ad_revenue) || 0;
+    }
+
+    // (B) 합계기준 ROAS, 광고판매비율
+    const total_roas = total_ad_spend > 0 ? (total_ad_rev / total_ad_spend * 100) : 0;
+    const total_ad_sales_rate = total_net > 0 ? (total_ad_rev / total_net * 100) : 0;
+
+    // (C) 테이블 헤더
+    let html = `
+      <div class="table-responsive">
+        <table class="table table-hover align-middle" id="modalProductTable">
+          <thead>
+            <tr style="background-color: #f8f9fa;">
+              <th onclick="sortModalTable(this, 0)" style="cursor:pointer;">상품명 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 1)" style="cursor:pointer;">구분 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 2)" style="cursor:pointer;">판매수량 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 3)" style="cursor:pointer;">광고판매 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 4)" style="cursor:pointer;">순매출 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 5)" style="cursor:pointer;">광고전환매출 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 6)" style="cursor:pointer;">광고비 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 7)" style="cursor:pointer;">매출-광고비 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 8)" style="cursor:pointer;">ROAS <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+              <th onclick="sortModalTable(this, 9)" style="cursor:pointer;">광고판매비율 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            </tr>
+            <tr style="background-color: #e9ecef;">
+              <th colspan="2">합계</th>
+              <th class="text-end">${formatNumber(total_qty)}</th>
+              <th class="text-end">${formatNumber(total_ad_qty)}</th>
+              <th class="text-end">${formatNumber(total_net)} 원</th>
+              <th class="text-end">${formatNumber(total_ad_rev)} 원</th>
+              <th class="text-end">${formatNumber(total_ad_spend)} 원</th>
+              <th class="text-end">${formatNumber(total_profit)} 원</th>
+              <th class="text-end">${total_roas.toFixed(2)}%</th>
+              <th class="text-end">${total_ad_sales_rate.toFixed(2)}%</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    // (D) 상품별
+    for(let productKey in data){
+      const pinfo = data[productKey];
+      // label 추출 (ex. "로켓&판매자" 혼합 등)
+      const labelSet = new Set();
+      if(pinfo.options && pinfo.options.length){
+        pinfo.options.forEach(opt => {
+          if(opt.label) labelSet.add(opt.label);
+        });
+      }
+      let productLabel = (labelSet.size === 1)
+        ? Array.from(labelSet)[0]
+        : (labelSet.size > 1 ? "로켓&판매자" : "기타");
+
+      let safeProfit = Number(pinfo.profit) || 0;
+      let safeRoas   = Number(pinfo.roas) || 0;
+      let adSalesRate = (pinfo.net_sales_amount > 0)
+        ? ((pinfo.ad_revenue / pinfo.net_sales_amount) * 100).toFixed(2)
+        : 0;
+
+      html += `
+        <tr class="fw-bold modal-product-row" data-product-id="${productKey}">
+          <td>
+            <button type="button" class="btn btn-sm btn-outline-primary modal-product-toggle" data-product-id="${productKey}">+</button>
+            ${pinfo.product_name}
+          </td>
+          <td>${productLabel}</td>
+          <td class="text-end">${formatNumber(pinfo.qty)}</td>
+          <td class="text-end">${formatNumber(pinfo.ad_qty)}</td>
+          <td class="text-end">${formatNumber(pinfo.net_sales_amount)} 원</td>
+          <td class="text-end">${formatNumber(pinfo.ad_revenue)} 원</td>
+          <td class="text-end">${formatNumber(pinfo.ad_spend)} 원</td>
+          <td class="text-end">${safeProfit.toFixed(0)} 원</td>
+          <td class="text-end">${safeRoas.toFixed(2)}%</td>
+          <td class="text-end">${adSalesRate}%</td>
+        </tr>
+      `;
+
+      // (옵션별)
+      if(pinfo.options){
+        pinfo.options.forEach(opt => {
+          let optProfit = Number(opt.profit) || 0;
+          let optRoas   = Number(opt.roas) || 0;
+          let optAdSalesRate = (opt.net_sales_amount > 0)
+            ? ((opt.ad_revenue / opt.net_sales_amount)*100).toFixed(2)
+            : "0";
+          html += `
+            <tr style="display:none;" data-parent="${productKey}">
+              <td colspan="2">└ ${opt.option_name}</td>
+              <td class="text-end">${formatNumber(opt.qty)}</td>
+              <td class="text-end">${formatNumber(opt.ad_qty)}</td>
+              <td class="text-end">${formatNumber(opt.net_sales_amount)} 원</td>
+              <td class="text-end">${formatNumber(opt.ad_revenue)} 원</td>
+              <td class="text-end">${formatNumber(opt.ad_spend)} 원</td>
+              <td class="text-end">${formatNumber(optProfit)}</td>
+              <td class="text-end">${optRoas.toFixed(2)}%</td>
+              <td class="text-end">${optAdSalesRate}%</td>
+            </tr>
+          `;
+        });
+      }
+    }
+
+    // (E) 테이블 마무리
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+    return html;
+  }
+
+  // 숫자 콤마
+  function formatNumber(num){
+    if(isNaN(num)) return "0";
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  // 기간 셋팅
+  function setDateRange(mode){
+    const today = new Date();
+    let start = new Date();
+    let end = new Date();
+    if(mode === 'today'){
+      // today → start/end 둘 다 오늘
+    } else if(mode === '7days'){
+      start.setDate(today.getDate()-7);
+    } else if(mode === '30days'){
+      start.setDate(today.getDate()-30);
+    }
+    document.getElementById('start_date').value = start.toISOString().split('T')[0];
+    document.getElementById('end_date').value   = end.toISOString().split('T')[0];
+  }
+
+  // 모달 테이블 정렬
+  function sortModalTable(th, colIndex) {
+    const table = th.closest('table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    // 상품(메인행) + 옵션행 그룹화
+    const groups = [];
+    let currentGroup = [];
+    rows.forEach(row => {
+      if(row.classList.contains('modal-product-row')){
+        if(currentGroup.length > 0){
+          groups.push(currentGroup);
+        }
+        currentGroup = [row];
+      } else {
+        currentGroup.push(row);
+      }
+    });
+    if(currentGroup.length > 0) groups.push(currentGroup);
+
+    let sortOrder = th.dataset.sortOrder === "asc" ? "desc" : "asc";
+    th.dataset.sortOrder = sortOrder;
+
+    // 그룹 단위 정렬
+    groups.sort((groupA, groupB) => {
+      const cellA = groupA[0].querySelectorAll('td')[colIndex]?.innerText.trim() ?? '';
+      const cellB = groupB[0].querySelectorAll('td')[colIndex]?.innerText.trim() ?? '';
+      const numA = parseFloat(cellA.replace(/[^0-9.\-]/g, ''));
+      const numB = parseFloat(cellB.replace(/[^0-9.\-]/g, ''));
+
+      if(!isNaN(numA) && !isNaN(numB)){
+        return sortOrder === "asc" ? (numA - numB) : (numB - numA);
+      }
+      return sortOrder === "asc"
+        ? cellA.localeCompare(cellB)
+        : cellB.localeCompare(cellA);
+    });
+
+    // 테이블에 재배치
+    tbody.innerHTML = "";
+    groups.forEach(g => {
+      g.forEach(row => tbody.appendChild(row));
+    });
+  }
+
+  // KPI 테이블 정렬 (글로벌)
+  function sortTableGlobal(th, colIndex) {
+    const table = th.closest('table');
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+
+    let sortOrder = th.dataset.sortOrder === 'asc' ? 'desc' : 'asc';
+    th.dataset.sortOrder = sortOrder;
+
+    // 아이콘 초기화
+    const allTh = table.querySelectorAll('thead th');
+    allTh.forEach(thItem => {
+      if (thItem !== th) {
+        thItem.dataset.sortOrder = '';
+      }
+      const icon = thItem.querySelector('.sort-arrow');
+      if (icon) {
+        icon.classList.remove('bi-arrow-up', 'bi-arrow-down', 'bi-arrow-down-up');
+        icon.classList.add('bi-arrow-down-up');
+      }
+    });
+
+    // 현재 <th> 아이콘 업데이트
+    const icon = th.querySelector('.sort-arrow');
+    if (icon) {
+      icon.classList.remove('bi-arrow-down-up');
+      if (sortOrder === 'asc') {
+        icon.classList.add('bi-arrow-up');
+      } else {
+        icon.classList.add('bi-arrow-down');
+      }
+    }
+
+    // 행 정렬
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((rowA, rowB) => {
+      const cellA = rowA.querySelectorAll('td')[colIndex]?.innerText.trim() ?? '';
+      const cellB = rowB.querySelectorAll('td')[colIndex]?.innerText.trim() ?? '';
+      const numA = parseFloat(cellA.replace(/[^0-9.\-]/g, ''));
+      const numB = parseFloat(cellB.replace(/[^0-9.\-]/g, ''));
+
+      if(!isNaN(numA) && !isNaN(numB)){
+        return sortOrder === 'asc' ? (numA - numB) : (numB - numA);
+      }
+      return sortOrder === 'asc'
+        ? cellA.localeCompare(cellB)
+        : cellB.localeCompare(cellA);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+  // KPI 탭 전환 기능
+  const tabButtons = document.querySelectorAll('.kpi-tab-btn');
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', function(){
+      // 모든 탭 버튼에서 active 클래스를 제거
+      tabButtons.forEach(b => b.classList.remove('active'));
+      // 모든 탭 콘텐츠(.kpi-card)를 숨김 처리
+      const kpiCards = document.querySelectorAll('.kpi-card');
+      kpiCards.forEach(card => card.style.display = 'none');
+      // 클릭된 버튼에 active 클래스 추가
+      this.classList.add('active');
+      // data-tab 속성에 지정된 id를 가진 콘텐츠를 보임 처리
+      const targetTab = this.getAttribute('data-tab');
+      document.getElementById(targetTab).style.display = 'block';
+    });
+  });
+});
+  
+</script>
+
+<style>
+  .container-fluid {
+    margin-left: 16rem;
+    width: calc(100% - 16rem);
+  }
+  .card {
+    border: none;
+    border-radius: 15px;
+    background-color: #fff;
+    padding: 20px;
+  }
+  .table td, .table th {
+    padding: 12px;
+    vertical-align: middle;
+    border: 1px solid #dfe6e9;
+    white-space: nowrap;
+  }
+  .table-responsive {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+  .product-row {
+    background-color: #fff;
+  }
+  thead tr:nth-child(1) th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #dfe6e9;
+  }
+  thead tr:nth-child(2) th {
+    position: sticky;
+    top: 49px;
+    z-index: 10;
+    background-color: #f0f0f0;
+  }
+  .sort-arrow {
+    font-size: 0.8rem;
+    margin-left: 0.3rem;
+  }
+  .kpi-tabs {
+    display: flex;
+    gap: 10px;
+  }
+  .kpi-tab-btn {
+    flex: 1;
+  }
+  .kpi-tab-btn.active {
+    background-color: #0d6efd;
+    color: #fff;
+  }
+  .kpi-card {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .one-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+{% endblock %}
