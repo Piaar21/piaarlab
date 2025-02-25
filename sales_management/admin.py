@@ -255,3 +255,40 @@ class PurchaseCostAdmin(admin.ModelAdmin):
     list_filter = ('manager',)
     search_fields = ('sku_id', 'option_code', 'manager')
     ordering = ('-id',)
+
+from .models import NaverDailySales
+
+@admin.register(NaverDailySales)
+class NaverDailySalesAdmin(admin.ModelAdmin):
+    # 1) 리스트 화면에 표시할 컬럼
+    list_display = (
+        "date",
+        "store",
+        "order_ID",
+        "product_name",
+        "option_name",
+        "sales_qty",
+        "sales_revenue",
+        "refunded_qty",
+        "refunded_revenue",
+    )
+
+    # 2) 검색 박스에서 검색할 필드 (부분 일치)
+    search_fields = (
+        "order_ID",
+        "product_name",
+        "option_name",
+        "store",
+    )
+
+    # 3) 필터 사이드바
+    list_filter = (
+        "store",
+        "date",
+    )
+
+    # 4) 정렬 기준 (예시: 날짜 최신순 정렬)
+    ordering = ("-date",)
+    
+    # (선택) 한 페이지에 표시할 목록 개수
+    list_per_page = 50    

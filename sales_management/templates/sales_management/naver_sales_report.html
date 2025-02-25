@@ -1,9 +1,9 @@
-{% extends 'sales_management_base.html' %}
+{% extends 'naver_sales_management_base.html' %}
 {% load dict_extras %}
 {% block content %}
 
 <div class="container-fluid mt-4">
-  <h2 class="mb-4 text-primary">쿠팡 매출 리포트</h2>
+  <h2 class="mb-4 text-primary">네이버 매출 리포트</h2>
 
 
   <!-- (B) 날짜 범위(등록일) 필터 -->
@@ -41,8 +41,8 @@
           </button>
         </form>
   
-        <!-- (B) 폼2: "쿠팡 매출 업데이트" (POST) -->
-        <form method="POST" action="{% url 'update_coupang_sales' %}" id="updateCoupangForm"
+        <!-- (B) 폼2: "네이버 매출 업데이트" (POST) -->
+        <form method="POST" action="{% url 'naver_update_sales' %}" id="updateNaverForm"
               class="d-flex align-items-center gap-2">
           {% csrf_token %}
           <!-- (선택) 날짜를 넘기기 위한 hidden 필드 -->
@@ -50,30 +50,19 @@
           <input type="hidden" name="fetch_end_date"   value="{{ end_date|date:'Y-m-d'|default_if_none:'' }}" />
   
           <button type="submit" class="btn btn-sm btn-primary">
-            쿠팡 매출 업데이트
+            네이버 매출 업데이트
           </button>
 
         </form>
-        <form method="POST" action="{% url 'deleted_coupang_sales' %}" id="deletedCoupangForm"
-              class="d-flex align-items-center gap-2">
+        
+        <form action="{% url 'naver_delete_sales' %}" method="POST" 
+              onsubmit="return confirm('정말 모든 데이터를 삭제하시겠습니까?');">
           {% csrf_token %}
-          <!-- (선택) 날짜를 넘기기 위한 hidden 필드 -->
-          <input type="hidden" name="fetch_start_date" value="{{ start_date|date:'Y-m-d'|default_if_none:'' }}" />
-          <input type="hidden" name="fetch_end_date"   value="{{ end_date|date:'Y-m-d'|default_if_none:'' }}" />
-  
           <button type="submit" class="btn btn-sm btn-danger">
-            삭제
+            데이터 전체 삭제
           </button>
+        </form>
 
-        </form>
-        <form method="POST" action="{% url 'upload_excel' %}" enctype="multipart/form-data" id="uploadExcelForm" class="d-flex align-items-center gap-2">
-          {% csrf_token %}
-          <input type="file" name="excel_file" accept=".xls,.xlsx" class="form-control-file" multiple required>
-          <button type="submit" class="btn btn-sm btn-secondary">엑셀 업로드</button>
-        </form>
-        <a href="https://wing.coupang.com/seller/notification/metrics/dashboard" class="btn btn-sm btn-success" target="_blank" rel="noopener noreferrer">
-          링크
-        </a>
       </div><!-- // d-flex justify-content-end -->
       
     </div><!-- // card-body -->

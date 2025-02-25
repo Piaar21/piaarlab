@@ -1,0 +1,787 @@
+{% extends 'naver_sales_management_base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+  <h2 class="mb-4 text-primary">순수익 리포트</h2>
+  <!-- KPI 카드 탭 영역 -->
+<div class="row mb-4">
+  <div class="col-12">
+    <!-- 탭 버튼 -->
+    <div class="kpi-tabs mb-2">
+      <button class="kpi-tab-btn btn btn-outline-primary active" data-tab="margin-low">마진 -1% 이하</button>
+      <button class="kpi-tab-btn btn btn-outline-primary" data-tab="profit-high">순수익 +1만원 이상</button>
+      <button class="kpi-tab-btn btn btn-outline-primary" data-tab="profit-low">순수익 -1만원 이하</button>
+    </div>
+    <!-- 탭 콘텐츠 -->
+    <div class="kpi-tab-content">
+      <!-- 마진 -1% 이하 탭 -->
+        <div id="margin-low" class="kpi-card">
+          {% if kpi_margin_low %}
+            <table class="table table-sm mb-0">
+              <thead>
+                <tr>
+                  <!-- 각 TH에 onclick 추가 + 화살표 아이콘 추가 -->
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 0)" style="cursor:pointer;">
+                    상품명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 1)" style="cursor:pointer;">
+                    구분 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 2)" style="cursor:pointer;">
+                    판매수량 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 3)" style="cursor:pointer;">
+                    광고판매 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 4)" style="cursor:pointer;">
+                    순매출 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 5)" style="cursor:pointer;">
+                    광고비 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 6)" style="cursor:pointer;">
+                    매입가 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 7)" style="cursor:pointer;">
+                    순수익 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                  <th class="text-nowrap" onclick="sortTableGlobal(this, 8)" style="cursor:pointer;">
+                    마진 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                  </th>
+                </tr>
+              </thead>
+            <tbody>
+              {% for item in kpi_margin_low %}
+                <tr>
+                  <td class="one-line">{{ item.product_name }}</td>
+                  <td class="one-line">{{ item.kind }}</td>
+                  <td class="text-nowrap">{{ item.qty|intcomma }}</td>
+                  <td class="text-nowrap">{{ item.ad_qty|intcomma }}</td>
+                  <td class="text-nowrap">{{ item.net_sales_amount|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.purchase_cost|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.margin_rate|floatformat:2 }}%</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="mb-0">해당 조건의 데이터가 없습니다.</p>
+        {% endif %}
+      </div>
+      <!-- 순수익 +1만원 이상 탭 -->
+      <div id="profit-high" class="kpi-card" style="display:none;">
+        {% if kpi_profit_high %}
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <!-- 각 TH에 onclick 추가 + 화살표 아이콘 추가 -->
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 0)" style="cursor:pointer;">
+                  상품명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 1)" style="cursor:pointer;">
+                  구분 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 2)" style="cursor:pointer;">
+                  판매수량 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 3)" style="cursor:pointer;">
+                  광고판매 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 4)" style="cursor:pointer;">
+                  순매출 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 5)" style="cursor:pointer;">
+                  광고비 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 6)" style="cursor:pointer;">
+                  매입가 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 7)" style="cursor:pointer;">
+                  순수익 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 8)" style="cursor:pointer;">
+                  마진 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in kpi_profit_high %}
+                <tr>
+                  <td class="one-line">{{ item.product_name }}</td>
+                  <td class="one-line">{{ item.kind }}</td>
+                  <td class="text-nowrap">{{ item.qty|intcomma }}</td>
+                  <td class="text-nowrap">{{ item.ad_qty|intcomma }}</td>
+                  <td class="text-nowrap">{{ item.net_sales_amount|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.purchase_cost|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.margin_rate|floatformat:2 }}%</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="mb-0">해당 조건의 데이터가 없습니다.</p>
+        {% endif %}
+      </div>
+      <!-- 순수익 -1만원 이하 탭 -->
+      <div id="profit-low" class="kpi-card" style="display:none;">
+        {% if kpi_profit_low %}
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <!-- 각 TH에 onclick 추가 + 화살표 아이콘 추가 -->
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 0)" style="cursor:pointer;">
+                  상품명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 1)" style="cursor:pointer;">
+                  구분 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 2)" style="cursor:pointer;">
+                  판매수량 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 3)" style="cursor:pointer;">
+                  광고판매 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 4)" style="cursor:pointer;">
+                  순매출 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 5)" style="cursor:pointer;">
+                  광고비 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 6)" style="cursor:pointer;">
+                  매입가 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 7)" style="cursor:pointer;">
+                  순수익 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+                <th class="text-nowrap" onclick="sortTableGlobal(this, 8)" style="cursor:pointer;">
+                  마진 <i class="sort-arrow bi bi-arrow-down-up"></i>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in kpi_profit_low %}
+                <tr>
+                  <td class="one-line">{{ item.product_name }}</td>
+                  <td class="one-line">{{ item.kind }}</td>
+                  <td class="text-nowrap">{{ item.qty|intcomma }}</td>
+                  <td class="text-nowrap">{{ item.ad_qty|intcomma }}</td>
+                  <td class="text-nowrap">{{ item.net_sales_amount|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.purchase_cost|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }} 원</td>
+                  <td class="text-nowrap">{{ item.margin_rate|floatformat:2 }}%</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="mb-0">해당 조건의 데이터가 없습니다.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+  <!-- (A) 날짜 범위(등록일) 필터 -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-start align-items-center gap-3 flex-wrap">
+        <!-- (1) GET 필터 폼 -->
+        <form method="GET" action="" id="filterForm" class="d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('today')">오늘</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('7days')">7일</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="setDateRange('30days')">30일</button>
+          <div class="d-flex align-items-center">
+            <input type="date" name="start_date" id="start_date" class="form-control" style="width:auto;" value="{{ start_date|date:'Y-m-d'|default_if_none:'' }}"/>
+            <span class="mx-2">~</span>
+            <input type="date" name="end_date" id="end_date" class="form-control" style="width:auto;" value="{{ end_date|date:'Y-m-d'|default_if_none:'' }}"/>
+          </div>
+          <button type="submit" class="btn btn-sm btn-secondary">적용</button>
+        </form>
+        <!-- (2) 매입가 업데이트 버튼 (POST) -->
+        <form method="POST" action="{% url 'update_cost_profit_report' %}" id="updateCostsForm" class="d-flex align-items-center gap-2">
+          {% csrf_token %}
+          <input type="hidden" name="fetch_start_date" value="{{ start_date|date:'Y-m-d'|default_if_none:'' }}" />
+          <input type="hidden" name="fetch_end_date"   value="{{ end_date|date:'Y-m-d'|default_if_none:'' }}" />
+          <button type="submit" class="btn btn-sm btn-primary">매입가 업데이트</button>
+        </form>
+        <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#checkCostModal">매입가 확인</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- (B) 리포트 테이블 (일자별 소계) -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle w-100">
+          <thead>
+            <tr style="background-color: #dfe6e9;">
+              <th class="left-header-col1">일자</th>
+              <th class="left-header-col2 text-center">구분</th>
+              <th class="text-center">판매수량</th>
+              <th class="text-center">광고판매수량</th>
+              <th class="text-center">순매출</th>
+              <th class="text-center">수수료</th>
+              <th class="text-center">광고집행비</th>
+              <th class="text-center">매입가</th>
+              <th class="text-center">기타비용</th>
+              <th class="text-center">순수익</th>
+              <th class="text-center">마진률</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 전체 기간 합계 행 -->
+            <tr class="fw-bold product-row" style="background-color: #f0f0f0;">
+              <td class="left-col1">
+                <button type="button" class="btn btn-sm btn-outline-primary toggle-btn" data-idx="period">+</button>
+                전체 기간
+              </td>
+              <td class="left-col2 text-center">
+                소계
+                <span class="text-primary show-modal-icon ms-2" style="cursor: pointer;" data-date="period">
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </td>
+              <td class="text-end">{{ period_summary.total_qty|intcomma }}</td>
+              <td class="text-end">{{ period_summary.total_ad_qty|intcomma }}</td>
+              <td class="text-end">{{ period_summary.net_sales_amount|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.commission|floatformat:0 }} 원</td>
+              <td class="text-end">{{ period_summary.ad_spend|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.purchase_cost|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.etc_cost|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.profit|floatformat:0 }} 원</td>
+              <td class="text-end">
+                {% if period_summary.net_sales_amount > 0 %}
+                  {{ period_summary.margin_rate|floatformat:2 }} %
+                {% else %}
+                  0%
+                {% endif %}
+              </td>
+            </tr>
+            <!-- 전체 기간 상세 하위 행 (토글 대상) -->
+            {% if period_details %}
+              {% for kind, detail in period_details.items %}
+                <tr style="display:none;" data-parent-idx="period">
+                  <td class="left-col1" colspan="2">└ {{ kind }}</td>
+                  <td class="text-end">{{ detail.qty|intcomma }}</td>
+                  <td class="text-end">{{ detail.ad_qty|intcomma }}</td>
+                  <td class="text-end">{{ detail.net_sales_amount|intcomma }} 원</td>
+                  <td class="text-end">{{ detail.commission|floatformat:0 }} 원</td>
+                  <td class="text-end">{{ detail.ad_spend|intcomma }} 원</td>
+                  <td class="text-end">{{ detail.purchase_cost|intcomma }} 원</td>
+                  <td class="text-end">{{ detail.etc_cost|intcomma }} 원</td>
+                  <td class="text-end">{{ detail.profit|floatformat:0 }} 원</td>
+                  <td class="text-end">
+                    {% if detail.net_sales_amount > 0 %}
+                      {{ detail.margin_rate|floatformat:2 }} %
+                    {% else %}
+                      0%
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+                <tr data-parent-idx="period">
+                  <td colspan="11" class="text-center">해당 기간에 대한 상세 데이터가 없습니다.</td>
+                </tr>
+            {% endif %}
+          
+            <!-- 일자별 데이터는 기존 for문으로 출력 -->
+            {% for day in daily_reports %}
+              <tr class="fw-bold product-row">
+                <td class="left-col1">
+                  <button type="button" class="btn btn-sm btn-outline-primary toggle-btn" data-idx="{{ forloop.counter }}">+</button>
+                  {{ day.date_str }}
+                </td>
+                <td class="left-col2 text-center">
+                  소계
+                  <span class="text-primary show-modal-icon ms-2" style="cursor: pointer;" data-date="{{ day.date_str }}">
+                    <i class="fas fa-info-circle"></i>
+                  </span>
+                </td>
+                <td class="text-end">{{ day.qty|intcomma }}</td>
+                <td class="text-end">{{ day.ad_qty|intcomma }}</td>
+                <td class="text-end">{{ day.net_sales_amount|intcomma }} 원</td>
+                <td class="text-end">{{ day.commission|floatformat:0 }} 원</td>
+                <td class="text-end">{{ day.ad_spend|intcomma }} 원</td>
+                <td class="text-end">{{ day.purchase_cost|intcomma }} 원</td>
+                <td class="text-end">{{ day.etc_cost|intcomma }} 원</td>
+                <td class="text-end">{{ day.profit|floatformat:0 }} 원</td>
+                <td class="text-end">
+                  {% if day.net_sales_amount > 0 %}
+                    {{ day.margin_rate|floatformat:2 }} %
+                  {% else %}
+                    0%
+                  {% endif %}
+                </td>
+              </tr>
+              {% for det in day.details %}
+                <tr style="display:none;" data-parent-idx="{{ forloop.parentloop.counter }}">
+                  <td class="left-col1" colspan="2">└ {{ det.kind }}</td>
+                  <td class="text-end">{{ det.qty|intcomma }}</td>
+                  <td class="text-end">{{ det.ad_qty|intcomma }}</td>
+                  <td class="text-end">{{ det.net_sales_amount|intcomma }} 원</td>
+                  <td class="text-end">{{ det.commission|floatformat:0 }} 원</td>
+                  <td class="text-end">{{ det.ad_spend|intcomma }} 원</td>
+                  <td class="text-end">{{ det.purchase_cost|intcomma }} 원</td>
+                  <td class="text-end">{{ det.etc_cost|intcomma }} 원</td>
+                  <td class="text-end">{{ det.profit|floatformat:0 }} 원</td>
+                  <td class="text-end">
+                    {% if det.net_sales_amount > 0 %}
+                      {{ det.margin_rate|floatformat:2 }} %
+                    {% else %}
+                      0%
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 모달 영역 -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl" style="max-width: 100% !important;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="detailModalLabel">상세보기</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-content-area">
+          <p>날짜별 상품/옵션 상세 테이블이 여기에 표시됩니다.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 매입가 확인 모달 -->
+<div class="modal fade" id="checkCostModal" tabindex="-1" aria-labelledby="checkCostModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="checkCostModalLabel">매입가 0 옵션 확인</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {% if zero_purchase_list %}
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>상품명</th>
+                <th>옵션명</th>
+                <th>옵션코드</th>
+                <th>매입가</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in zero_purchase_list %}
+                <tr>
+                  <td class="one-line">{{ item.product_name }}</td>
+                  <td class="one-line">{{ item.option_name }}</td>
+                  <td class="one-line">{{ item.option_code }}</td>
+                  <td class="text-nowrap">{{ item.purchasing_price|intcomma }} 원</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p>해당 기간에 매입가가 0인 옵션이 없습니다.</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 기존 일자별 데이터
+  const dayProductsMap = JSON.parse('{{ day_products_map_json|escapejs }}');
+  // 전체 기간 상품/옵션 데이터 (추가)
+  const periodProductsMap = JSON.parse('{{ period_products_map_json|escapejs }}');
+
+  document.addEventListener('DOMContentLoaded', function(){
+    // 토글 버튼 이벤트
+    const toggleButtons = document.querySelectorAll('.toggle-btn');
+    toggleButtons.forEach(btn => {
+      btn.addEventListener('click', function(){
+        const idx = btn.dataset.idx;
+        const subRows = document.querySelectorAll(`tr[data-parent-idx="${idx}"]`);
+        subRows.forEach(row => {
+          row.style.display = (row.style.display === 'none' || row.style.display === '') ? 'table-row' : 'none';
+        });
+        btn.textContent = (btn.textContent.trim() === '+') ? '-' : '+';
+      });
+    });
+
+    // 모달 설정
+    const detailModalEl = document.getElementById('detailModal');
+    const detailModal = new bootstrap.Modal(detailModalEl);
+
+    // 모달 아이콘 클릭 이벤트
+    const iconButtons = document.querySelectorAll('.show-modal-icon');
+    iconButtons.forEach(icon => {
+      icon.addEventListener('click', function(){
+        const dayValue = this.dataset.date;
+        document.getElementById('detailModalLabel').innerText = `${dayValue} 상세 보기`;
+        let data;
+        // "period"이면 전체 기간 데이터 사용, 아니면 해당 날짜 데이터 사용
+        if(dayValue === 'period'){
+          data = periodProductsMap;
+        } else {
+          data = dayProductsMap[dayValue];
+        }
+        const tableHtml = buildProductOptionTable(data);
+        const contentArea = document.getElementById('modal-content-area');
+        contentArea.innerHTML = `<h5 class="mb-3">${dayValue} 상품/옵션 상세</h5>` + tableHtml;
+        detailModal.show();
+
+        // 모달 내 상품 토글 이벤트
+        const productToggles = contentArea.querySelectorAll('.modal-product-toggle');
+        productToggles.forEach(btn => {
+          btn.addEventListener('click', function(){
+            const pid = btn.dataset.productId;
+            const optionRows = contentArea.querySelectorAll(`tr[data-parent="${pid}"]`);
+            optionRows.forEach(r => {
+              r.style.display = (r.style.display === 'none' || r.style.display === '') ? 'table-row' : 'none';
+            });
+            btn.textContent = (btn.textContent.trim() === '+') ? '-' : '+';
+          });
+        });
+      });
+    });
+  });
+
+  // 모달 내 상품/옵션 테이블 생성 함수
+  function buildProductOptionTable(data){
+    if(!data) {
+      return `<p>해당 일자의 상품 데이터가 없습니다.</p>`;
+    }
+    // (여기서 buildProductOptionTable 함수 내의 기존 로직 구현)
+    // 예: 전체 합계 계산 및 각 상품/옵션별 row 구성
+    let total_qty = 0, total_ad_qty = 0, total_net = 0, total_ad_spend = 0, total_pc = 0, total_profit = 0;
+    for(let prod in data){
+      const pinfo = data[prod];
+      total_qty += Number(pinfo.qty) || 0;
+      total_ad_qty += Number(pinfo.ad_qty) || 0;
+      total_net += Number(pinfo.net_sales_amount) || 0;
+      total_ad_spend += Number(pinfo.ad_spend) || 0;
+      total_pc += Number(pinfo.purchase_cost) || 0;
+      total_profit += Number(pinfo.profit) || 0;
+    }
+    let total_margin = total_net > 0 ? (total_profit / total_net * 100) : 0;
+    
+    let html = `
+      <div class="table-responsive">
+        <table class="table table-hover align-middle" id="modalProductTable">
+          <thead>
+            <tr style="background-color: #f8f9fa;">
+              <th onclick="sortModalTable(this, 0)" style="cursor:pointer;">
+                상품명 <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+              <th onclick="sortModalTable(this, 1)" style="cursor:pointer;">
+                구분 <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+              <th onclick="sortModalTable(this, 2)" style="cursor:pointer;">
+                판매수량 <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+              <th onclick="sortModalTable(this, 3)" style="cursor:pointer;">
+                광고판매 <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+              <th onclick="sortModalTable(this, 4)" style="cursor:pointer;">
+                순매출 <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+              <th onclick="sortModalTable(this, 5)" style="cursor:pointer;">
+                광고비 <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+              <th onclick="sortModalTable(this, 6)" style="cursor:pointer;">
+                매입가 <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+              <th onclick="sortModalTable(this, 7)" style="cursor:pointer;">
+                순이익 <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+              <th onclick="sortModalTable(this, 8)" style="cursor:pointer;">
+                마진% <i class="sort-arrow bi bi-arrow-down-up"></i>
+              </th>
+            </tr>
+            <tr style="background-color: #e9ecef;">
+              <th colspan="2">기간 합계</th>
+              <th class="text-end">${formatNumber(total_qty)}</th>
+              <th class="text-end">${formatNumber(total_ad_qty)}</th>
+              <th class="text-end">${formatNumber(total_net)} 원</th>
+              <th class="text-end">${formatNumber(total_ad_spend)} 원</th>
+              <th class="text-end">${formatNumber(total_pc)} 원</th>
+              <th class="text-end">${formatNumber(total_profit.toFixed(0))} 원</th>
+              <th class="text-end">${total_margin.toFixed(1)}%</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    for(let productName in data){
+      const pinfo = data[productName];
+      let labelSet = new Set();
+      pinfo.options.forEach(opt => { 
+        if(opt.label) labelSet.add(opt.label);
+      });
+      let productLabel = "";
+      if(labelSet.size === 1) {
+        productLabel = labelSet.values().next().value;
+      } else if(labelSet.size > 1) {
+        productLabel = "로켓&판매자";
+      } else {
+        productLabel = "기타";
+      }
+      html += `
+        <tr class="fw-bold modal-product-row" data-product-id="${productName}">
+          <td>
+            <button type="button" class="btn btn-sm btn-outline-primary modal-product-toggle"
+                    data-product-id="${productName}">+</button>
+            ${pinfo.product_name}
+          </td>
+          <td>${productLabel}</td>
+          <td class="text-end">${formatNumber(pinfo.qty)}</td>
+          <td class="text-end">${formatNumber(pinfo.ad_qty)}</td>
+          <td class="text-end">${formatNumber(pinfo.net_sales_amount)} 원</td>
+          <td class="text-end">${formatNumber(pinfo.ad_spend)} 원</td>
+          <td class="text-end">${formatNumber(pinfo.purchase_cost)} 원</td>
+          <td class="text-end">${formatNumber(pinfo.profit.toFixed(0))} 원</td>
+          <td class="text-end">${pinfo.margin_rate.toFixed(1)}%</td>
+        </tr>
+      `;
+      pinfo.options.forEach(opt => {
+        html += `
+          <tr style="display:none;" data-parent="${productName}">
+            <td>&nbsp;&nbsp;└ ${opt.option_name}</td>
+            <td>${opt.label}</td>
+            <td class="text-end">${formatNumber(opt.qty)}</td>
+            <td class="text-end">${formatNumber(opt.ad_qty)}</td>
+            <td class="text-end">${formatNumber(opt.net_sales_amount)} 원</td>
+            <td class="text-end">${formatNumber(opt.ad_spend)} 원</td>
+            <td class="text-end">${formatNumber(opt.purchase_cost)} 원</td>
+            <td class="text-end">${formatNumber(opt.profit.toFixed(0))} 원</td>
+            <td class="text-end">${opt.margin_rate.toFixed(1)}%</td>
+          </tr>
+        `;
+      });
+    }
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+    return html;
+  }
+
+  function formatNumber(num){
+    if(isNaN(num)) return "0";
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  function setDateRange(mode){
+    const today = new Date();
+    let start = new Date();
+    let end = new Date();
+    if(mode === '7days'){
+      start.setDate(today.getDate()-7);
+    } else if(mode === '30days'){
+      start.setDate(today.getDate()-30);
+    }
+    document.getElementById('start_date').value = start.toISOString().split('T')[0];
+    document.getElementById('end_date').value   = end.toISOString().split('T')[0];
+  }
+
+  function sortModalTable(th, colIndex) {
+    const table = th.closest('table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const groups = [];
+    let currentGroup = [];
+    rows.forEach(row => {
+      if(row.classList.contains('modal-product-row')){
+        if(currentGroup.length > 0) {
+          groups.push(currentGroup);
+        }
+        currentGroup = [row];
+      } else {
+        currentGroup.push(row);
+      }
+    });
+    if(currentGroup.length > 0) groups.push(currentGroup);
+    let sortOrder = th.dataset.sortOrder === "asc" ? "desc" : "asc";
+    th.dataset.sortOrder = sortOrder;
+    groups.sort((groupA, groupB) => {
+      const cellA = groupA[0].querySelectorAll('td')[colIndex].innerText.trim();
+      const cellB = groupB[0].querySelectorAll('td')[colIndex].innerText.trim();
+      const numA = parseFloat(cellA.replace(/[^0-9.-]/g, ''));
+      const numB = parseFloat(cellB.replace(/[^0-9.-]/g, ''));
+      if(!isNaN(numA) && !isNaN(numB)){
+        return sortOrder === "asc" ? numA - numB : numB - numA;
+      }
+      return sortOrder === "asc" ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+    });
+    tbody.innerHTML = "";
+    groups.forEach(group => {
+      group.forEach(row => tbody.appendChild(row));
+    });
+  }
+  function setDateRange(mode){
+    const today = new Date();
+    let start = new Date();
+    let end = new Date();
+    if(mode === '7days'){
+      start.setDate(today.getDate()-7);
+    } else if(mode === '30days'){
+      start.setDate(today.getDate()-30);
+    }
+    document.getElementById('start_date').value = start.toISOString().split('T')[0];
+    document.getElementById('end_date').value   = end.toISOString().split('T')[0];
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    const tabButtons = document.querySelectorAll('.kpi-tab-btn');
+    const kpiCards = document.querySelectorAll('.kpi-card');
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', function(){
+        // 모든 탭 버튼에서 active 클래스를 제거
+        tabButtons.forEach(b => b.classList.remove('active'));
+        // 클릭한 버튼에 active 클래스를 추가
+        btn.classList.add('active');
+        // 모든 KPI 카드 숨김 처리
+        kpiCards.forEach(card => card.style.display = 'none');
+        // data-tab 속성에 해당하는 탭만 표시
+        const tabId = btn.getAttribute('data-tab');
+        const activeCard = document.getElementById(tabId);
+        if(activeCard) {
+          activeCard.style.display = 'block';
+        }
+      });
+    });
+  });
+  /**
+   * KPI 테이블(혹은 일반 테이블)에서 th 클릭 시 호출되는 정렬 함수
+   * @param {HTMLTableHeaderCellElement} th - 클릭된 TH 엘리먼트
+   * @param {number} colIndex - 몇 번째 열을 기준으로 정렬할지
+   */
+   function sortTableGlobal(th, colIndex) {
+    // 1) 어떤 테이블인지 찾는다
+    const table = th.closest('table');
+    const tbody = table.querySelector('tbody');
+    if(!tbody) return;
+
+    // 2) 현재 정렬 방향 확인(asc/desc 토글)
+    let sortOrder = th.dataset.sortOrder === 'asc' ? 'desc' : 'asc';
+    th.dataset.sortOrder = sortOrder;
+    
+    // (정렬 아이콘 변경 등 필요한 UI 처리)
+    // th.querySelector('.sort-arrow') 부분에 따라 아이콘 업데이트해도 됨
+
+    // 3) 모든 행(tr) 가져오기 (thead의 타이틀 행은 제외)
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    // 4) 정렬
+    rows.sort((rowA, rowB) => {
+      const cellA = rowA.querySelectorAll('td')[colIndex]?.innerText.trim() ?? '';
+      const cellB = rowB.querySelectorAll('td')[colIndex]?.innerText.trim() ?? '';
+
+      // 숫자 형태 제거(,원, %, 콤마 등) 후 parseFloat
+      const numA = parseFloat(cellA.replace(/[^0-9.\-]/g, ''));
+      const numB = parseFloat(cellB.replace(/[^0-9.\-]/g, ''));
+
+      const isNumericA = !isNaN(numA);
+      const isNumericB = !isNaN(numB);
+
+      if(isNumericA && isNumericB) {
+        // 둘 다 숫자라면 숫자 비교
+        return sortOrder === 'asc' ? (numA - numB) : (numB - numA);
+      } else {
+        // 하나라도 숫자가 아니면 문자열 비교
+        return sortOrder === 'asc'
+          ? cellA.localeCompare(cellB)
+          : cellB.localeCompare(cellA);
+      }
+    });
+
+    // 5) 정렬된 행 다시 tbody에 삽입
+    rows.forEach(r => tbody.appendChild(r));
+  }
+</script>
+
+<style>
+  .container-fluid {
+    margin-left: 16rem;
+    width: calc(100% - 16rem);
+  }
+  .card {
+    border: none;
+    border-radius: 15px;
+    background-color: #fff;
+    padding: 20px;
+  }
+  .table td, .table th {
+    padding: 12px;
+    vertical-align: middle;
+    border: 1px solid #dfe6e9;
+    white-space: nowrap;
+  }
+  .table-responsive {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+  .product-row {
+    background-color: #fff;
+  }
+  thead tr:nth-child(1) th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #dfe6e9;
+  }
+  thead tr:nth-child(2) th {
+    position: sticky;
+    top: 49px;
+    z-index: 10;
+    background-color: #f0f0f0;
+  }
+  .sort-arrow {
+    font-size: 0.8rem;
+    margin-left: 0.3rem;
+  }
+  .one-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .kpi-tabs {
+    display: flex;
+    gap: 10px;
+  }
+  .kpi-tab-btn {
+    flex: 1;
+  }
+  .kpi-tab-btn.active {
+    background-color: #0d6efd;
+    color: #fff;
+  }
+  .kpi-card {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+</style>
+{% endblock %}
