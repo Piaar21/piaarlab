@@ -1,0 +1,239 @@
+{% extends 'naver_sales_management_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+
+  <h2 class="mb-4 text-primary">네이버 상품 리스트</h2>
+
+  <!-- 상단 영역: "상품데이터 업데이트" + "전체삭제" 버튼 -->
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <form action="{% url 'naver_update_products' %}" method="POST">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-primary">
+        네이버 상품데이터 업데이트
+      </button>
+    </form>
+    <form method="POST" onsubmit="return confirm('정말 모든 데이터를 삭제하시겠습니까?');">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-danger">
+        데이터 전체 삭제
+      </button>
+    </form>
+  </div>
+
+  <!-- 검색 및 상품 개수 표시 -->
+  <div class="card mb-4">
+    <div class="card-body py-2">
+      <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+        <div class="fs-5 fw-bold">
+          피아르 첫째
+          <span class="text-muted fs-6 ms-2">전체 상품 {{ total_count }}개</span>
+        </div>
+      </div>
+      <!-- 검색 폼 -->
+      <div class="d-flex align-items-center flex-wrap gap-2">
+        <form method="get" class="d-flex align-items-center gap-2" style="max-width: 500px;">
+          <input type="text"
+                 name="search_query"
+                 class="form-control form-control-sm"
+                 placeholder="상품ID, SKU ID, 상품명 등 검색"
+                 value="{{ search_query|default_if_none:'' }}">
+          <button type="submit" class="btn btn-sm btn-secondary">검색</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% if total_count > 0 %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle w-100">
+          <thead>
+            <tr>
+              <th></th>
+              <th>상품ID</th>
+              <th>SKU ID</th>
+              <th>옵션코드</th>
+              <th>구분</th>
+              <th>상품명</th>
+              <th>정가</th>
+              <th>판매가(할인가)</th>
+              <th>개당이익금</th>
+              <th>마켓 수수료</th>
+              <th>입출고요금</th>
+              <th>원가</th>
+              <th>배송비</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for pid, data_dict in grouped_data.items %}
+            {% with items=data_dict.items %}
+              {% if items %}
+                {# (1) 상위행 (상품 레벨) : 첫 번째 item으로 대표정보 표시 #}
+                {% with first_item=items.0 %}
+                <tr class="product-row">
+                  <td>
+                    <!-- 펼치기/접기 토글 버튼 -->
+                    <button class="btn btn-sm btn-outline-primary toggle-btn" data-pid="{{ pid }}">+</button>
+                  </td>
+                  <!-- 상품ID -->
+                  <td>{{ pid }}</td>
+                  <!-- SKU ID (상위행은 '-') -->
+                  <td>-</td>
+                  <!-- 옵션코드 (상위행은 '-') -->
+                  <td>-</td>
+                  <!-- 구분(상위행) -->
+                  <td>{{ first_item.delivery_label }}</td>
+                  <!-- 상품명(상위행): 첫 아이템의 itemName 표시 -->
+                  <td>{{ first_item.itemName }}</td>
+                  <!-- 정가(상위행): 첫 아이템의 product_price -->
+                  <td>{{ first_item.product_price }}</td>
+                  <!-- 판매가(상위행): first_item.sale_price -->
+                  <td>{{ first_item.sale_price }}</td>
+                  <!-- 개당이익금(상위행): first_item.profit -->
+                  <td>{{ first_item.profit }}</td>
+                  <!-- 마켓 수수료(상위행): first_item.market_fee -->
+                  <td>{{ first_item.calculated_fee }}</td>
+                  <!-- 입출고요금(상위행): '-' -->
+                  <td>-</td>
+                  <!-- 원가(상위행): '-' -->
+                  <td>-</td>
+                  <!-- 배송비(상위행): 0원 예시 -->
+                  <td>0</td>
+                </tr>
+                
+                {# (2) 옵션 서브헤더 (하위행 헤더) - 초기에 숨김 #}
+                <tr class="option-subheader" data-parent-id="{{ pid }}" style="display:none;">
+                  <th></th>
+                  <th>상품ID</th>
+                  <th>SKU ID</th>
+                  <th>옵션코드</th>
+                  <th>구분</th>
+                  <th>옵션명</th>
+                  <th>정가</th>
+                  <th>판매가(할인가)</th>
+                  <th>개당이익금</th>
+                  <th>마켓 수수료</th>
+                  <th>입출고요금</th>
+                  <th>원가</th>
+                  <th>배송비</th>
+                  <th>상태</th>
+                </tr>
+                {% endwith %} {# endwith first_item=items.0 #}
+
+                {# (3) 하위행(옵션/SKU 레벨) #}
+                {% for item_obj in items %}
+                <tr class="option-row" data-parent-id="{{ pid }}" style="display:none;">
+                  <td><i class="bi bi-star-fill text-warning"></i></td>
+                  <!-- 상품ID -->
+                  <td>{{ item_obj.productID }}</td>
+                  <!-- SKU ID -->
+                  <td>{{ item_obj.skuID }}</td>
+                  <!-- 옵션코드 -->
+                  <td>{{ item_obj.optioncode }}</td>
+                  <!-- 구분(delivery_label) -->
+                  <td>{{ item_obj.delivery_label }}</td>
+                  <!-- 상품명 -->
+                  <td>{{ item_obj.option_name }}</td>
+                  <!-- 정가(product_price) -->
+                  <td>{{ item_obj.product_price }}</td>
+                  <!-- 판매가(할인가)(sale_price) -->
+                  <td>{{ item_obj.sale_price }}</td>
+                  <!-- 개당이익금(profit) -->
+                  <td>{{ item_obj.profit }}</td>
+                  <!-- 마켓 수수료(market_fee) -->
+                  <td>{{ item_obj.calculated_fee }}</td>
+                  <!-- 입출고요금 (예: '-') -->
+                  <td>-</td>
+                  <!-- 원가(없다면 '-') -->
+                  <td>-</td>
+                  <!-- 배송비(없다면 '0') -->
+                  <td>0</td>
+                  <!-- 상태 -->
+                  <td>
+                    {% if item_obj.sale_price > 0 %}
+                      <span class="text-success">판매중</span>
+                    {% else %}
+                      <span class="text-danger">품절</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+
+              {% endif %}  <!-- ★ 여기가 반드시 필요: if items 닫음 -->
+            {% endwith %}  <!-- with items=data_dict.items 닫음 -->
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+    <div class="text-center text-muted mt-5">
+      데이터가 없습니다.
+    </div>
+  {% endif %}
+
+</div>
+
+<style>
+  .container-fluid {
+    margin-left: 16rem;
+    width: calc(100% - 16rem);
+  }
+  .card {
+    border: none;
+    border-radius: 15px;
+    background-color: #ffffff;
+    color: #2d3436;
+    padding: 20px;
+  }
+  .table thead th {
+    background-color: #6c5ce7;
+    color: white;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    white-space: nowrap;
+  }
+  .table tbody tr:nth-child(even) {
+    background-color: rgba(108, 92, 231, 0.1);
+  }
+  .table tbody tr:hover {
+    background-color: rgba(108, 92, 231, 0.2);
+  }
+  .product-row {
+    background-color: #fff;
+    border-bottom: 1px solid #ccc;
+  }
+  .option-subheader th {
+    background-color: #f0f4ff;
+    border-top: 2px solid #999;
+  }
+  .option-row td {
+    border-top: 1px solid #eee;
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const toggleButtons = document.querySelectorAll('.toggle-btn');
+  toggleButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      const pid = btn.dataset.pid;
+      // parent-id=pid 인 서브헤더/옵션행만 찾기
+      const subRows = document.querySelectorAll(`
+        tr.option-subheader[data-parent-id="${pid}"],
+        tr.option-row[data-parent-id="${pid}"]
+      `);
+      subRows.forEach(row => {
+        row.style.display = (row.style.display === 'none') ? '' : 'none';
+      });
+      // 버튼 기호(+/−) 토글
+      btn.textContent = (btn.textContent === '+') ? '-' : '+';
+    });
+  });
+});
+</script>
+{% endblock %}
