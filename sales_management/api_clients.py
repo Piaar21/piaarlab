@@ -503,6 +503,9 @@ NAVER_ACCOUNTS = [
     # 필요에 따라 추가
 ]
 
+naver_ad_access = config('NAVER_AD_ACCESS', default=None)
+naver_ad_secret = config('NAVER_AD_SECRET', default=None)
+
 
 # 네이버 API 액세스 토큰 가져오기
 def fetch_naver_access_token(account_info):
@@ -887,35 +890,18 @@ def fetch_naver_sales(account_info, start_date, end_date):
     orders_details = fetch_naver_order_details(account_info, unique_ids_list)
 
     logger.info("===== [fetch_naver_sales] Logging each order detail =====")
+    # logger.info(f"=== Total items in orders_details: {orders_details} ===")
 
+    # ★ 1) 모든 orders_details를 전체 JSON으로 한번에 찍기 (매우 큼 주의)
+    # import json
+    # full_json_str = json.dumps(orders_details, ensure_ascii=False, indent=2)
+    # logger.info(f"[FULL DUMP of orders_details]\n{full_json_str}")
+
+    # OR 2) 아이템별로 나눠서 찍기
+    import json
     for idx, item in enumerate(orders_details):
-        product_part = item.get("productOrder", {})
-        order_id = product_part.get("productOrderId", "(no-orderId)")
-        product_status = product_part.get("productOrderStatus", "(no-status)")
-        claim_status = product_part.get("claimStatus", "(no-claimStatus)")
-
-        order_part = item.get("order", {})
-        payment_date = order_part.get("paymentDate", "(no-paymentDate)")
-        last_changed = product_part.get("lastChangedDate", "(no-lastChangedDate)")
-
-        # 기본 로그
-        logger.info(
-            f"[{idx}] order_id={order_id}, "
-            f"product_status={product_status}, "
-            f"claim_status={claim_status}, "
-            f"payment_date={payment_date}, "
-            f"last_changed={last_changed}"
-        )
-        if product_status == "PAYED":
-            logger.info("   -> PAYED(결제완료)")
-        else:
-            logger.info("   -> 다른상태 or None")
-
-        # ★ 추가: 만약 last_changed == "(no-lastChangedDate)"면, 전체 data 로그를 찍는다
-        if last_changed == "(no-lastChangedDate)":
-            import json
-            raw_item_str = json.dumps(item, ensure_ascii=False, indent=2)
-            logger.info(f"===== [No lastChangedDate item full data] =====\n{raw_item_str}")
+        item_str = json.dumps(item, ensure_ascii=False, indent=2)
+        logger.info(f"[FULL ITEM {idx}] =>\n{item_str}")
 
     logger.info("===== [fetch_naver_sales] Done logging orders_details =====")
 
@@ -924,7 +910,6 @@ def fetch_naver_sales(account_info, start_date, end_date):
         "message": "OK",
         "data": orders_details
     }
-
 
 def fetch_naver_order_details(account_info, product_order_ids):
     logger.info("===== [fetch_naver_order_details] START =====")
@@ -1014,5 +999,238 @@ def fetch_naver_order_details(account_info, product_order_ids):
 
     return orders_details
 
+
+
+#광고 시작
+customer_id = config('NAVER_AD_CUSTOMER_ID', default=None)
+naver_ad_access = config('NAVER_AD_ACCESS', default=None)
+naver_ad_secret = config('NAVER_AD_SECRET', default=None)
+BASE_URL = "https://api.searchad.naver.com"
+    
+
+def generate_signature(timestamp: str, method: str, uri: str, secret_key: str) -> str:
+    """
+    네이버 검색광고 API 호출 시 필요한 서명을 생성합니다.
+    :param timestamp: 밀리초 단위 현재 시간 (str)
+    :param method: HTTP 메소드 (예: GET)
+    :param uri: API 엔드포인트 URI (예: /stat-reports, /stat-reports/{reportJobId})
+    :param secret_key: 네이버 광고 API Secret Key
+    :return: Base64 인코딩된 서명 문자열
+    """
+    message = f"{timestamp}.{method}.{uri}"
+    signature = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).digest()
+    return base64.b64encode(signature).decode('utf-8')
+
+def get_header(method: str, uri: str, api_key: str, secret_key: str, customer_id: str) -> dict:
+    """
+    API 호출에 필요한 HTTP 헤더를 생성합니다.
+    """
+    timestamp = str(int(time.time() * 1000))
+    signature = generate_signature(timestamp, method, uri, secret_key)
+    return {
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Timestamp": timestamp,
+        "X-API-KEY": api_key,
+        "X-Customer": str(customer_id),
+        "X-Signature": signature,
+    }
+
+
+def fetch_naver_adgroups():
+    """
+    네이버 광고 API를 통해 광고그룹(소재) 목록을 받아옵니다.
+    활성 상태("ELIGIBLE")인 광고그룹만 필터링하여 반환합니다.
+    
+    :return: 활성 광고그룹 목록 (JSON 결과)
+    """
+    base_url = "https://api.searchad.naver.com"
+    uri = "/ncc/adgroups"
+    method = "GET"
+    
+    timestamp = str(int(time.time() * 1000))
+    signature = generate_signature(timestamp, method, uri, naver_ad_secret)
+    
+    headers = {
+        "X-Timestamp": timestamp,
+        "X-API-KEY": naver_ad_access,
+        "X-Customer": customer_id,
+        "X-Signature": signature,
+    }
+    
+    try:
+        response = requests.get(f"{base_url}{uri}", headers=headers)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[fetch_naver_adgroups] Request failed: {e}")
+        print(f"[fetch_naver_adgroups] Request failed: {e}")
+        return {}
+    
+    all_adgroups = response.json()
+    # "status" 필드가 "ELIGIBLE"인 광고그룹만 필터링 (활성 상태)
+    active_adgroups = [group for group in all_adgroups if group.get("status") == "ELIGIBLE"]
+    return active_adgroups
+
+
+def fetch_naver_stats(ad_ids, start_date: str, end_date: str):
+    """
+    네이버 광고 API /stats 엔드포인트를 호출하여 각 광고그룹(소재)별 성과 데이터를 받아옵니다.
+    광고그룹 ID 리스트의 각 요소마다 개별로 호출합니다.
+    
+    :param ad_ids: 광고그룹 ID 리스트 (예: ['grp-...','grp-...'])
+    :param start_date: 조회 시작 일자 (예: '2024-02-22')
+    :param end_date: 조회 종료 일자 (예: '2024-02-22')
+    :return: 각 호출 결과를 담은 리스트
+    """
+    base_url = "https://api.searchad.naver.com"
+    uri = "/stats"
+    method = "GET"
+    
+    all_results = []
+    for ad_id in ad_ids:
+        # 각 호출마다 새로운 timestamp 및 서명 생성
+        timestamp = str(int(time.time() * 1000))
+        signature = generate_signature(timestamp, method, uri, naver_ad_secret)
+        
+        headers = {
+            "X-Timestamp": timestamp,
+            "X-API-KEY": naver_ad_access,
+            "X-Customer": customer_id,
+            "X-Signature": signature,
+        }
+        
+        # fields와 timeRange는 반드시 JSON 문자열로 전달
+        params = {
+            "id": ad_id,  # 단일 엔티티 조회 시 "id" 파라미터 사용
+            "fields": '["clkCnt","impCnt","salesAmt","ctr","cpc","avgRnk","ccnt"]',
+            "timeRange": f'{{"since":"{start_date}","until":"{end_date}"}}'
+        }
+        
+        try:
+            response = requests.get(f"{base_url}{uri}", headers=headers, params=params)
+            response.raise_for_status()
+            result = response.json()
+            all_results.append(result)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"[fetch_naver_stats] Request failed for ad_id {ad_id}: {e}")
+            print(f"[fetch_naver_stats] Request failed for ad_id {ad_id}: {e}")
+    
+    return all_results
+
+def list_stat_reports():
+    """
+    StatReport: list
+    GET /stat-reports
+    등록된 모든 Report Job을 조회합니다.
+    
+    :return: Report Job 목록을 담은 JSON 객체 (응답이 없으면 빈 dict를 반환)
+    """
+    uri = "/master-reports"
+    method = "GET"
+    headers = get_header(method, uri, naver_ad_access, naver_ad_secret, customer_id)
+    base_url = "https://api.searchad.naver.com"
+    
+    try:
+        response = requests.get(base_url + uri, headers=headers)
+        response.raise_for_status()
+        # 응답 본문이 비어 있는지 확인
+        if not response.text.strip():
+            logger.error("Empty response body from /stat-reports endpoint.")
+            return {}
+        result = response.json()
+    except requests.RequestException as e:
+        logger.error(f"Failed to list stat reports: {e}")
+        return {}
+    except ValueError as e:
+        # JSONDecodeError가 발생한 경우
+        logger.error(f"JSON decode error: {e}. Response text: {response.text}")
+        return {}
+    
+    return result
+
+def get_stat_report(reportJobId: int):
+    """
+    StatReport: get
+    GET /stat-reports/{reportJobId}
+    특정 reportJobId에 해당하는 Report Job을 조회합니다.
+    
+    :param reportJobId: 조회할 Report Job의 ID (정수)
+    :return: 해당 Report Job 정보를 담은 JSON 객체
+    """
+    uri = f"/stat-reports/{reportJobId}"
+    method = "GET"
+    headers = get_header(method, uri, naver_ad_access, naver_ad_secret, customer_id)
+    base_url = "https://api.searchad.naver.com"
+    try:
+        response = requests.get(base_url + uri, headers=headers)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"Failed to get stat report {reportJobId}: {e}")
+        return None
+    
+    return response.json()
+
+# 예시 호출 (테스트용)
+if __name__ == '__main__':
+    # 전체 Report Job 목록 조회
+    report_list = list_stat_reports()
+    print("Report List:")
+    print(json.dumps(report_list, indent=4, ensure_ascii=False))
+    
+    # 특정 reportJobId 조회 (예: 123456789)
+    report_job_id = 123456789  # 실제 존재하는 reportJobId로 교체하세요.
+    report_detail = get_stat_report(report_job_id)
+    print("Report Detail:")
+    print(json.dumps(report_detail, indent=4, ensure_ascii=False))
+
+
+def create_master_report(item: str, from_time: str):
+    """
+    MasterReport: create
+    POST /master-reports
+    "Master Report" Job을 생성합니다.
+    """
+    uri = "/master-reports"
+    method = "POST"
+    headers = get_header(method, uri, naver_ad_access, naver_ad_secret, customer_id)
+    body = {
+        "item": item,
+        "fromTime": from_time
+    }
+    
+    try:
+        response = requests.post(BASE_URL + uri, headers=headers, json=body)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"Failed to create master report: {e}")
+        return None
+    
+    result = response.json()
+    pretty_result = json.dumps(result, indent=4, ensure_ascii=False)
+    logger.info(f"Created Master Report:\n{pretty_result}")
+    print("Created Master Report:\n", pretty_result)
+    return result
+
+def get_master_report(report_id: str):
+    """
+    MasterReport: get
+    GET /master-reports/{reportJobId}
+    특정 Master Report Job의 상세 정보를 조회합니다.
+    """
+    uri = f"/master-reports/{report_id}"
+    method = "GET"
+    headers = get_header(method, uri, naver_ad_access, naver_ad_secret, customer_id)
+    
+    try:
+        response = requests.get(BASE_URL + uri, headers=headers)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"Failed to get master report {report_id}: {e}")
+        return None
+    
+    result = response.json()
+    pretty_result = json.dumps(result, indent=4, ensure_ascii=False)
+    logger.info(f"Fetched Master Report:\n{pretty_result}")
+    print("Fetched Master Report:\n", pretty_result)
+    return result
 
 

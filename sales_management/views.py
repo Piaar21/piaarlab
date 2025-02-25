@@ -24,7 +24,7 @@ import decimal
 from decimal import Decimal
 
 
-from .api_clients import COUPANG_ACCOUNTS, fetch_coupang_all_seller_products, get_coupang_seller_product,fetch_seller_tool_option_info
+from .api_clients import COUPANG_ACCOUNTS, fetch_coupang_all_seller_products, get_coupang_seller_product,fetch_seller_tool_option_info, fetch_naver_stats, fetch_naver_adgroups, list_stat_reports,get_stat_report
 
 logger = logging.getLogger("sales_management")  # 로거 이름 일치
 
@@ -735,7 +735,31 @@ def update_coupang_sales_view(request):
         return redirect('sales_report')  # or 다른 URL
     else:
         return redirect('sales_report')
+
+
+@require_POST
+def deleted_coupang_sales_view(request):
+    start_str = request.POST.get('fetch_start_date')
+    end_str = request.POST.get('fetch_end_date')
+    logger.info(f"Received start date: {start_str}, end date: {end_str}")
     
+    if start_str and end_str:
+        try:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+            count = CoupangDailySales.objects.filter(date__range=(start_date, end_date)).count()
+            logger.info(f"Records before deletion: {count}")
+            deleted_count, _ = CoupangDailySales.objects.filter(date__range=(start_date, end_date)).delete()
+            messages.success(request, f"{start_str}부터 {end_str}까지 {deleted_count}건의 데이터가 삭제되었습니다.")
+        except Exception as e:
+            logger.exception("Deletion error:")
+            messages.error(request, "날짜 형식이 올바르지 않거나 삭제 중 오류가 발생했습니다.")
+    else:
+        messages.warning(request, "날짜를 선택해주세요!")
+    
+    return redirect('sales_report')
+
+
 def sales_excel_file(file_path):
     """
     업로드된 엑셀 파일을 읽어 DB에 저장하는 함수.
@@ -930,6 +954,26 @@ def update_ads_report(request):
         messages.info(request, "잘못된 접근입니다.")
         return redirect('/sales/ad-report/')
 
+def delete_ads_report(request):
+    start_str = request.POST.get('fetch_start_date')
+    end_str = request.POST.get('fetch_end_date')
+    logger.info(f"Received start date: {start_str}, end date: {end_str}")
+    
+    if start_str and end_str:
+        try:
+            start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+            count = CoupangAdsReport.objects.filter(date__range=(start_date, end_date)).count()
+            logger.info(f"Records before deletion: {count}")
+            deleted_count, _ = CoupangAdsReport.objects.filter(date__range=(start_date, end_date)).delete()
+            messages.success(request, f"{start_str}부터 {end_str}까지 {deleted_count}건의 데이터가 삭제되었습니다.")
+        except Exception as e:
+            logger.exception("Deletion error:")
+            messages.error(request, "날짜 형식이 올바르지 않거나 삭제 중 오류가 발생했습니다.")
+    else:
+        messages.warning(request, "날짜를 선택해주세요!")
+    
+    return redirect('/sales/ad-report/')
 
 
 
@@ -1109,7 +1153,7 @@ def ad_report_view(request):
         }
 
     # --- 섹션 6) 일자별 리포트 생성 ---
-    sorted_dates = sorted(date_label_map.keys())
+    sorted_dates = sorted(date_label_map.keys(),reverse=True)
     daily_reports = []
     for d in sorted_dates:
         label_map = date_label_map[d]
@@ -2651,11 +2695,13 @@ from collections import defaultdict
 from django.http import JsonResponse
 from django.shortcuts import render
 
-from .api_clients import NAVER_ACCOUNTS, fetch_naver_products_with_details, fetch_naver_sales
-from .models import naverItem, NaverDailySales
+from .api_clients import NAVER_ACCOUNTS, fetch_naver_products_with_details, fetch_naver_sales, fetch_naver_adgroups
+from .models import naverItem, NaverDailySales,NaverAdsReport,naverItem
+
+
 def naver_product_list_view(request):
     from django.db.models import Q
-    from .models import naverItem
+    
 
     search_query = request.GET.get('search_query', '').strip()
 
@@ -2950,13 +2996,13 @@ def naver_update_sales_view(request):
                 # (B) 이하 기존 로직
                 if isinstance(result, dict):
                     orders = result.get("data", [])
-                    logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales returned dict with len(orders)=%d", len(orders))
+                    # logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales returned dict with len(orders)=%d", len(orders))
                 elif isinstance(result, list):
                     orders = result
-                    logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales returned list len=%d", len(orders))
+                    # logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales returned list len=%d", len(orders))
                 else:
                     orders = []
-                    logger.warning("[DEBUG naver_update_sales_view] fetch_naver_sales returned unknown type: %s", type(result))
+                    # logger.warning("[DEBUG naver_update_sales_view] fetch_naver_sales returned unknown type: %s", type(result))
 
                 if orders:
                     logger.info("[DEBUG] calling update_naver_daily_sales with orders len=%d", len(orders))
@@ -3200,7 +3246,7 @@ def update_naver_daily_sales(order_list, account_info):
         store_name = "(네이버스토어)"
 
     # (B) 결제(+)로 간주할 상태 목록
-    PAID_STATUSES = ("PAYED", "DELIVERING", "DELIVERED", "PURCHASE_DECIDED")
+    PAID_STATUSES = ("PAYED", "DELIVERING", "DELIVERED", "PURCHASE_DECIDED", "DISPATCHED")
 
     for item in order_list:
         product_part = item.get("productOrder", {})
@@ -3217,7 +3263,7 @@ def update_naver_daily_sales(order_list, account_info):
         knowledge_commission = product_part.get("knowledgeShoppingSellingInterlockCommission", 0)
         market_fee_val       = payment_commission + knowledge_commission
 
-        # 상품명/옵션
+        # 상품명/옵션 및 옵션코드
         product_name = product_part.get("productName", "")
         product_opt  = product_part.get("productOption", "")
         option_code  = product_part.get("optionCode", "")
@@ -3241,7 +3287,7 @@ def update_naver_daily_sales(order_list, account_info):
             # 1) 결제(+) 처리
             # ------------------
             if not sales_obj:
-                # 레코드가 없다면 새로 생성
+                # 레코드가 없다면 새로 생성 (optioncode 추가)
                 sales_obj = NaverDailySales(
                     date=date_str,
                     store=store_name,
@@ -3250,6 +3296,7 @@ def update_naver_daily_sales(order_list, account_info):
                     product_id=order_id,
                     option_name=product_opt,
                     option_id=option_code,
+                    optioncode=option_code,  # 새 필드 값 추가
                     sales_qty=qty,
                     sales_revenue=total_pay_amt,
                     refunded_qty=0,
@@ -3267,7 +3314,7 @@ def update_naver_daily_sales(order_list, account_info):
             # 2) 반품 => 환불(-)
             # ------------------
             if not sales_obj:
-                # 없는 경우 → 새로 만들 수도, 스킵할 수도 있음
+                # 없는 경우 → 새로 만들기 (optioncode 추가)
                 sales_obj = NaverDailySales(
                     date=date_str,
                     store=store_name,
@@ -3276,6 +3323,7 @@ def update_naver_daily_sales(order_list, account_info):
                     product_id=order_id,
                     option_name=product_opt,
                     option_id=option_code,
+                    optioncode=option_code,  # 새 필드 값 추가
                     sales_qty=0,
                     sales_revenue=0,
                     refunded_qty=qty,
@@ -3285,9 +3333,10 @@ def update_naver_daily_sales(order_list, account_info):
                 logger.info(f" -> create new record for RETURNED: -qty={qty}, -rev={total_pay_amt}")
                 sales_obj.save()
             else:
-                # 기존 레코드가 있다면 환불수량/금액 - 반영
+                # 기존 레코드가 있다면 환불수량/금액 업데이트 (optioncode 도 최신 값으로 갱신)
                 sales_obj.refunded_qty     += qty
                 sales_obj.refunded_revenue += total_pay_amt
+                sales_obj.optioncode = option_code
                 logger.info(f" -> update record for RETURNED: -qty={qty}, -rev={total_pay_amt}")
                 sales_obj.save()
 
@@ -3298,6 +3347,7 @@ def update_naver_daily_sales(order_list, account_info):
             if sales_obj:
                 sales_obj.refunded_qty     += qty
                 sales_obj.refunded_revenue += total_pay_amt
+                sales_obj.optioncode = option_code  # 취소시에도 최신 옵션코드 반영
                 logger.info(f" -> update record for CANCELED: -qty={qty}, -rev={total_pay_amt}")
                 sales_obj.save()
             else:
@@ -3307,7 +3357,6 @@ def update_naver_daily_sales(order_list, account_info):
             logger.info(f" -> status={product_status}, skip")
 
     logger.info("===== [update_naver_daily_sales] END =====")
-
 
 
 
@@ -3328,10 +3377,194 @@ def deleted_naver_sales(request):
 
 
 
-
+#광고 시작
 
 def naver_ad_report_view(request):
     return render(request, 'sales_management/naver_ad_report.html')
+
+from .models import NaverAdsReport
+
+def save_naver_ads_reports(api_response_data):
+    """
+    네이버 광고 API로부터 받아온 리스트(api_response_data)를
+    NaverAdsReport 모델에 저장/갱신하는 예시 함수.
+    """
+    for item in api_response_data:
+        # (1) API 응답 필드 매핑 예시
+        # 실제 응답의 key와 NaverAdsReport 필드를 어떻게 매핑할지 결정해야 합니다.
+        date_str  = item.get("date", "")             # 예: '2023-01-01'
+        ad_type   = item.get("adType", "SEARCH")     # 예: 검색/쇼핑/브랜드 등
+        imp       = item.get("imp", 0)               # 노출수
+        clk       = item.get("clk", 0)               # 클릭수
+        ctr       = item.get("ctr", 0.0)             # 클릭률
+        cost      = item.get("cost", 0)              # 광고비
+        roas      = item.get("roas", 0.0)            # ROAS
+        ccnt      = item.get("ccnt", 0)              # 주문 수
+        sales_amt = item.get("salesAmt", 0)          # 전환 매출액
+        
+        # 이하 필드는 실제 응답에서 가져오지 못할 수 있으므로,
+        # 캠페인/그룹/옵션ID 등은 추가적인 API 호출 또는 내부 매핑 로직이 필요할 수 있습니다.
+        campaign_id       = item.get("campaignId", "unknown")
+        campaign_name     = item.get("campaignName", "")
+        ad_group          = item.get("adgroupName", "")
+        executed_product  = item.get("executedProductName", "") 
+        executed_option   = item.get("executedOptionId", "")
+        converting_prod   = item.get("convertingProductName", "")
+        converting_opt_id = item.get("convertingOptionId", "")
+        ad_placement      = item.get("adPlacement", "")   # 노출 위치(PC, 모바일, 파워링크 등)
+        
+        # (2) 날짜 형식 변환
+        # 보통 date_str이 "YYYY-MM-DD" 형태라면 아래처럼 처리 가능
+        # (이미 YYYY-MM-DD 형태이면 date_str[:10] 으로 잘라서 datetime 변환)
+        from datetime import datetime
+        try:
+            report_date = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+        except ValueError:
+            # 응답이 유효하지 않을 경우, 오늘 날짜 등으로 대체
+            report_date = timezone.now().date()
+        
+        # (3) UniqueConstraint에 대응: (date, converting_option_id, impressions, clicks, ad_spend, orders)
+        #    기존 레코드를 찾아서 있으면 update, 없으면 create
+        lookup_kwargs = {
+            'date': report_date,
+            'converting_option_id': converting_opt_id,
+            'impressions': imp,
+            'clicks': clk,
+            'ad_spend': cost,
+            'orders': ccnt,
+        }
+        
+        defaults = {
+            'ad_type': ad_type,
+            'campaign_id': campaign_id,
+            'campaign_name': campaign_name,
+            'ad_group': ad_group,
+            'executed_product_name': executed_product,
+            'executed_option_id': executed_option,
+            'product_name': '',  # 내부 로직으로 매핑 필요시 넣기
+            'option_name': '',
+            'converting_product_name': converting_prod,
+            'ad_placement': ad_placement,
+            'ctr': ctr,
+            'sold_quantity': 0,       # 별도의 로직이 필요하다면 추가
+            'sales_amount': sales_amt,
+            'roas': roas,
+        }
+        
+        # (4) 모델 저장(update_or_create)
+        obj, created = NaverAdsReport.objects.update_or_create(
+            **lookup_kwargs,
+            defaults=defaults
+        )
+        
+        # (5) 광고비에 부가세 10% 적용 로직
+        #     모델의 save()에서 pk가 없을 때(새로운 레코드) 내부적으로 적용하지만,
+        #     update_or_create()로 생성 시에도 유의해야 합니다.
+        #
+        # 만약 방금 생성(created=True)이면, 이미 save()가 한 번 호출되었을 것이므로
+        # 모델의 save() 로직에서 광고비가 1.1배로 저장되어 있을 것입니다.
+        # 추가 수정이 필요하다면 아래처럼 다시 save() 호출:
+        #
+        # if created:
+        #    obj.ad_spend = int(obj.ad_spend * Decimal("1.1"))
+        #    obj.save()
+        
+        # 로그 or debug
+        if created:
+            print(f"[save_naver_ads_reports] Created: {obj}")
+        else:
+            print(f"[save_naver_ads_reports] Updated: {obj}")
+
+
+
+from decouple import config
+
+customer_id = config('NAVER_AD_CUSTOMER_ID', default=None)
+naver_ad_access = config('NAVER_AD_ACCESS', default=None)
+naver_ad_secret = config('NAVER_AD_SECRET', default=None)
+from .api_clients import get_master_report, create_master_report, get_header
+import time
+
+def download_master_report(download_url: str, file_path: str):
+    """
+    download_url: Master Report 응답의 downloadUrl 값
+    file_path: 저장할 파일 경로 (예: "./download/master_report.csv")
+    
+    다운로드 요청 시, get_header 함수를 이용하여 헤더를 생성합니다.
+    URI는 쿼리 파라미터를 제외한 "/report-download"로 고정합니다.
+    """
+    if not download_url:
+        logger.error("Download URL이 비어 있습니다. Report Job이 아직 완성되지 않았을 수 있습니다.")
+        return None
+
+    # 현재 파일이 위치한 디렉터리(즉, sales_management 폴더)를 기준으로 download 폴더 경로 생성
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    download_folder = os.path.join(current_dir, "download")
+    if not os.path.exists(download_folder):
+        os.makedirs(download_folder)
+    # file_path 인수 대신 download 폴더 내에 "master_report.csv"로 저장
+    file_path = os.path.join(download_folder, "master_report.csv")
+    
+    # 다운로드 요청을 위한 헤더 생성: URI는 쿼리 파라미터 없이 "/report-download"를 사용합니다.
+    download_uri = "/report-download"
+    method = "GET"
+    headers = get_header(method, download_uri, naver_ad_access, naver_ad_secret, customer_id)
+    
+    try:
+        response = requests.get(download_url, headers=headers, stream=True, timeout=60)
+        response.raise_for_status()
+        with open(file_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        logger.info(f"Report downloaded successfully to {file_path}")
+        return file_path
+    except requests.RequestException as e:
+        logger.error(f"Failed to download report: {e}")
+        return None
+    
+
+def naver_update_ads_report(request):
+    """
+    프론트엔드에서 API 호출 버튼 클릭 시 실행되는 뷰 함수.
+    1) /master-reports 엔드포인트를 호출하여 "Master Report" Job을 생성합니다.
+    2) 생성 후 5초 대기한 뒤, 생성된 Report Job의 상세 정보를 조회합니다.
+    3) 다운로드 URL이 있으면 파일을 다운로드합니다.
+    결과는 로그와 콘솔에 예쁘게 포맷된 JSON으로 출력됩니다.
+    """
+    if request.method == 'POST':
+        if not all([naver_ad_access, naver_ad_secret, customer_id]):
+            messages.error(request, "네이버 광고 API 관련 설정이 누락되었습니다.")
+            return redirect('naver_ad_report')
+        
+        # 사용자 입력(또는 기본값)으로 Master Report 생성
+        item = request.POST.get('item', 'ShoppingProduct')
+        from_time = request.POST.get('fromTime', '2024-02-24T00:00:00Z')
+        
+        master_report = create_master_report(item, from_time)
+        if master_report and 'id' in master_report:
+            report_id = master_report['id']
+            # 5초 대기 (Report Job 처리 완료 대기)
+            time.sleep(3)
+            report_detail = get_master_report(report_id)
+            download_url = report_detail.get("downloadUrl") if report_detail else None
+            if download_url:
+                downloaded_file = download_master_report(download_url, "./master_report.csv")
+                if downloaded_file:
+                    messages.success(request, f"Master Report 다운로드 성공: {downloaded_file}")
+                else:
+                    messages.error(request, "Master Report 다운로드에 실패하였습니다.")
+            else:
+                messages.info(request, "Report Job은 생성되었으나 아직 다운로드 URL이 제공되지 않았습니다.")
+        else:
+            messages.error(request, "Master Report 생성에 실패하였습니다.")
+            return redirect('naver_ad_report')
+        
+        return redirect('naver_ad_report')
+    else:
+        return redirect('naver_ad_report')
+def naver_profit_report_view(request):
+    return render(request, 'sales_management/naver_profit_report.html')
+
 
 def naver_profit_report_view(request):
     return render(request, 'sales_management/naver_profit_report.html')

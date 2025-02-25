@@ -564,7 +564,94 @@ class NaverDailySales(models.Model):
         default=0,
         help_text="마켓수수료(paymentCommission + knowledgeShoppingSellingInterlockCommission)"
     )
-
+    optioncode = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="옵션코드(optionManageCode)"
+    )
 
     def __str__(self):
         return f"[{self.order_ID}] {self.product_name}"
+    
+
+
+class NaverAdsReport(models.Model):
+    """
+    네이버 광고 리포트
+    """
+    # 날짜
+    date = models.DateField("Date")
+    
+    # 광고유형
+    ad_type = models.CharField("Ad Type", max_length=100, blank=True, null=True)
+    
+    # 캠페인 ID
+    campaign_id = models.CharField("Campaign ID", max_length=100, blank=True, null=True)
+    
+    # 캠페인명
+    campaign_name = models.CharField("Campaign Name", max_length=255, blank=True, null=True)
+    
+    # 광고그룹
+    ad_group = models.CharField("Ad Group", max_length=255, blank=True, null=True)
+    
+    # 광고집행 상품명
+    executed_product_name = models.CharField("Executed Product Name", max_length=255, blank=True, null=True)
+    
+    # 광고집행 옵션ID
+    executed_option_id = models.CharField("Executed Option ID", max_length=100, blank=True, null=True)
+
+    product_name = models.CharField("product_name", max_length=255, blank=True, null=True)
+    option_name = models.CharField("option_name", max_length=255, blank=True, null=True)
+    
+    # 광고전환매출발생 상품명
+    converting_product_name = models.CharField("Converting Product Name", max_length=255, blank=True, null=True)
+    
+    # 광고전환매출발생 옵션ID
+    converting_option_id = models.CharField("Converting Option ID", max_length=100, blank=True, null=True)
+    
+    # 광고 노출 지면
+    ad_placement = models.CharField("Ad Placement", max_length=255, blank=True, null=True)
+    
+    # 노출수
+    impressions = models.IntegerField("Impressions", default=0)
+    
+    # 클릭수
+    clicks = models.IntegerField("Clicks", default=0)
+    
+    
+    # 클릭률(CTR) - 예) 15.37% → 15.37 형태로 저장
+    ctr = models.DecimalField("CTR (Click-Through Rate)", max_digits=6, decimal_places=2, default=0.00)
+    
+    # 총 주문수(1일)
+    orders = models.IntegerField("Orders", default=0)
+    
+    # 총 판매수량(1일)
+    sold_quantity = models.IntegerField("Sold Quantity", default=0)
+    
+    # 총 전환매출액(1일) 
+    sales_amount = models.IntegerField("Sales Amount", default=0)
+
+    # 광고비
+    ad_spend = models.IntegerField("Ad Spend", default=0)
+    
+    # 총광고수익률(1일) (ROAS)
+    roas = models.DecimalField("ROAS", max_digits=8, decimal_places=2, default=0.00)
+    
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    'date',
+                    'converting_option_id',
+                    'impressions',
+                    'clicks',
+                    'ad_spend',
+                    'orders'
+                ],
+                name='unique_naver_report_by_date_option_imp_click_spend_orders'
+            )
+        ]
+    
+    def __str__(self):
+        return f"{self.date} | {self.converting_option_id} | Imp={self.impressions}"
+
