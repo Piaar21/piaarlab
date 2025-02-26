@@ -1008,7 +1008,7 @@ naver_ad_secret = config('NAVER_AD_SECRET', default=None)
 BASE_URL = "https://api.searchad.naver.com"
     
 
-def generate_signature(timestamp: str, method: str, uri: str, secret_key: str) -> str:
+def naver_generate_signature(timestamp: str, method: str, uri: str, secret_key: str) -> str:
     """
     네이버 검색광고 API 호출 시 필요한 서명을 생성합니다.
     :param timestamp: 밀리초 단위 현재 시간 (str)
@@ -1026,7 +1026,7 @@ def get_header(method: str, uri: str, api_key: str, secret_key: str, customer_id
     API 호출에 필요한 HTTP 헤더를 생성합니다.
     """
     timestamp = str(int(time.time() * 1000))
-    signature = generate_signature(timestamp, method, uri, secret_key)
+    signature = naver_generate_signature(timestamp, method, uri, secret_key)
     return {
         "Content-Type": "application/json; charset=UTF-8",
         "X-Timestamp": timestamp,
