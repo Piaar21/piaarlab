@@ -256,7 +256,32 @@ class PurchaseCostAdmin(admin.ModelAdmin):
     search_fields = ('sku_id', 'option_code', 'manager')
     ordering = ('-id',)
 
-from .models import NaverDailySales
+from .models import NaverDailySales,naverItem
+
+@admin.register(naverItem)
+class naverItemAdmin(admin.ModelAdmin):
+    list_display = (
+        'productID',
+        'channelProductID',
+        'skuID',
+        'itemName',
+        'option_name',
+        'product_price',
+        'option_price',
+        'sale_price',
+        'profit',
+        'account_name',
+    )
+    search_fields = (
+        'productID',
+        'channelProductID',
+        'skuID',
+        'itemName',
+        'option_name',
+        'account_name',
+    )
+    list_filter = ('account_name',)
+
 
 @admin.register(NaverDailySales)
 class NaverDailySalesAdmin(admin.ModelAdmin):
@@ -271,6 +296,8 @@ class NaverDailySalesAdmin(admin.ModelAdmin):
         "sales_revenue",
         "refunded_qty",
         "refunded_revenue",
+        "product_id",
+        "originalProductId",
     )
 
     # 2) 검색 박스에서 검색할 필드 (부분 일치)
@@ -279,6 +306,8 @@ class NaverDailySalesAdmin(admin.ModelAdmin):
         "product_name",
         "option_name",
         "store",
+        "product_id",
+        "originalProductId",
     )
 
     # 3) 필터 사이드바
@@ -292,3 +321,35 @@ class NaverDailySalesAdmin(admin.ModelAdmin):
     
     # (선택) 한 페이지에 표시할 목록 개수
     list_per_page = 50    
+
+
+from django.contrib import admin
+from .models import NaverAdReport
+
+
+@admin.register(NaverAdReport)
+class NaverAdReportAdmin(admin.ModelAdmin):
+    list_display = (
+        'date', 
+        'ad_group_id', 
+        'ad_id', 
+        'customer_id', 
+        'impression', 
+        'click', 
+        'cost', 
+        'conversion_count', 
+        'sales_by_conversion', 
+        'ctr', 
+        'roas',
+        
+    )
+    search_fields = ('ad_id', 'ad_group_id', 'customer_id', 'product_name')
+    list_filter = ('date',)
+
+
+from .models import NaverAdShoppingProduct
+
+@admin.register(NaverAdShoppingProduct)
+class NaverAdShoppingProductAdmin(admin.ModelAdmin):
+    list_display = ('date', 'ad_group_id', 'ad_id', 'product_id', 'product_id_of_mall', 'product_name', 'product_image_url')
+    search_fields = ('ad_id', 'product_name')

@@ -1,5 +1,7 @@
 {% extends 'return_process_base.html' %}
+{% load dict_extras %}
 {% block content %}
+
 <div class="container-fluid mt-4">
     <h2 class="mb-4 text-primary">수거완료 목록</h2>
 
@@ -16,7 +18,9 @@
         <!-- 새로운 버튼 추가 -->
         <button class="btn btn-warning ms-2" id="update-product-order-status">현재클레임상태 업데이트</button>
         <button class="btn btn-danger ms-2" id="delete-items">데이터 삭제</button>
+
     </div>
+
 
     <div class="card shadow-sm">
         <div class="card-body">
@@ -26,7 +30,9 @@
                         <tr>
                             <th><input type="checkbox" id="check-all"></th>
                             <th>순번</th>
+                            <th>톡톡</th>
                             <th>검수</th>
+                            
                             <th>사유</th>
                             <th>
                                 수거 송장번호<br>
@@ -54,8 +60,11 @@
                     </thead>
                     <tbody>
                         {% for item in items %}
-                        <tr data-item-id="{{ item.id }}" data-inspection="{{ item.product_issue|default:'' }}"
-                            class="item-row">
+                        <tr data-item-id="{{ item.id }}"
+                        data-order-number="{{ item.order_number }}"
+                        data-store-name="{{ item.store_name }}"
+                        data-product-issue="{{ item.product_issue|default:'' }}"
+                        class="item-row">
                             <td><input type="checkbox" class="row-checkbox"></td>
                             <td>
                                 <a href="#" class="row-number text-decoration-none text-primary fw-bold open-modal"
@@ -64,6 +73,19 @@
                                 </a>
                             </td>
                             <td>
+                                {% if item.store_name in store_code_map_keys %}
+                                  <button type="button" 
+                                          class="btn btn-primary talk-btn" 
+                                          data-order="{{ item.order_number }}" 
+                                          data-store="{{ item.store_name }}"
+                                          onclick="openTalkChat('{{ item.order_number }}','{{ item.store_name }}')">
+                                    톡톡하기
+                                  </button>
+                                {% else %}
+                                  <span class="text-danger fw-bold">미지원</span>
+                                {% endif %}
+                              </td>
+                              <td>
                                 {% if item.product_issue %}
                                 <span class="text-primary fw-bold">검수완료 ({{ item.product_issue }})</span>
                                 {% else %}
@@ -85,7 +107,17 @@
                             <td>{{ item.option_code|default:"N/A" }}</td>
                             <td>{{ item.return_shipping_charge|default:"0" }}</td>
                             <td>{{ item.shipping_charge_payment_method|default:"N/A" }}</td>
-                            <td class="order-number">{{ item.order_number }}</td>
+                            <td class="order-number">
+                                {% if item.platform|lower == 'naver' %}
+                                    <a href="https://sell.smartstore.naver.com/o/v3/manage/order/popup/{{ item.order_number }}/productOrderDetail" target="_blank">
+                                        {{ item.order_number }}
+                                    </a>
+                                {% else %}
+                                    <a href="#" class="open-modal" data-item-id="{{ item.id }}">
+                                        {{ item.order_number }}
+                                    </a>
+                                {% endif %}
+                            </td>
                             <td>{{ item.inspector|default:"N/A" }}</td>
                             <td>{{ item.delivered_date }}</td>
                             <td>{{ item.claim_request_date|date:"Y년 m월 d일 A g:i" }}</td>
@@ -143,7 +175,26 @@
     </div>
 </div>
 
-<style>
+
+<!-- Member ID 입력 모달 (Bootstrap 5) -->
+<div class="modal fade" id="memberIdModal" tabindex="-1" aria-labelledby="memberIdModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="memberIdModalLabel">Member ID 입력</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+        </div>
+        <div class="modal-body">
+          <p>새 창에서 스마트스토어 페이지를 확인한 후, memberId를 입력하세요:</p>
+          <input type="text" id="memberIdInput" class="form-control" placeholder="Member ID 입력">
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="memberIdConfirm" class="btn btn-primary">확인</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <style>
     :root {
         --primary-color: #6c5ce7;
         --secondary-color: #a29bfe;
@@ -559,4 +610,54 @@
 
     });
 </script>
-{% endblock %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+      // 모달 HTML 요소가 로드된 후에 초기화
+      var memberIdModalElement = document.getElementById('memberIdModal');
+      if (!memberIdModalElement) {
+        console.error("memberIdModal 요소를 찾을 수 없습니다.");
+        return;
+      }
+      var memberIdModal = new bootstrap.Modal(memberIdModalElement);
+  
+      window.openTalkChat = function(orderNumber, storeName) {
+        console.log("openTalkChat 호출됨. orderNumber:", orderNumber, "storeName:", storeName);
+        // 스마트스토어 API 페이지 URL 구성
+        var apiUrl = "https://sell.smartstore.naver.com/o/v3/oa/biztalk/" + orderNumber + "/";
+        console.log("스마트스토어 API 호출 URL:", apiUrl);
+        
+        // 새 창으로 해당 페이지 열기 (브라우저 쿠키가 적용되어 로그인 상태 확인 가능)
+        var apiWindow = window.open(apiUrl, "SmartStorePage", "width=1024,height=768");
+        
+        // 모달을 열어 사용자에게 memberId 입력을 요청
+        memberIdModal.show();
+        
+        // "확인" 버튼 클릭 이벤트 처리 (중복 바인딩 방지)
+        document.getElementById("memberIdConfirm").onclick = function() {
+          var memberId = document.getElementById("memberIdInput").value.trim();
+          if (!memberId) {
+            alert("Member ID를 입력해주세요.");
+            return;
+          }
+          var code = storeCodeMap[storeName];
+          if (!code) {
+            alert("지원되지 않는 스토어입니다.");
+            return;
+          }
+          var finalLink = "https://partner.talk.naver.com/chat/ct/" + code + "/" + memberId + "?";
+          console.log("최종 톡톡 링크:", finalLink);
+          memberIdModal.hide(); // 모달 닫기
+          window.open(finalLink, "_blank"); // 최종 톡톡 URL 새 창 열기
+        };
+      };
+  
+      // 기존에 사용 중인 storeCodeMap 선언 (글로벌 변수)
+      window.storeCodeMap = {
+        "니뜰리히": "wcsrr1",
+        "수비다": "wce1wv",
+        "노는개최고양": "w4g8ot",
+        "아르빙": "w48val"
+      };
+    });
+  </script>
+  {% endblock %}

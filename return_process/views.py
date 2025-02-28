@@ -38,6 +38,7 @@ from django.db.models.functions import Coalesce, TruncDate
 from .models import ReturnItem
 from django.db.models import DateTimeField,Count, Q,Sum,Count
 import io
+from django.views.decorators.http import require_GET
 
 
 
@@ -1057,8 +1058,20 @@ def download_unmatched(request):
     wb.save(response)
     return response
 
+import json
+import requests
+from django.shortcuts import render
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from .models import ReturnItem
+
 @login_required
 def collected_items(request):
+    """'수거완료' 상태인 아이템 목록을 보여주는 뷰.
+       'update_all_claim_status' POST 요청만 처리하고,
+       톡톡하기(API)는 프론트엔드에서 /biztalk_proxy/ 를 통해 호출한다.
+    """
+    # 1) '수거완료' 상태인 아이템들 조회
     items = ReturnItem.objects.filter(processing_status='수거완료')
 
     if request.method == 'POST':
@@ -1105,7 +1118,67 @@ def collected_items(request):
 
             return JsonResponse({'success': True, 'updated_count': updated_count})
 
-    return render(request, 'return_process/collected_items.html', {'items': items})
+    # GET 요청: 템플릿 렌더링 (BizTalk API 호출은 프론트엔드에서 처리)
+    return render(request, 'return_process/collected_items.html', {
+        'items': items,
+    })
+
+@login_required
+def collected_items(request):
+    items = ReturnItem.objects.filter(processing_status='수거완료')
+    # 지원되는 스토어 목록
+    store_code_map = {
+        "니뜰리히": "wcsrr1",
+        "수비다": "wce1wv",
+        "노는개최고양": "w4g8ot",
+        "아르빙": "w48val",
+    }
+    store_code_map_keys = list(store_code_map.keys())
+    return render(request, 'return_process/collected_items.html', {
+        'items': items,
+        'store_code_map_keys': store_code_map_keys,
+    })
+
+
+@login_required
+@require_GET
+def biztalk_proxy(request, order_number):
+    api_url = f"https://sell.smartstore.naver.com/o/v3/oa/biztalk/{order_number}/"
+    
+    # 테스트용: 제공해주신 쿠키 값을 직접 사용 (실제 운영 시에는 보안에 유의)
+    cookies = {
+        "NID_AUT": "/2ikLx0V6BZ5kjCX+R5MGj3Kw7ts6ecuCtb3Y7Xi3uleywShx+92uVLaejEJYmjP",
+        "NID_SES": "AAAB3T4gvyZacpRqa7/stO/2Apkgb83sa76RPM7tShUlJmInqkmgU+4TOnUXopp1mQwLtMdZXp+oqpqFWM/3oIo7T4Hko4ejPUgstlc9wvFv9zysd3KlOyfCMNnpWx2fcp8SBHB8iIDc/5k44SoqPWBGQg5hwJctBa7j4Gp+UUypvMtbOTXQEdHGN6HLvFRWGNu060hZZiIo4CeEefg2sM/vJNtK2k9dvGUoE3EDYRplkRA2NyUl7IRAL+PTnzaWKpYkw8E9emS8erAACpeDRVNE65RnC4SFxA5/smKNNOL2ldhjCGGzhRUlREGk80t8TmJMaQjKORhAoNrvAdXUaM1tscp+IEt5XfIfDKh/GsiyjnBL5R6W451GeOUXtG6YIlTUURp36geqQrFDsL+Miq4JSmy0dMUm16m+29vqMC8dNLCjyv5Bjnja+Gw9iomJbhXMl10qcPaLSSpoJ9N87aADXa25VEWFtwTz/gsotRa9RbjjVEs193MDLPFAK9zxjg4cqYYzIDee0ehHCv+I5V4WtHbm2KUPqWocqalRVtBj9SjBi0+ftae5YZA9LRgw=="
+    }
+    
+    try:
+        response = requests.get(api_url, cookies=cookies)
+        logger.debug("SmartStore API URL: %s", api_url)
+        logger.debug("Response status code: %s", response.status_code)
+        logger.debug("Response content: %s", response.text.strip()[:200])
+        
+        response.raise_for_status()
+        
+        # HTML 로그인 페이지 감지
+        if response.text.strip().startswith("<!DOCTYPE html>"):
+            logger.debug("HTML 로그인 페이지 반환 감지")
+            return JsonResponse({
+                "bSuccess": False,
+                "message": "세션 등록 필요",
+                "content": response.text[:500]
+            }, status=200)
+        
+        try:
+            data = response.json()
+        except Exception as e:
+            logger.exception("JSON parsing error: %s", e)
+            return JsonResponse({'error': 'JSON decode error', 'content': response.text[:500]}, status=500)
+        
+        return JsonResponse(data)
+    except Exception as e:
+        logger.exception("Error calling SmartStore API: %s", e)
+        return JsonResponse({'error': str(e)}, status=500)
+    
 
 @login_required
 def inspect(request, item_id):
@@ -1240,8 +1313,20 @@ def inspected_items(request):
             print(f"[DEBUG] 교환 재배송 처리 결과: success={success}, message={message}")
             return JsonResponse({'success': success, 'message': message})
 
-    # 기존 GET 로직 그대로
-    return render(request, 'return_process/inspected_items.html', {'items': items})
+    # GET 요청: 전달할 컨텍스트에 store_code_map_keys 추가
+    store_code_map = {
+        "니뜰리히": "wcsrr1",
+        "수비다": "wce1wv",
+        "노는개최고양": "w4g8ot",
+        "아르빙": "w48val",
+    }
+    store_code_map_keys = list(store_code_map.keys())
+
+    return render(request, 'return_process/inspected_items.html', {
+        'items': items,
+        'store_code_map_keys': store_code_map_keys,
+    })
+
 
 def inspected_export_excel(request):
     if request.method == 'POST':
