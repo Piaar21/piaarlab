@@ -2377,7 +2377,19 @@ def profit_report_view(request):
         "profit": sum_dict["profit"],
         "margin_rate": overall_margin_rate
     }
-
+    # --------------------------
+    # (F) 매입가 0원인 옵션 목록
+    zero_purchase_list = []
+    zero_costs = NaverPurchaseCost.objects.filter(purchasing_price=0)
+    for pc in zero_costs:
+        item = naverItem.objects.filter(sku_id=pc.sku_id).first()
+        if item:
+            zero_purchase_list.append({
+                "product_name": item.product_name or "(상품명없음)",
+                "option_name": item.option_name or "(옵션없음)",
+                "option_code": getattr(pc, 'option_code', ""),
+                "purchasing_price": pc.purchasing_price,
+            })
     # ---------------------------
     # (F) 매입가 확인용 데이터: 해당 기간 내 PurchaseCost.purchasing_price가 0인 옵션들
     zero_purchase_list = []
@@ -4856,10 +4868,24 @@ def naver_profit_report_view(request):
         day_p_o_map[key]["sold_qty"] += final_qty
         day_p_o_map[key]["sales_amt"] += Decimal(final_rev)
         sku = (ds.option_id or "").strip()
-        try:
-            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
-            unit_price = cost_obj.purchasing_price
-        except NaverPurchaseCost.DoesNotExist:
+
+        # ds.product_id가 NaverItem의 channelproductID 값이라고 가정합니다.
+        channelProductID = "9280770579"
+        logger.info(f"Debug: Lookup for naverItem with channelProductID: {channelProductID}")
+
+        # channelProductID 필드로 naverItem 조회 (첫 번째 레코드 사용)
+        naver_item = naverItem.objects.filter(channelProductID=channelProductID).first()
+
+        if naver_item:
+            skuID = str(naver_item.skuID).strip()
+            logger.info(f"Debug: Found naverItem for channelProductID: {channelProductID} with skuID: {skuID}")
+            try:
+                cost_obj = NaverPurchaseCost.objects.get(sku_id=skuID)
+                logger.info(f"Debug: Purchasing Price for skuID {skuID} from DB is: {cost_obj.purchasing_price}")
+            except NaverPurchaseCost.DoesNotExist:
+                logger.info(f"Debug: No NaverPurchaseCost record found for skuID: {skuID}")
+        else:
+            logger.info(f"Debug: No naverItem record found for channelProductID: {channelProductID}")
             unit_price = Decimal("0.00")
         day_p_o_map[key]["purchase_cost"] += unit_price * final_qty
         day_p_o_map[key]["etc_cost"] += Decimal("0.00")
@@ -4900,6 +4926,7 @@ def naver_profit_report_view(request):
         product_name = naver_item_map.get(pid, f"(상품:{pid})")
         if pid not in day_products_map[day_str]:
             day_products_map[day_str][pid] = {
+                "product_id": pid,           # <-- 이 부분 추가 (프론트에 Pid 전달)
                 "product_name": product_name,
                 "sold_qty": 0,
                 "ad_qty": 0,
@@ -4952,8 +4979,13 @@ def naver_profit_report_view(request):
             return float(obj)
         else:
             return obj
+        
+    day_products_list = {}
+    for day_str, product_dict in day_products_map.items():
+        # 각 날짜의 값은 제품 딕셔너리들을 리스트로 변환
+        day_products_list[day_str] = list(product_dict.values())        
 
-    day_products_map_json = json.dumps(convert_keys(day_products_map), ensure_ascii=False)
+    day_products_map_json = json.dumps(convert_keys(day_products_list), ensure_ascii=False)
 
     # ---------------------------------------------------------
     # (9) 전체 기간 상품별 상세 데이터 (overall_products_map)
