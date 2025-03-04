@@ -1057,6 +1057,8 @@ def create_master_report(item: str, from_time: str):
     }
     try:
         response = requests.post(BASE_URL + uri, headers=headers, json=body)
+        if response.status_code >= 400:
+            logger.error(f"create_master_report Error {response.status_code}, body={response.text}")
         response.raise_for_status()
         data = response.json()
         logger.info(f"[create_master_report] item={item}, response={data}")
@@ -1082,6 +1084,25 @@ def get_master_report(report_id: str):
         logger.error(f"Failed to get master report {report_id}: {e}")
         return None
 
+def delete_all_master_reports():
+    """
+    MasterReport: delete all
+    DELETE /master-reports
+    모든 Master Report job을 삭제합니다.
+    """
+    uri = "/master-reports"
+    method = "DELETE"
+    headers = get_header(method, uri, NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID)
+    try:
+        response = requests.delete(BASE_URL + uri, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        logger.info(f"[delete_all_master_reports] Successfully deleted all master report jobs. Response: {data}")
+        return data
+    except requests.RequestException as e:
+        logger.error(f"[delete_all_master_reports] Failed to delete master report jobs: {e}")
+        return None
+    
 # ----------------------
 # 2) Stat Report 생성/조회
 # ----------------------

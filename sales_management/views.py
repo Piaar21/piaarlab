@@ -4137,7 +4137,7 @@ from .api_clients import (
     NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID,
     create_master_report, get_master_report,
     create_stat_report, get_stat_report,
-    get_header
+    get_header,delete_all_master_reports
 )
 import time
 
@@ -4254,75 +4254,67 @@ def naver_update_ads_report(request):
 
 def naver_update_ads_shopping_product(request):
     """
-    1) Master Report: ShoppingProduct 생성 → 조회 → CSV 다운로드
-    2) download된 ShoppingProduct.csv → NaverAdShoppingProduct 테이블에 저장
+    1) Master Report: ShoppingProduct 생성 → 조회 → CSV 다운로드  
+    2) 다운로드된 ShoppingProduct.csv → NaverAdShoppingProduct 테이블에 저장
+    만약 생성 시 "exceeded limit" 오류가 발생하면, 전체 Master Report를 삭제하고 재시도합니다.
     """
-    logger.debug("naver_update_ads_shopping_product 함수 시작")
-    
     if request.method == 'POST':
-        logger.debug("POST 요청 수신됨")
         # (A) 네이버 광고 API 설정 체크
         if not all([NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID]):
             messages.error(request, "네이버 광고 API 설정이 누락되었습니다.")
-            logger.error("네이버 광고 API 설정 누락")
             return redirect('naver_ad_report')
         
         # (B) 기간 파라미터 (fromTime)
         raw_start = request.POST.get('fetch_start_date', '')
-        logger.debug(f"raw_start: {raw_start}")
         try:
             from_time = f"{raw_start}T00:00:00Z" if raw_start else datetime.now().strftime("%Y-%m-%dT00:00:00Z")
-            logger.debug(f"from_time 설정: {from_time}")
-        except ValueError as ve:
-            logger.error(f"기간 파라미터 파싱 에러: {ve}")
+        except ValueError:
             from_time = datetime.now().strftime("%Y-%m-%dT00:00:00Z")
         
         today_str = datetime.now().strftime("%Y%m%d")
-        logger.debug(f"오늘 날짜 문자열: {today_str}")
+        master_item = "ShoppingProduct"
         
         # (C) Master Report 생성 (item="ShoppingProduct")
-        master_item = "ShoppingProduct"
-        logger.debug(f"{master_item} 생성 시작, from_time: {from_time}")
         master_res = create_master_report(master_item, from_time)
+        # 만약 생성 실패하고, 오류 메시지에 "exceeded limit"이 포함되어 있다면 삭제 후 재시도
         if not master_res or "id" not in master_res:
-            messages.warning(request, f"[Master] {master_item} 생성 실패")
-            logger.warning(f"[Master] {master_item} 생성 실패 - master_res: {master_res}")
-        else:
+            # 여기서는 master_res가 None일 경우도 포함
+            logger.warning(f"[Master] {master_item} 생성 실패. 시도된 from_time: {from_time}")
+            # (에러 메시지에 exceeded limit이 언급되었는지 여부를 판단할 수 있으면 조건 추가 가능)
+            delete_all_master_reports()
+            time.sleep(3)
+            master_res = create_master_report(master_item, from_time)
+            if not master_res or "id" not in master_res:
+                messages.warning(request, f"[Master] {master_item} 생성 재시도 실패")
+            else:
+                messages.info(request, f"[Master] {master_item} 생성 재시도 성공")
+        
+        if master_res and "id" in master_res:
             report_id = master_res["id"]
-            logger.debug(f"{master_item} 생성 성공, report_id: {report_id}")
             time.sleep(5)  # 5초 대기
             detail_res = get_master_report(report_id)
             if not detail_res:
                 messages.warning(request, f"[Master] {master_item}, id={report_id} 조회 실패")
-                logger.warning(f"[Master] {master_item} 조회 실패 - report_id: {report_id}")
             else:
                 download_url = detail_res.get("downloadUrl")
                 file_name = f"{today_str}_{master_item}.csv"
-                logger.debug(f"download_url: {download_url}, file_name: {file_name}")
                 if download_url:
                     saved_file = download_report(download_url, file_name)
                     if saved_file:
                         messages.success(request, f"[Master] {master_item} 다운로드 성공 -> {saved_file}")
-                        logger.debug(f"[Master] {master_item} 다운로드 성공, saved_file: {saved_file}")
                     else:
                         messages.error(request, f"[Master] {master_item} 다운로드 실패")
-                        logger.error(f"[Master] {master_item} 다운로드 실패 - saved_file: {saved_file}")
                 else:
                     messages.info(request, f"[Master] {master_item} downloadUrl 미존재")
-                    logger.info(f"[Master] {master_item} downloadUrl 미존재")
-        
         # (D) CSV 파싱 → NaverAdShoppingProduct 저장
-        logger.debug("CSV 파싱 및 NaverAdShoppingProduct 저장 시작")
         save_naver_shopping_product()
-        logger.debug("CSV 파싱 및 NaverAdShoppingProduct 저장 완료")
         
         messages.success(request, "쇼핑상품 데이터 업데이트 완료")
-        logger.debug("최종 성공 메시지 전송, naver_ad_report 페이지로 리다이렉트")
         return redirect('naver_ad_report')
     else:
-        logger.debug("POST 요청이 아님, naver_ad_report 페이지로 리다이렉트")
         return redirect('naver_ad_report')
-
+    
+    
 import csv
 from .models import NaverAdReport,NaverAdShoppingProduct
 from django.db import transaction
