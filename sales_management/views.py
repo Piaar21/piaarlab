@@ -4181,20 +4181,27 @@ def naver_update_ads_report(request):
     1) Stat Report: AD_DETAIL, AD_CONVERSION_DETAIL 생성 → 조회 → CSV 다운로드 (선택한 날짜 범위 내 각 날짜별)
     2) 다운로드된 CSV 파일들을 파싱하여 NaverAdReport 테이블에 저장
     """
+    logger.debug("naver_update_ads_report 함수 시작")
+    
     if request.method == 'POST':
+        logger.debug("POST 요청 수신됨")
         if not all([NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID]):
             messages.error(request, "네이버 광고 API 설정이 누락되었습니다.")
+            logger.debug("네이버 광고 API 설정 누락")
             return redirect('naver_ad_report')
         
         # POST로 전달된 날짜 (캘린더에서)
         raw_start = request.POST.get('fetch_start_date', '')
         raw_end = request.POST.get('fetch_end_date', '')
+        logger.debug(f"raw_start: {raw_start}, raw_end: {raw_end}")
         
         # 기본값: 오늘 날짜
         try:
             start_date = datetime.strptime(raw_start, "%Y-%m-%d").date() if raw_start else datetime.now().date()
             end_date = datetime.strptime(raw_end, "%Y-%m-%d").date() if raw_end else datetime.now().date()
-        except ValueError:
+            logger.debug(f"start_date: {start_date}, end_date: {end_date}")
+        except ValueError as ve:
+            logger.debug(f"날짜 파싱 에러 발생: {ve}")
             start_date = datetime.now().date()
             end_date = datetime.now().date()
         
@@ -4202,16 +4209,21 @@ def naver_update_ads_report(request):
         current_date = start_date
         while current_date <= end_date:
             stat_dt_str = current_date.strftime("%Y%m%d")
+            logger.debug(f"처리 중 날짜: {stat_dt_str}")
             for report_tp in ["AD_DETAIL", "AD_CONVERSION_DETAIL"]:
+                logger.debug(f"{report_tp} 작업 시작 for {stat_dt_str}")
                 stat_res = create_stat_report(report_tp, stat_dt_str)
                 if not stat_res or "reportJobId" not in stat_res:
                     messages.warning(request, f"[Stat] {report_tp} 생성 실패 for {stat_dt_str}")
+                    logger.warning(f"{report_tp} 생성 실패 for {stat_dt_str} - stat_res: {stat_res}")
                     continue
                 report_job_id = stat_res["reportJobId"]
+                logger.debug(f"{report_tp} 생성 성공 for {stat_dt_str}, report_job_id: {report_job_id}")
                 time.sleep(5)  # 5초 대기
                 detail_stat = get_stat_report(report_job_id)
                 if not detail_stat:
                     messages.warning(request, f"[Stat] {report_tp}, id={report_job_id} 조회 실패 for {stat_dt_str}")
+                    logger.warning(f"{report_tp} 조회 실패 for {stat_dt_str} with report_job_id: {report_job_id}")
                     continue
                 download_url = detail_stat.get("downloadUrl")
                 file_name = f"{stat_dt_str}_{report_tp}.csv"
@@ -4219,20 +4231,26 @@ def naver_update_ads_report(request):
                     saved_file = download_report(download_url, file_name)
                     if saved_file:
                         messages.success(request, f"[Stat] {report_tp} 다운로드 성공 for {stat_dt_str} → {saved_file}")
+                        logger.debug(f"{report_tp} 다운로드 성공 for {stat_dt_str}, saved_file: {saved_file}")
                     else:
                         messages.error(request, f"[Stat] {report_tp} 다운로드 실패 for {stat_dt_str}")
+                        logger.error(f"{report_tp} 다운로드 실패 for {stat_dt_str} - saved_file: {saved_file}")
                 else:
                     messages.info(request, f"[Stat] {report_tp} downloadUrl 미존재 for {stat_dt_str}")
+                    logger.info(f"{report_tp} downloadUrl 미존재 for {stat_dt_str}")
             current_date += timedelta(days=1)
         
+        logger.debug("CSV 파일 파싱 및 DB 업데이트 시작")
         # CSV 파일들을 파싱하여 NaverAdReport 업데이트
         save_naver_ads_report()
+        logger.debug("CSV 파일 파싱 및 DB 업데이트 완료")
         
         messages.success(request, "선택한 날짜 범위의 Stat Report 다운로드 및 DB 업데이트 완료")
+        logger.debug("최종 성공 메시지 전송, naver_ad_report 페이지로 리다이렉트")
         return redirect('naver_ad_report')
     else:
-        return redirect('naver_ad_report')
-    
+        logger.debug("POST 요청이 아님, naver_ad_report 페이지로 리다이렉트")
+        return redirect('naver_ad_report')    
 def naver_update_ads_shopping_product(request):
     """
     1) Master Report: ShoppingProduct 생성 → 조회 → CSV 다운로드
@@ -4981,6 +4999,7 @@ def naver_profit_report_view(request):
             "sold_qty": data["sold_qty"],
             "sales_amt": data["sales_amt"],
             "ad_qty": data["ad_qty"],
+            "commission": commission_val,  # 수정된 부분: data["commission_val"] → commission_val
             "ad_spend": data["ad_spend"],
             "ad_revenue": data["ad_revenue"],
             "purchase_cost": data["purchase_cost"],
