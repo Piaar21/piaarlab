@@ -636,6 +636,11 @@ class NaverAdReport(models.Model):
     def __str__(self):
         return f"NaverAdReport {self.date} / {self.ad_id}"
     
+    class Meta:
+        unique_together = (
+            ('date', 'ad_group_id', 'ad_id', 'impression', 'click', 'cost', 'conversion_count', 'sales_by_conversion'),
+        )
+
 class NaverAdShoppingProduct(models.Model):
     """
     종합 테이블:
@@ -658,3 +663,20 @@ class NaverAdShoppingProduct(models.Model):
     def __str__(self):
         return f"NaverAdReport {self.date} / {self.ad_id}"
     
+
+class NaverPurchaseCost(models.Model):
+    """
+    SKU 단위 매입가 정보.
+    -> sku_id 가 optionCombinations.id
+    -> option_code : optionCombinations.sellerManagerCode
+    """
+    sku_id = models.CharField(max_length=100)
+    option_code = models.CharField(max_length=100, blank=True, null=True)
+    manager = models.CharField(max_length=50, blank=True, null=True)
+    purchasing_price = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'naver_purchase_cost'
+
+    def __str__(self):
+        return f"[SKU={self.sku_id}] (option={self.option_code}) => {self.purchasing_price}"

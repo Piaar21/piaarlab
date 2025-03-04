@@ -82,6 +82,7 @@ INSTALLED_APPS = [
 CRONJOBS = [
     ('0 14 * * *', 'django.core.management.call_command', ['update_returns_command']),
     ('0 6 * * *', 'sales_management.cron.fetch_coupang_sales_daily'),
+    ('0 8 * * *', 'sales_management.cron.update_naver_data')
 ]
 
 
