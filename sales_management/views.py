@@ -4314,7 +4314,7 @@ def naver_update_ads_shopping_product(request):
     else:
         return redirect('naver_ad_report')
     
-    
+
 import csv
 from .models import NaverAdReport,NaverAdShoppingProduct
 from django.db import transaction
@@ -4473,7 +4473,6 @@ def save_naver_shopping_product():
 
     with open(csv_path, "r", encoding="utf-8-sig") as f:
         reader = csv.reader(f, delimiter='\t')
-        next(reader, None)  # 헤더 스킵
         for row in reader:
             if len(row) < 16:
                 logger.warning(f"Skipping row in ShoppingProduct due to insufficient columns: {row}")
