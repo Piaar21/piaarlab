@@ -8,7 +8,7 @@ import urllib.parse
 import json
 from datetime import datetime, timedelta
 import pytz
-
+import os
 
 
 logger = logging.getLogger(__name__)
@@ -552,7 +552,7 @@ def get_access_token(account_info):
 
 
 
-def fetch_naver_products(account_info, max_count=5):
+def fetch_naver_products(account_info, max_count=250):
     access_token = fetch_naver_access_token(account_info)
     if not access_token:
         logger.error(f"{account_info['names'][0]}: 액세스 토큰 발급 실패!")
@@ -596,6 +596,10 @@ def fetch_naver_products(account_info, max_count=5):
 
                 elif resp.status_code == 200:
                     data = resp.json()
+
+                    # logger.debug(f"[fetch_naver_products] 응답 데이터 전체: {json.dumps(data, ensure_ascii=False, indent=2)}")
+
+
                     products = data.get("contents", [])
                     total_el = data.get("totalElements", 0)
 
@@ -659,11 +663,11 @@ def get_naver_minimal_product_info(account_info, origin_product_no):
 
             elif resp.status_code == 200:
                 data = resp.json()
-                logger.debug(
-                    "[DETAIL] originNo=%s response data:\n%s",
-                    origin_product_no,
-                    json.dumps(data, ensure_ascii=False, indent=2)
-                )
+                # logger.debug(
+                #     "[DETAIL] originNo=%s response data:\n%s",
+                #     origin_product_no,
+                #     json.dumps(data, ensure_ascii=False, indent=2)
+                # )
 
                 origin_prod = data.get("originProduct", {})
                 sale_price  = origin_prod.get("salePrice")
@@ -762,6 +766,7 @@ def fetch_naver_products_with_details(account_info):
         # (D) 상세정보 + 목록 정보 병합
         merged = {
             "originProductNo": origin_no,
+            "channelProductNo": ch_products[0].get("channelProductNo", "") if ch_products else "",
             "productName": product_name,
             "representativeImage": detail_info.get("representativeImage"),
             "salePrice": detail_info.get("salePrice"),
@@ -1002,28 +1007,26 @@ def fetch_naver_order_details(account_info, product_order_ids):
 
 
 #광고 시작
-customer_id = config('NAVER_AD_CUSTOMER_ID', default=None)
-naver_ad_access = config('NAVER_AD_ACCESS', default=None)
-naver_ad_secret = config('NAVER_AD_SECRET', default=None)
+CUSTOMER_ID = config('NAVER_AD_CUSTOMER_ID', default=None)
+NAVER_AD_ACCESS = config('NAVER_AD_ACCESS', default=None)
+NAVER_AD_SECRET = config('NAVER_AD_SECRET', default=None)
 BASE_URL = "https://api.searchad.naver.com"
     
 
 def naver_generate_signature(timestamp: str, method: str, uri: str, secret_key: str) -> str:
     """
-    네이버 검색광고 API 호출 시 필요한 서명을 생성합니다.
-    :param timestamp: 밀리초 단위 현재 시간 (str)
-    :param method: HTTP 메소드 (예: GET)
-    :param uri: API 엔드포인트 URI (예: /stat-reports, /stat-reports/{reportJobId})
-    :param secret_key: 네이버 광고 API Secret Key
-    :return: Base64 인코딩된 서명 문자열
+    timestamp: 밀리초 단위 현재시간
+    method: "GET" / "POST"
+    uri: "/stat-reports" 또는 "/stat-reports/{id}", 다운로드 시 "/report-download"
     """
     message = f"{timestamp}.{method}.{uri}"
-    signature = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).digest()
-    return base64.b64encode(signature).decode('utf-8')
+    sign = hmac.new(secret_key.encode('utf-8'), message.encode('utf-8'), hashlib.sha256).digest()
+    return base64.b64encode(sign).decode('utf-8')
 
-def get_header(method: str, uri: str, api_key: str, secret_key: str, customer_id: str) -> dict:
+def get_header(method: str, uri: str, api_key: str, secret_key: str, customer_id: str):
     """
-    API 호출에 필요한 HTTP 헤더를 생성합니다.
+    네이버 검색광고 API 호출 시 필요한 헤더 생성.
+    - uri에는 쿼리 파라미터를 제외한 경로만 사용
     """
     timestamp = str(int(time.time() * 1000))
     signature = naver_generate_signature(timestamp, method, uri, secret_key)
@@ -1036,201 +1039,152 @@ def get_header(method: str, uri: str, api_key: str, secret_key: str, customer_id
     }
 
 
-def fetch_naver_adgroups():
-    """
-    네이버 광고 API를 통해 광고그룹(소재) 목록을 받아옵니다.
-    활성 상태("ELIGIBLE")인 광고그룹만 필터링하여 반환합니다.
-    
-    :return: 활성 광고그룹 목록 (JSON 결과)
-    """
-    base_url = "https://api.searchad.naver.com"
-    uri = "/ncc/adgroups"
-    method = "GET"
-    
-    timestamp = str(int(time.time() * 1000))
-    signature = generate_signature(timestamp, method, uri, naver_ad_secret)
-    
-    headers = {
-        "X-Timestamp": timestamp,
-        "X-API-KEY": naver_ad_access,
-        "X-Customer": customer_id,
-        "X-Signature": signature,
-    }
-    
-    try:
-        response = requests.get(f"{base_url}{uri}", headers=headers)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        logger.error(f"[fetch_naver_adgroups] Request failed: {e}")
-        print(f"[fetch_naver_adgroups] Request failed: {e}")
-        return {}
-    
-    all_adgroups = response.json()
-    # "status" 필드가 "ELIGIBLE"인 광고그룹만 필터링 (활성 상태)
-    active_adgroups = [group for group in all_adgroups if group.get("status") == "ELIGIBLE"]
-    return active_adgroups
-
-
-def fetch_naver_stats(ad_ids, start_date: str, end_date: str):
-    """
-    네이버 광고 API /stats 엔드포인트를 호출하여 각 광고그룹(소재)별 성과 데이터를 받아옵니다.
-    광고그룹 ID 리스트의 각 요소마다 개별로 호출합니다.
-    
-    :param ad_ids: 광고그룹 ID 리스트 (예: ['grp-...','grp-...'])
-    :param start_date: 조회 시작 일자 (예: '2024-02-22')
-    :param end_date: 조회 종료 일자 (예: '2024-02-22')
-    :return: 각 호출 결과를 담은 리스트
-    """
-    base_url = "https://api.searchad.naver.com"
-    uri = "/stats"
-    method = "GET"
-    
-    all_results = []
-    for ad_id in ad_ids:
-        # 각 호출마다 새로운 timestamp 및 서명 생성
-        timestamp = str(int(time.time() * 1000))
-        signature = generate_signature(timestamp, method, uri, naver_ad_secret)
-        
-        headers = {
-            "X-Timestamp": timestamp,
-            "X-API-KEY": naver_ad_access,
-            "X-Customer": customer_id,
-            "X-Signature": signature,
-        }
-        
-        # fields와 timeRange는 반드시 JSON 문자열로 전달
-        params = {
-            "id": ad_id,  # 단일 엔티티 조회 시 "id" 파라미터 사용
-            "fields": '["clkCnt","impCnt","salesAmt","ctr","cpc","avgRnk","ccnt"]',
-            "timeRange": f'{{"since":"{start_date}","until":"{end_date}"}}'
-        }
-        
-        try:
-            response = requests.get(f"{base_url}{uri}", headers=headers, params=params)
-            response.raise_for_status()
-            result = response.json()
-            all_results.append(result)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"[fetch_naver_stats] Request failed for ad_id {ad_id}: {e}")
-            print(f"[fetch_naver_stats] Request failed for ad_id {ad_id}: {e}")
-    
-    return all_results
-
-def list_stat_reports():
-    """
-    StatReport: list
-    GET /stat-reports
-    등록된 모든 Report Job을 조회합니다.
-    
-    :return: Report Job 목록을 담은 JSON 객체 (응답이 없으면 빈 dict를 반환)
-    """
-    uri = "/master-reports"
-    method = "GET"
-    headers = get_header(method, uri, naver_ad_access, naver_ad_secret, customer_id)
-    base_url = "https://api.searchad.naver.com"
-    
-    try:
-        response = requests.get(base_url + uri, headers=headers)
-        response.raise_for_status()
-        # 응답 본문이 비어 있는지 확인
-        if not response.text.strip():
-            logger.error("Empty response body from /stat-reports endpoint.")
-            return {}
-        result = response.json()
-    except requests.RequestException as e:
-        logger.error(f"Failed to list stat reports: {e}")
-        return {}
-    except ValueError as e:
-        # JSONDecodeError가 발생한 경우
-        logger.error(f"JSON decode error: {e}. Response text: {response.text}")
-        return {}
-    
-    return result
-
-def get_stat_report(reportJobId: int):
-    """
-    StatReport: get
-    GET /stat-reports/{reportJobId}
-    특정 reportJobId에 해당하는 Report Job을 조회합니다.
-    
-    :param reportJobId: 조회할 Report Job의 ID (정수)
-    :return: 해당 Report Job 정보를 담은 JSON 객체
-    """
-    uri = f"/stat-reports/{reportJobId}"
-    method = "GET"
-    headers = get_header(method, uri, naver_ad_access, naver_ad_secret, customer_id)
-    base_url = "https://api.searchad.naver.com"
-    try:
-        response = requests.get(base_url + uri, headers=headers)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        logger.error(f"Failed to get stat report {reportJobId}: {e}")
-        return None
-    
-    return response.json()
-
-# 예시 호출 (테스트용)
-if __name__ == '__main__':
-    # 전체 Report Job 목록 조회
-    report_list = list_stat_reports()
-    print("Report List:")
-    print(json.dumps(report_list, indent=4, ensure_ascii=False))
-    
-    # 특정 reportJobId 조회 (예: 123456789)
-    report_job_id = 123456789  # 실제 존재하는 reportJobId로 교체하세요.
-    report_detail = get_stat_report(report_job_id)
-    print("Report Detail:")
-    print(json.dumps(report_detail, indent=4, ensure_ascii=False))
-
-
+# -------------------
+# Master Report
+# -------------------
 def create_master_report(item: str, from_time: str):
     """
-    MasterReport: create
     POST /master-reports
-    "Master Report" Job을 생성합니다.
+    item 예: "Campaign", "Adgroup", "ShoppingProduct"
+    from_time 예: "2025-02-26T00:00:00Z"
     """
     uri = "/master-reports"
     method = "POST"
-    headers = get_header(method, uri, naver_ad_access, naver_ad_secret, customer_id)
+    headers = get_header(method, uri, NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID)
     body = {
         "item": item,
         "fromTime": from_time
     }
-    
     try:
         response = requests.post(BASE_URL + uri, headers=headers, json=body)
         response.raise_for_status()
+        data = response.json()
+        logger.info(f"[create_master_report] item={item}, response={data}")
+        return data
     except requests.RequestException as e:
         logger.error(f"Failed to create master report: {e}")
         return None
-    
-    result = response.json()
-    pretty_result = json.dumps(result, indent=4, ensure_ascii=False)
-    logger.info(f"Created Master Report:\n{pretty_result}")
-    print("Created Master Report:\n", pretty_result)
-    return result
 
 def get_master_report(report_id: str):
     """
-    MasterReport: get
-    GET /master-reports/{reportJobId}
-    특정 Master Report Job의 상세 정보를 조회합니다.
+    GET /master-reports/{report_id}
     """
     uri = f"/master-reports/{report_id}"
     method = "GET"
-    headers = get_header(method, uri, naver_ad_access, naver_ad_secret, customer_id)
-    
+    headers = get_header(method, uri, NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID)
     try:
         response = requests.get(BASE_URL + uri, headers=headers)
         response.raise_for_status()
+        data = response.json()
+        logger.info(f"[get_master_report] id={report_id}, response={data}")
+        return data
     except requests.RequestException as e:
         logger.error(f"Failed to get master report {report_id}: {e}")
         return None
+
+# ----------------------
+# 2) Stat Report 생성/조회
+# ----------------------
+def create_stat_report(report_tp, stat_dt):
+    uri = "/stat-reports"
+    method = "POST"
+    headers = get_header(method, uri, NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID)
+    body = {
+        "reportTp": report_tp,
+        "statDt": stat_dt
+    }
+    url = BASE_URL + uri
+    try:
+        resp = requests.post(url, headers=headers, json=body)
+        # 아래처럼 상태 코드가 4xx/5xx일 때 응답 바디를 로깅하고 나서 raise_for_status()를 호출
+        if resp.status_code >= 400:
+            logger.error(f"[create_stat_report] status={resp.status_code}, body={resp.text}")
+        resp.raise_for_status()
+        data = resp.json()
+        logger.info(f"[create_stat_report] reportTp={report_tp}, statDt={stat_dt}, resp={data}")
+        return data
+    except requests.RequestException as e:
+        logger.error(f"[create_stat_report] Failed: {e}")
+        return None
+
+def get_stat_report(report_job_id):
+    """
+    GET /stat-reports/{reportJobId}
+    """
+    uri = f"/stat-reports/{report_job_id}"
+    method = "GET"
+    headers = get_header(method, uri, NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID)
+    url = BASE_URL + uri
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+    return resp.json()
+
+def download_report(download_url, file_name):
+    """
+    download_url: 응답에서 받은 downloadUrl
+    file_name: 저장할 파일명 (예: "AD_DETAIL_20250226.tsv")
+    """
+    # 시그니처용 URI는 "/report-download"
+    uri = "/report-download"
+    method = "GET"
+    headers = get_header(method, uri, NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID)
+
+    r = requests.get(download_url, headers=headers, stream=True)
+    r.raise_for_status()
+
+    # 저장
+    if not os.path.exists("download"):
+        os.makedirs("download")
+    file_path = os.path.join("download", file_name)
+
+    with open(file_path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print(f"Downloaded to {file_path}")
+    return file_path
+
+def main():
+    # 예) 어제 날짜 (YYYYMMDD)로 "AD_DETAIL" 리포트 요청
+    yesterday = datetime.now() - timedelta(days=1)
+    stat_dt = yesterday.strftime("%Y%m%d")    # 예: "20250226"
+    report_tp = "AD_DETAIL"                  # 필요 시 "AD_CONVERSION_DETAIL" 등으로 변경
     
-    result = response.json()
-    pretty_result = json.dumps(result, indent=4, ensure_ascii=False)
-    logger.info(f"Fetched Master Report:\n{pretty_result}")
-    print("Fetched Master Report:\n", pretty_result)
-    return result
+    # 1) 생성
+    create_res = create_stat_report(report_tp, stat_dt)
+    print("create_stat_report:", create_res)
 
+    if "reportJobId" not in create_res:
+        print("reportJobId not found in response. Possibly 400 error or unsupported type.")
+        return
 
+    report_job_id = create_res["reportJobId"]
+    status = create_res.get("status", "REGIST")
+    print(f"reportJobId={report_job_id}, status={status}")
+
+    # 2) 상태 체크 (REGIST, RUNNING, WAITING, etc.)
+    while status in ["REGIST", "RUNNING", "WAITING"]:
+        print("Waiting for report to be built...")
+        time.sleep(5)
+        detail_res = get_stat_report(report_job_id)
+        status = detail_res.get("status", "ERROR")
+        print(f"Check: reportJobId={report_job_id}, status={status}")
+
+    # 3) 상태가 BUILT -> 다운로드. NONE -> 데이터 없음, ERROR -> 빌드실패
+    if status == "BUILT":
+        download_url = detail_res.get("downloadUrl", "")
+        if download_url:
+            file_name = f"{report_tp}_{stat_dt}.tsv"
+            download_report(download_url, file_name)
+        else:
+            print("downloadUrl is empty even though status=BUILT.")
+    elif status == "NONE":
+        print("No data for this report.")
+    elif status == "ERROR":
+        print("Failed to build stat report.")
+    elif status == "AGGREGATING":
+        print("Stat aggregation not yet finished.")
+    else:
+        print(f"Unknown status: {status}")
+
+if __name__ == "__main__":
+    main()
