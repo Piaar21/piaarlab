@@ -4868,24 +4868,11 @@ def naver_profit_report_view(request):
         day_p_o_map[key]["sold_qty"] += final_qty
         day_p_o_map[key]["sales_amt"] += Decimal(final_rev)
         sku = (ds.option_id or "").strip()
-
-        # ds.product_id가 NaverItem의 channelproductID 값이라고 가정합니다.
-        channelProductID = "9280770579"
-        logger.info(f"Debug: Lookup for naverItem with channelProductID: {channelProductID}")
-
-        # channelProductID 필드로 naverItem 조회 (첫 번째 레코드 사용)
-        naver_item = naverItem.objects.filter(channelProductID=channelProductID).first()
-
-        if naver_item:
-            skuID = str(naver_item.skuID).strip()
-            logger.info(f"Debug: Found naverItem for channelProductID: {channelProductID} with skuID: {skuID}")
-            try:
-                cost_obj = NaverPurchaseCost.objects.get(sku_id=skuID)
-                logger.info(f"Debug: Purchasing Price for skuID {skuID} from DB is: {cost_obj.purchasing_price}")
-            except NaverPurchaseCost.DoesNotExist:
-                logger.info(f"Debug: No NaverPurchaseCost record found for skuID: {skuID}")
-        else:
-            logger.info(f"Debug: No naverItem record found for channelProductID: {channelProductID}")
+        
+        try:
+            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
+            unit_price = cost_obj.purchasing_price
+        except NaverPurchaseCost.DoesNotExist:
             unit_price = Decimal("0.00")
         day_p_o_map[key]["purchase_cost"] += unit_price * final_qty
         day_p_o_map[key]["etc_cost"] += Decimal("0.00")
