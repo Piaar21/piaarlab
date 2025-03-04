@@ -2899,25 +2899,28 @@ def naver_product_list_view(request):
 
 def naver_update_products(request):
     """
-    1) fetch_naver_products_with_details 로 전체 상품 + 옵션 정보를 가져온다.
+    1) NAVER_ACCOUNTS에 등록된 모든 계정에 대해
+       fetch_naver_products_with_details 로 전체 상품 + 옵션 정보를 가져온다.
     2) naverItem DB 테이블에 저장/갱신한다.
     """
     if request.method == 'POST':
-        # (A) 어떤 네이버 계정을 쓸지 결정 (예시는 첫 번째)
-        account_info = NAVER_ACCOUNTS[0]
+        from django.contrib import messages
+        # 전체 계정을 순회하며 상품 정보를 가져와 DB에 저장
+        total_saved = 0
+        for account_info in NAVER_ACCOUNTS:
+            success, product_list = fetch_naver_products_with_details(account_info)
+            if not success:
+                # 실패 시 product_list는 에러 메시지
+                messages.error(request, f"[{account_info['names']}] 네이버 상품 목록 조회 실패: {product_list}")
+                continue  # 다른 계정들도 시도하기 위해 continue
 
-        # (B) 상품 + 옵션 목록 가져오기
-        success, product_list = fetch_naver_products_with_details(account_info)
-        if not success:
-            # 실패 시 product_list는 에러 메시지
-            messages.error(request, f"네이버 상품 목록 조회 실패: {product_list}")
-            return redirect('product_list')
+            # DB 저장
+            count_saved = save_naver_products_to_db(product_list, account_info)
+            total_saved += count_saved
 
-        # (C) DB 저장
-        count_saved = save_naver_products_to_db(product_list, account_info)
+            messages.success(request, f"[{account_info['names']}] 상품 {count_saved}건 저장/갱신 완료.")
 
-        # (D) 성공 메시지
-        messages.success(request, f"네이버 상품데이터 {count_saved}건 저장/갱신 완료.")
+        messages.success(request, f"모든 계정 상품데이터 총 {total_saved}건 저장/갱신 완료.")
         return redirect('naver_product_list')
 
     else:
@@ -3152,44 +3155,69 @@ def naver_update_sales_view(request):
                 start_dt = datetime.strptime(start_str, '%Y-%m-%d')
                 end_dt   = datetime.strptime(end_str,   '%Y-%m-%d')
 
-                account_info = NAVER_ACCOUNTS[0]
-                logger.info("[DEBUG naver_update_sales_view] calling fetch_naver_sales with start=%s end=%s", start_dt, end_dt)
+                # NAVER_ACCOUNTS의 모든 계정을 순회
+                for account_info in NAVER_ACCOUNTS:
+                    try:
+                        logger.info(
+                            "[DEBUG naver_update_sales_view] calling fetch_naver_sales for account [%s] with start=%s end=%s",
+                            account_info['names'], start_dt, end_dt
+                        )
+                        result = fetch_naver_sales(account_info, start_dt, end_dt)
 
-                result = fetch_naver_sales(account_info, start_dt, end_dt)
+                        # (A) ★ 여기서 result를 로그로 찍어본다 (최대 1000자)
+                        logger.info(
+                            "[DEBUG naver_update_sales_view] fetch_naver_sales result for account [%s] =>\n%s",
+                            account_info['names'],
+                            json.dumps(result, ensure_ascii=False, indent=2)[:1000]
+                        )
 
-                # (A) ★ 여기서 result를 로그로 찍어본다 (최대 1000자)
-                logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales 'result' =>\n%s",
-                    json.dumps(result, ensure_ascii=False, indent=2)[:1000]
-                )
+                        # (B) 기존 로직: result의 타입에 따라 orders 추출
+                        if isinstance(result, dict):
+                            orders = result.get("data", [])
+                        elif isinstance(result, list):
+                            orders = result
+                        else:
+                            orders = []
 
-                # (B) 이하 기존 로직
-                if isinstance(result, dict):
-                    orders = result.get("data", [])
-                    # logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales returned dict with len(orders)=%d", len(orders))
-                elif isinstance(result, list):
-                    orders = result
-                    # logger.info("[DEBUG naver_update_sales_view] fetch_naver_sales returned list len=%d", len(orders))
-                else:
-                    orders = []
-                    # logger.warning("[DEBUG naver_update_sales_view] fetch_naver_sales returned unknown type: %s", type(result))
-
-                if orders:
-                    logger.info("[DEBUG] calling update_naver_daily_sales with orders len=%d", len(orders))
-                    update_naver_daily_sales(orders, account_info)
-                else:
-                    logger.info("[DEBUG] no orders to save, skip update_naver_daily_sales")
-
-                messages.success(request, f"네이버 매출 ({start_str} ~ {end_str}) 업데이트 완료!")
+                        if orders:
+                            logger.info(
+                                "[DEBUG] calling update_naver_daily_sales with orders len=%d for account [%s]",
+                                len(orders), account_info['names']
+                            )
+                            update_naver_daily_sales(orders, account_info)
+                            messages.success(
+                                request,
+                                f"[{account_info['names']}] 네이버 매출 ({start_str} ~ {end_str}) 업데이트 완료!"
+                            )
+                        else:
+                            logger.info(
+                                "[DEBUG] no orders to save for account [%s], skip update_naver_daily_sales",
+                                account_info['names']
+                            )
+                            messages.warning(
+                                request,
+                                f"[{account_info['names']}] 업데이트할 매출 없음."
+                            )
+                    except Exception as e:
+                        logger.error(
+                            "[ERROR] 네이버 매출 업데이트 중 예외 발생 for account [%s]",
+                            account_info['names'], exc_info=True
+                        )
+                        messages.error(
+                            request,
+                            f"[{account_info['names']}] 네이버 매출 업데이트 오류: {str(e)}"
+                        )
             except Exception as e:
-                logger.error("[ERROR] 네이버 매출 업데이트 중 예외 발생", exc_info=True)
+                logger.error("[ERROR] 네이버 매출 업데이트 전반적 처리 중 예외 발생", exc_info=True)
                 messages.error(request, f"네이버 매출 업데이트 오류: {str(e)}")
         else:
             messages.warning(request, "날짜를 선택해주세요!")
 
         return redirect('naver_sales_report')
     else:
-        return redirect('naver_sales_report') 
-
+        return redirect('naver_sales_report')
+    
+    
 def naver_sales_report_view(request):
     logger.info("===== [naver_sales_report_view] START =====")
 
@@ -3600,41 +3628,64 @@ def naver_ad_report_view(request):
         end_date   = date.today() - timedelta(days=1)
 
     # --- 2) 모델 임포트
-    from .models import NaverAdReport, NaverAdShoppingProduct, NaverDailySales
+    from .models import NaverAdReport, NaverAdShoppingProduct, NaverDailySales, naverItem
 
-    # --- 3) NaverAdReport 조회 (성과/전환 데이터) : 날짜 필터
-    ad_report_qs = NaverAdReport.objects.filter(date__range=[start_date, end_date])
+    # --- (A) naverItem에서 브랜드 매핑을 위한 채널ID 기반 맵 생성 (account_name)
+    # 여기서는 channelProductID를 키로 사용
+    brand_map = {}
+    # 그리고 sku_to_channel 맵: skuID → channelProductID
+    sku_to_channel = {}
+    for item in naverItem.objects.all():
+        sku = (item.skuID or "").strip()  # 기본적으로 skuID 사용
+        channel = (item.channelProductID or "").strip()  # 브랜드 매칭용 채널ID
+        brand = (item.account_name or "").strip() or "광고비"
+        # 브랜드 매핑은 channelProductID 기준
+        brand_map[channel] = brand
+        # skuID에서 channelProductID로의 매핑 저장
+        sku_to_channel[sku] = channel
 
-    # --- 4) NaverAdShoppingProduct 조회 → sp_map: (ad_group_id, ad_id) → { product_name, product_id_of_mall, product_id }
+    def get_label_from_sku(sku_str):
+        """
+        기본적으로 skuID를 전달받으면, sku_to_channel을 통해 channelProductID로 변환한 후
+        brand_map에서 브랜드(account_name)를 반환한다.
+        """
+        sku_str = sku_str.strip()
+        channel = sku_to_channel.get(sku_str, sku_str)
+        result = brand_map.get(channel, "광고비")
+        return result
+
+    # --- (B) naverItem 맵 (상품명 매핑용) -> 기본적으로 skuID 사용
+    naver_item_map = {}
+    for it in naverItem.objects.all():
+        if it.skuID:
+            key = it.channelProductID.strip()
+            naver_item_map[key] = it.itemName
+
+    # --- (C) NaverAdShoppingProduct 조회 → sp_map 생성
+    # 키는 ad_id(문자열)로 사용
     sp_map = {}
     for sp in NaverAdShoppingProduct.objects.all():
-        key = (sp.ad_group_id, sp.ad_id)
+        key = sp.ad_id.strip() if sp.ad_id else ""
         sp_map[key] = {
             "product_name": sp.product_name.strip() if sp.product_name else "(상품미매칭)",
-            "product_id_of_mall": sp.product_id_of_mall.strip() if sp.product_id_of_mall else "",
-            "product_id": sp.product_id.strip() if sp.product_id else ""
+            "product_id_of_mall": (sp.product_id_of_mall or "").strip(),
         }
 
-    # --- 5) NaverDailySales 조회 → sales_map_daily (일자별 판매 집계)
-    # 판매수량 = sales_qty - refunded_qty, 매출 = sales_revenue - refunded_revenue
+    # --- (D) NaverDailySales 조회 → sales_map_daily (일자별 판매 집계)
     sales_map_daily = defaultdict(lambda: {"qty": 0, "revenue": Decimal("0.00")})
     daily_sales_qs = NaverDailySales.objects.filter(
         date__gte=start_date.strftime("%Y-%m-%d"),
         date__lte=end_date.strftime("%Y-%m-%d")
     )
-    # 추가: 제품명 매핑 (판매 데이터 기준)
-    product_name_map = {}
     for ds in daily_sales_qs:
-        # ds.date는 CharField (예:"2025-02-25")
-        d_str = ds.date
+        d_str = ds.date if isinstance(ds.date, str) else ds.date.strftime("%Y-%m-%d")
         final_qty = ds.sales_qty - ds.refunded_qty
         final_rev = ds.sales_revenue - ds.refunded_revenue
         sales_map_daily[d_str]["qty"] += final_qty
         sales_map_daily[d_str]["revenue"] += Decimal(final_rev)
-        # 제품명은 ds.product_name
-        product_name_map[ds.product_id] = ds.product_name
 
-    # --- 6) 광고 성과 집계 → ad_data_map: (ad_group_id, ad_id) 기준
+    # --- (E) 광고 성과 집계 (ad_report_qs)
+    ad_report_qs = NaverAdReport.objects.filter(date__range=[start_date, end_date])
     ad_data_map = defaultdict(lambda: {
         "impression": 0,
         "click": 0,
@@ -3643,36 +3694,41 @@ def naver_ad_report_view(request):
         "sales_by_conversion": Decimal("0.00"),
     })
     for row in ad_report_qs:
-        key = (row.ad_group_id, row.ad_id)
+        key = row.ad_id.strip() if row.ad_id else ""
+        if key in sp_map:
+            product_name = sp_map[key]["product_name"]
+        else:
+            product_name = "(광고상품미매칭)"
         ad_data_map[key]["impression"] += row.impression or 0
         ad_data_map[key]["click"] += row.click or 0
         ad_data_map[key]["cost"] += row.cost or Decimal("0.00")
         ad_data_map[key]["conversion_count"] += row.conversion_count or 0
         ad_data_map[key]["sales_by_conversion"] += row.sales_by_conversion or Decimal("0.00")
 
-    # --- 7) 미매칭 광고 목록 (sp_map에 없는 광고)
+    # --- (F) 미매칭 광고 목록
     unmatched_ads = []
     for key in ad_data_map.keys():
         if key not in sp_map:
-            unmatched_ads.append({"ad_group_id": key[0], "ad_id": key[1]})
+            unmatched_ads.append({"ad_id": key})
+            logger.warning("Unmatched ad_id: %s", key)
     unmatched_count = len(unmatched_ads)
 
-    # --- 8) KPI 카드용 목록 생성 (card_items)
+    # --- (G) KPI 카드용 목록 생성 (card_items)
     card_items = []
     total_click = 0
     total_conv = 0
-    for (ag, ad), ad_val in ad_data_map.items():
+    for ad_id, ad_val in ad_data_map.items():
         cost_val = ad_val["cost"]
         rev_val  = ad_val["sales_by_conversion"]
         impression_val = ad_val["impression"]
         click_val = ad_val["click"]
         conv_val = ad_val["conversion_count"]
 
-        spinfo = sp_map.get((ag, ad), {})
+        spinfo = sp_map.get(ad_id, {})
         product_name = spinfo.get("product_name", "(광고상품미매칭)")
         pid_mall = spinfo.get("product_id_of_mall")
 
-        # 판매 데이터: 전체 판매 집계(모든 일자에 대해)
+        # 판매 데이터 집계
         sales_qty = 0
         sales_rev = 0
         if pid_mall:
@@ -3707,7 +3763,7 @@ def naver_ad_report_view(request):
     roas_low  = sorted([item for item in card_items if item["roas"] <= 200], key=lambda x: x["roas"])
     conv_low  = sorted([item for item in card_items if 0 < item["conversion_rate"] < overall_conv_avg], key=lambda x: x["conversion_rate"])
 
-    # --- 9) 일자별 집계 (daily_reports)
+    # --- (H) 일자별 집계 (daily_sum_map)
     daily_sum_map = defaultdict(lambda: {
         "qty": 0,
         "ad_qty": 0,
@@ -3715,47 +3771,123 @@ def naver_ad_report_view(request):
         "ad_revenue": Decimal("0.00"),
         "ad_spend": Decimal("0.00"),
         "profit": Decimal("0.00"),
+        "click": 0,
     })
     for row in ad_report_qs:
         d_str = row.date.strftime("%Y-%m-%d")
-        daily_sum_map[d_str]["ad_qty"] += row.conversion_count or 0
-        daily_sum_map[d_str]["ad_revenue"] += row.sales_by_conversion or Decimal("0.00")
-        daily_sum_map[d_str]["ad_spend"] += row.cost or Decimal("0.00")
-        daily_sum_map[d_str]["profit"] += (row.sales_by_conversion or Decimal("0.00")) - (row.cost or Decimal("0.00"))
+        daily_sum_map[d_str]["ad_qty"] += (row.conversion_count or 0)
+        daily_sum_map[d_str]["ad_revenue"] += (row.sales_by_conversion or Decimal("0.00"))
+        daily_sum_map[d_str]["ad_spend"] += (row.cost or Decimal("0.00"))
+        daily_sum_map[d_str]["profit"] += ((row.sales_by_conversion or Decimal("0.00")) - (row.cost or Decimal("0.00")))
+        daily_sum_map[d_str]["click"] += (row.click or 0)
     for d_str, s_val in sales_map_daily.items():
         daily_sum_map[d_str]["qty"] += s_val["qty"]
         daily_sum_map[d_str]["revenue"] += s_val["revenue"]
+
+    # --- (H-1) 세부 내역 (details) 구성: 일자별, 브랜드별 집계
+    date_brand_map = defaultdict(lambda: defaultdict(lambda: {
+        "qty": 0,
+        "ad_qty": 0,
+        "revenue": Decimal("0.00"),
+        "ad_revenue": Decimal("0.00"),
+        "ad_spend": Decimal("0.00"),
+        "click": 0,
+        "profit": Decimal("0.00"),
+        "conversion_rate": 0,
+        "roas": 0,
+        "ad_sales_rate": 0,
+        "kind": "",
+    }))
+
+    # 판매 세부 내역: NaverDailySales를 순회하며 브랜드 결정 시, 
+    # 옵션(option_id)로 매핑한 결과가 "광고비"이면 store 필드로 대체
+    for ds in daily_sales_qs:
+        d_str = ds.date if isinstance(ds.date, str) else ds.date.strftime("%Y-%m-%d")
+        sku_str = (ds.option_id or "").strip()
+        if sku_str:
+            brand_candidate = get_label_from_sku(sku_str)
+            if brand_candidate == "광고비":
+                # 옵션으로 매핑했는데 "광고비"로 나오면 내부의 store 필드를 사용
+                brand = ds.store or "판매자배송"
+            else:
+                brand = brand_candidate
+        else:
+            brand = ds.store or "판매자배송"
+        final_qty = ds.sales_qty - ds.refunded_qty
+        final_rev = ds.sales_revenue - ds.refunded_revenue
+        detail = date_brand_map[d_str][brand]
+        detail["qty"] += final_qty
+        detail["revenue"] += Decimal(final_rev)
+        detail["kind"] = brand
+
+    # 광고 세부 내역 (ad_id 단일키 기준)
+    for ad in ad_report_qs:
+        d_str = ad.date.strftime("%Y-%m-%d")
+        key_ad = ad.ad_id.strip() if ad.ad_id else ""
+        if key_ad in sp_map:
+            sku_str = sp_map[key_ad]["product_id_of_mall"]  # 이 값은 기본적으로 skuID
+            brand = get_label_from_sku(sku_str)              # skuID를 전달하면, get_label_from_sku에서 channelProductID로 변환하여 브랜드 반환
+        else:
+            brand = "광고비"
+        detail = date_brand_map[d_str][brand]
+        detail["ad_qty"] += ad.conversion_count or 0
+        detail["ad_revenue"] += ad.sales_by_conversion or Decimal("0.00")
+        detail["ad_spend"] += ad.cost or Decimal("0.00")
+        detail["click"] += ad.click or 0
+
+    # 파생 지표 계산
+    for d_str, brands in date_brand_map.items():
+        for brand, detail in brands.items():
+            detail["profit"] = detail["revenue"] - detail["ad_spend"]
+            detail["conversion_rate"] = (detail["ad_qty"] / detail["click"] * 100) if detail["click"] > 0 else 0
+            detail["roas"] = (detail["ad_revenue"] / detail["ad_spend"] * 100) if detail["ad_spend"] > 0 else 0
+            detail["ad_sales_rate"] = (detail["ad_qty"] / detail["qty"] * 100) if detail["qty"] > 0 else 0
+
+    # --- (I) daily_reports 구성 (일자별 집계 + 세부 내역 추가)
     daily_reports = []
     for d_str in sorted(daily_sum_map.keys()):
         val = daily_sum_map[d_str]
         roas_val = (val["ad_revenue"] / val["ad_spend"] * 100) if val["ad_spend"] > 0 else 0
+        conversion_rate_val = (val["ad_qty"] / val["click"] * 100) if val["click"] > 0 else 0
+        ad_sales_rate_val = (val["ad_qty"] / val["qty"] * 100) if val["qty"] > 0 else 0
+        detail_list = []
+        if d_str in date_brand_map:
+            for brand, detail in date_brand_map[d_str].items():
+                detail_list.append(detail)
         daily_reports.append({
             "date_str": d_str,
             "qty": val["qty"],
             "ad_qty": val["ad_qty"],
-            "conversion_rate": 0,  # (추후 필요 시 계산)
+            "conversion_rate": conversion_rate_val,
             "revenue": val["revenue"],
             "ad_revenue": val["ad_revenue"],
             "ad_spend": val["ad_spend"],
             "profit": val["profit"],
             "roas": roas_val,
-            "ad_sales_rate": 0,    # (추후 필요 시 계산)
-            "details": []          # (하위 상세 데이터)
+            "ad_sales_rate": ad_sales_rate_val,
+            "details": detail_list,
         })
 
-    # --- 10) 전체 기간 소계 (period_summary)
-    total_qty = sum(x["qty"] for x in daily_reports)
-    total_ad_qty = sum(x["ad_qty"] for x in daily_reports)
-    total_revenue = sum(x["revenue"] for x in daily_reports)
-    total_ad_revenue = sum(x["ad_revenue"] for x in daily_reports)
-    total_ad_spend = sum(x["ad_spend"] for x in daily_reports)
-    total_profit = sum(x["profit"] for x in daily_reports)
+    # --- (J) 전체 기간 소계 (period_summary)
+    total_qty         = sum(x["qty"] for x in daily_reports)
+    total_ad_qty      = sum(x["ad_qty"] for x in daily_reports)
+    total_revenue     = sum(x["revenue"] for x in daily_reports)
+    total_ad_revenue  = sum(x["ad_revenue"] for x in daily_reports)
+    total_ad_spend    = sum(x["ad_spend"] for x in daily_reports)
+    total_profit      = sum(x["profit"] for x in daily_reports)
     period_roas = (total_ad_revenue / total_ad_spend * 100) if total_ad_spend > 0 else 0
     period_ad_sales_rate = (total_ad_qty / total_qty * 100) if total_qty > 0 else 0
+    total_clicks = 0
+    total_conversions = 0
+    for row in ad_report_qs:
+        total_clicks += (row.click or 0)
+        total_conversions += (row.conversion_count or 0)
+    overall_conversion_rate = (total_conversions / total_clicks * 100) if total_clicks > 0 else 0
+
     period_summary = {
         "total_qty": total_qty,
         "total_ad_qty": total_ad_qty,
-        "conversion_rate": 0,  # (추후 계산 가능)
+        "conversion_rate": overall_conversion_rate,
         "total_revenue": total_revenue,
         "ad_revenue": total_ad_revenue,
         "ad_spend": total_ad_spend,
@@ -3764,70 +3896,153 @@ def naver_ad_report_view(request):
         "ad_sales_rate": period_ad_sales_rate,
     }
 
-    # --- 11) 모달용: 일자별 상품별 상세 데이터 생성
-    # (A) NaverDailySales 집계: (date, product_id)별 집계
-    day_p_o_map = defaultdict(lambda: {"sold_qty": 0, "sales_amt": Decimal("0.00"), "ad_qty": 0, "ad_spend": Decimal("0.00"), "ad_revenue": Decimal("0.00")})
+    # --- (K) 전체 기간 브랜드별 상세 데이터 집계 (brand_details)
+    brand_summary = defaultdict(lambda: {
+        "qty": 0,
+        "ad_qty": 0,
+        "net_sales_amount": Decimal("0.00"),
+        "commission": Decimal("0.00"),
+        "ad_spend": Decimal("0.00"),
+        "purchase_cost": Decimal("0.00"),
+        "etc_cost": Decimal("0.00"),
+        "profit": Decimal("0.00"),
+        "ad_revenue": Decimal("0.00"),   # 추가: 광고 전환 매출 누적
+        "click": 0,                      # 추가: 클릭 수 누적
+    })
+
+    for day in daily_reports:
+        for det in day.get("details", []):
+            brand = det.get("kind", "판매자배송")
+            brand_summary[brand]["qty"] += det.get("qty", 0)
+            brand_summary[brand]["ad_qty"] += det.get("ad_qty", 0)
+            brand_summary[brand]["net_sales_amount"] += det.get("revenue", Decimal("0.00"))
+            brand_summary[brand]["commission"] += det.get("commission", Decimal("0.00"))
+            brand_summary[brand]["ad_spend"] += det.get("ad_spend", Decimal("0.00"))
+            brand_summary[brand]["purchase_cost"] += det.get("purchase_cost", Decimal("0.00"))
+            brand_summary[brand]["etc_cost"] += det.get("etc_cost", Decimal("0.00"))
+            brand_summary[brand]["profit"] += det.get("profit", Decimal("0.00"))
+            # 추가: 광고 매출 및 클릭 수 누적
+            brand_summary[brand]["ad_revenue"] += det.get("ad_revenue", Decimal("0.00"))
+            brand_summary[brand]["click"] += det.get("click", 0)
+
+    brand_details = {}
+    for b, data in brand_summary.items():
+        # 계산: 전환율 (클릭 대비 광고 전환수), ROAS (광고 전환 매출 대비 광고 집행비)
+        conversion_rate = (data["ad_qty"] / data["click"] * 100) if data["click"] > 0 else 0
+        roas = (data["ad_revenue"] / data["ad_spend"] * 100) if data["ad_spend"] > 0 else 0
+        m_rate = (data["profit"] / data["net_sales_amount"] * 100) if data["net_sales_amount"] > 0 else 0
+        brand_details[b] = {
+            "qty": data["qty"],
+            "ad_qty": data["ad_qty"],
+            "net_sales_amount": data["net_sales_amount"],
+            "commission": data["commission"],
+            "ad_spend": data["ad_spend"],
+            "purchase_cost": data["purchase_cost"],
+            "etc_cost": data["etc_cost"],
+            "profit": data["profit"],
+            "margin_rate": m_rate,
+            "conversion_rate": conversion_rate,  # 추가
+            "ad_revenue": data["ad_revenue"],      # 추가
+            "roas": roas,                          # 추가
+        }
+    period_summary["brand_details"] = brand_details
+
+    # --- (L) 모달용: 일자별 상품별 상세 데이터 생성 (overall modal)
+    day_p_o_map = defaultdict(lambda: {
+        "sold_qty": 0, 
+        "sales_amt": Decimal("0.00"), 
+        "ad_qty": 0, 
+        "ad_spend": Decimal("0.00"), 
+        "ad_revenue": Decimal("0.00"),
+        "click": 0
+    })
     for ds in daily_sales_qs:
-        day_str = ds.date  # 문자열 형태, ex: "2025-02-25"
-        logger.info(f"[Sales] ds.date={day_str!r} (before unify) -> ...")
-        pid = ds.product_id
+        day_str = ds.date if isinstance(ds.date, str) else ds.date.strftime("%Y-%m-%d")
+        pid = ds.product_id.strip() if ds.product_id else ""
         final_qty = ds.sales_qty - ds.refunded_qty
         final_rev = ds.sales_revenue - ds.refunded_revenue
         key = (day_str, pid)
         day_p_o_map[key]["sold_qty"] += final_qty
         day_p_o_map[key]["sales_amt"] += Decimal(final_rev)
 
-    # (B) NaverAdReport 집계: (date, product_id)별 집계
-    # sp_map에서 (ad_group_id, ad_id) → product_id_of_mall 로 매핑
     for ad in ad_report_qs:
         day_str = ad.date.strftime("%Y-%m-%d")
-        logger.info(f"[Ad] ad.date={ad.date} => {day_str}, (ag, ad)=({ad.ad_group_id},{ad.ad_id})")
-        key_sp = (ad.ad_group_id, ad.ad_id)
-        sp_info = sp_map.get(key_sp)
+        key_ad = ad.ad_id.strip() if ad.ad_id else ""
+        sp_info = sp_map.get(key_ad)
         if not sp_info:
             continue
         pid = sp_info.get("product_id_of_mall")
         if not pid:
             continue
+        pid = pid.strip()
         key = (day_str, pid)
         day_p_o_map[key]["ad_qty"] += ad.conversion_count or 0
         day_p_o_map[key]["ad_spend"] += ad.cost or Decimal("0.00")
         day_p_o_map[key]["ad_revenue"] += ad.sales_by_conversion or Decimal("0.00")
+        day_p_o_map[key]["click"] += ad.click or 0
 
-    # (C) Build day_products_map: { date : { product_id : { ... } } }
+    # --- (M) Build day_products_map: { date : { product_id : { ... } } }
     day_products_map = defaultdict(lambda: OrderedDict())
-    for (day_str, pid), data in day_p_o_map.items():
-        sold_qty = data["sold_qty"]
-        sales_amt = data["sales_amt"]
-        ad_qty = data["ad_qty"]
-        ad_spend = data["ad_spend"]
-        ad_rev = data["ad_revenue"]
-        profit_val = sales_amt - ad_spend
-        # 제품명 매핑 (판매데이터 기준)
-        product_name = product_name_map.get(pid, "(상품명없음)")
+    for (day_str, pid), vals in day_p_o_map.items():
+        sold_qty = vals["sold_qty"]
+        sales_amt = vals["sales_amt"]
+        ad_qty = vals["ad_qty"]
+        ad_spend = vals["ad_spend"]
+        ad_rev = vals["ad_revenue"]
+        total_click = vals["click"]
+
+        profit_val = ad_rev - ad_spend
+        roas_val = (ad_rev / ad_spend * 100) if ad_spend else 0
+        ad_sales_rate_val = (ad_qty / sold_qty * 100) if sold_qty else 0
+        conversion_rate_val = (ad_qty / total_click * 100) if total_click else 0
+
+        product_name = naver_item_map.get(pid, "(상품명없음)")
+
         if pid not in day_products_map[day_str]:
             day_products_map[day_str][pid] = {
+                "product_id": pid,
                 "product_name": product_name,
-                "qty": 0,
+                "sold_qty": 0,
                 "ad_qty": 0,
                 "sales_amt": Decimal("0.00"),
                 "ad_spend": Decimal("0.00"),
                 "ad_revenue": Decimal("0.00"),
                 "profit": Decimal("0.00"),
                 "roas": 0,
-                "ad_sales_rate": 0
+                "ad_sales_rate": 0,
+                "click": 0,
+                "conversion_rate": 0,
             }
+
         rec = day_products_map[day_str][pid]
-        rec["qty"] += sold_qty
+        rec["sold_qty"] += sold_qty
         rec["sales_amt"] += sales_amt
         rec["ad_qty"] += ad_qty
         rec["ad_spend"] += ad_spend
         rec["ad_revenue"] += ad_rev
-        rec["profit"] = rec["sales_amt"] - rec["ad_spend"]
-        rec["roas"] = (rec["ad_revenue"] / rec["ad_spend"] * 100) if rec["ad_spend"] > 0 else 0
-        rec["ad_sales_rate"] = (rec["ad_qty"] / rec["qty"] * 100) if rec["qty"] > 0 else 0
+        rec["click"] += total_click
 
-    # JSON 직렬화 (Decimal -> float 변환)
+        rec["profit"] = rec["ad_revenue"] - rec["ad_spend"]
+        rec["roas"] = (rec["ad_revenue"] / rec["ad_spend"] * 100) if rec["ad_spend"] else 0
+        rec["ad_sales_rate"] = (rec["ad_qty"] / rec["sold_qty"] * 100) if rec["sold_qty"] else 0
+        rec["conversion_rate"] = (rec["ad_qty"] / rec["click"] * 100) if rec["click"] else 0
+
+    # 필터링: 모든 수치가 0인 항목 삭제
+    for day in list(day_products_map.keys()):
+        for pid in list(day_products_map[day].keys()):
+            rec = day_products_map[day][pid]
+            if (
+                rec["sold_qty"] == 0 and
+                rec["ad_qty"] == 0 and
+                rec["sales_amt"] == Decimal("0.00") and
+                rec["ad_spend"] == Decimal("0.00") and
+                rec["ad_revenue"] == Decimal("0.00") and
+                rec["profit"] == Decimal("0.00")
+            ):
+                del day_products_map[day][pid]
+        if not day_products_map[day]:
+            del day_products_map[day]
+
     import json
     def convert_keys(obj):
         if isinstance(obj, dict):
@@ -3840,8 +4055,60 @@ def naver_ad_report_view(request):
             return obj
 
     day_products_map_json = json.dumps(convert_keys(day_products_map), ensure_ascii=False)
-    logger.info(f"[BUILD day_p_o_map] day_str={day_str}, pid_mall={pid_mall}, sold_qty={...}, ad_qty={...}")
-    # --- 12) 최종 컨텍스트 구성 및 렌더링
+
+    # --- (N) 모달용: 전체 기간 상품별 상세 데이터 생성 (overall modal)
+    overall_products_map = defaultdict(lambda: {
+        "sold_qty": 0,
+        "sales_amt": Decimal("0.00"),
+        "ad_qty": 0,
+        "ad_spend": Decimal("0.00"),
+        "ad_revenue": Decimal("0.00")
+    })
+
+    for ds in daily_sales_qs:
+        pid = (ds.product_id or "").strip()
+        final_qty = ds.sales_qty - ds.refunded_qty
+        final_rev = ds.sales_revenue - ds.refunded_revenue
+        overall_products_map[pid]["sold_qty"] += final_qty
+        overall_products_map[pid]["sales_amt"] += Decimal(final_rev)
+
+    for ad in ad_report_qs:
+        key_ad = ad.ad_id.strip() if ad.ad_id else ""
+        sp_info = sp_map.get(key_ad)
+        if not sp_info:
+            continue
+        pid = (sp_info.get("product_id_of_mall") or "").strip()
+        overall_products_map[pid]["ad_qty"] += (ad.conversion_count or 0)
+        overall_products_map[pid]["ad_spend"] += (ad.cost or Decimal("0.00"))
+        overall_products_map[pid]["ad_revenue"] += (ad.sales_by_conversion or Decimal("0.00"))
+
+    overall_details = []
+    for pid, data in overall_products_map.items():
+        if (data["sold_qty"] == 0 and 
+            data["sales_amt"] == Decimal("0.00") and 
+            data["ad_qty"] == 0 and 
+            data["ad_spend"] == Decimal("0.00") and 
+            data["ad_revenue"] == Decimal("0.00")):
+            continue
+        profit_val = data["ad_revenue"] - data["ad_spend"]
+        roas_val = (data["ad_revenue"] / data["ad_spend"] * 100) if data["ad_spend"] else 0
+        ad_sales_rate = (data["ad_qty"] / data["sold_qty"] * 100) if data["sold_qty"] else 0
+        product_name = naver_item_map.get(pid, f"상품({pid})")
+        overall_details.append({
+            "product_id": pid,
+            "product_name": product_name,
+            "sold_qty": data["sold_qty"],
+            "sales_amt": data["sales_amt"],
+            "ad_qty": data["ad_qty"],
+            "ad_spend": data["ad_spend"],
+            "ad_revenue": data["ad_revenue"],
+            "profit": profit_val,
+            "roas": roas_val,
+            "ad_sales_rate": ad_sales_rate,
+        })
+
+    overall_products_map_json = json.dumps(convert_keys(overall_details), ensure_ascii=False)
+    
     context = {
         "start_date": start_date,
         "end_date": end_date,
@@ -3853,17 +4120,13 @@ def naver_ad_report_view(request):
         "unmatched_count": unmatched_count,
         "unmatched_list": unmatched_ads,
         "day_products_map_json": day_products_map_json,
+        "overall_products_map_json": overall_products_map_json,  # 전체기간 모달용 데이터
     }
     return render(request, "sales_management/naver_ad_report.html", context)
 
+
+
 from decouple import config
-
-def naver_profit_report_view(request):
-    return render(request, 'sales_management/naver_profit_report.html')
-
-
-def naver_profit_report_view(request):
-    return render(request, 'sales_management/naver_profit_report.html')
 
 
 
@@ -4059,7 +4322,6 @@ def parse_ad_detail_all(download_dir):
     for file_path in files:
         with open(file_path, "r", encoding="utf-8-sig") as f:
             reader = csv.reader(f, delimiter='\t')
-            next(reader, None)  # 헤더 스킵
             for row in reader:
                 if len(row) < 16:
                     logger.warning(f"Skipping row in AD_DETAIL due to insufficient columns: {row}")
@@ -4094,7 +4356,6 @@ def parse_ad_conversion_all(download_dir):
     for file_path in files:
         with open(file_path, "r", encoding="utf-8-sig") as f:
             reader = csv.reader(f, delimiter='\t')
-            next(reader, None)
             for row in reader:
                 if len(row) < 15:
                     logger.warning(f"Skipping row in AD_CONVERSION_DETAIL due to insufficient columns: {row}")
@@ -4142,6 +4403,7 @@ def save_naver_ads_report():
             else:
                 ctr = None
             roas = (cost / Decimal(conversion_count)) if conversion_count > 0 else None
+            computed_ad_cost = int(cost * Decimal("1.1"))
 
             NaverAdReport.objects.update_or_create(
                 date=d_date,
@@ -4150,7 +4412,7 @@ def save_naver_ads_report():
                 defaults={
                     "impression": impression,
                     "click": click,
-                    "cost": cost,
+                    "cost": computed_ad_cost,  # 여기서 이미 1.1배 적용
                     "conversion_count": conversion_count,
                     "sales_by_conversion": sales_by_conv,
                     "ctr": ctr,
@@ -4247,131 +4509,608 @@ def parse_int_safely(num_str):
         return 0
     
 
-def naver_ad_report_detail_view(request):
+
+
+def naver_profit_report_view(request):
     """
-    AJAX로 특정 날짜(date 파라미터)를 받아,
-    '상품별' 상세 데이터를 HTML로 만들어 반환.
+    (쿠팡→네이버 치환 버전) + 상품별 모달용 데이터 생성.
+    날짜 & 브랜드 기준으로 판매/광고를 합산 → 순수익 계산.
     """
-    from django.http import HttpResponse
+    from datetime import date, datetime, timedelta
+    from collections import defaultdict, OrderedDict
     import json
+    from django.db.models import Sum
+    from django.shortcuts import render
     from decimal import Decimal
+    import logging
 
-    date_str = request.GET.get('date', '')
-    if not date_str:
-        return HttpResponse("<p>날짜가 주어지지 않았습니다.</p>")
+    logger = logging.getLogger(__name__)
 
-    # 가령 day_products_map_json(혹은 similar) 형태의 데이터가 있다면,
-    # 이를 Python에서 접근할 수 있도록 전역(혹은 세션) 저장 또는 DB 저장/재조회 해야 함.
-    # 여기서는 예시로 "이미 뷰에서 전역 dict로 쌓아뒀다"고 가정하거나,
-    # 또는 DB 재조회로 대체할 수도 있습니다.
+    from sales_management.models import (
+        NaverDailySales,
+        NaverAdReport,
+        NaverPurchaseCost,
+        naverItem,
+        NaverAdShoppingProduct
+    )
 
-    # -----------------------------
-    # 1) 어떤 방식으로 day_products_map을 관리할지 결정
-    #    - 본문 뷰(naver_ad_report_view) 내에서 JSON을 만드는데, 
-    #      그걸 세션 or 캐시에 저장 후 여기서 다시 가져오는 식이 가능.
-    #    - 혹은, naver_ad_report_detail_view가 동일 로직으로 DB를 재조회해 해당 날짜 상품정보만 HTML 생성.
-    # 여기서는 "간단히 DB 재조회" 방식을 예시로 듭니다.
-    # -----------------------------
-    from .models import NaverDailySales, NaverAdShoppingProduct, NaverAdReport
-    from decimal import Decimal
-    from collections import defaultdict
+    # (1) 날짜 범위 파싱
+    start_str = request.GET.get('start_date', '')
+    end_str   = request.GET.get('end_date', '')
+    if not start_str or not end_str:
+        start_d = date.today() - timedelta(days=14)
+        end_d = date.today() - timedelta(days=1)
+    else:
+        try:
+            start_d = datetime.strptime(start_str, "%Y-%m-%d").date()
+            end_d = datetime.strptime(end_str, "%Y-%m-%d").date()
+        except ValueError:
+            start_d = date.today() - timedelta(days=14)
+            end_d = date.today() - timedelta(days=1)
 
-    # (A) NaverDailySales : date == date_str
-    sales_qs = NaverDailySales.objects.filter(date=date_str)
-    # (B) NaverAdReport : date == date_str
-    ad_qs = NaverAdReport.objects.filter(date=date_str)
-    # (C) 매핑(NaverAdShoppingProduct)은 (ad_group_id, ad_id) -> product_id_of_mall
+    # ---------------------------------------------------------
+    # (A) naverItem 매핑: 기본 SKU 매핑은 skuID, 브랜드 매칭은 channelProductID 사용
+    # 1) sku_to_channel: skuID → channelProductID
+    # 2) channel_brand_map: channelProductID → account_name (브랜드)
+    sku_to_channel = {}
+    channel_brand_map = {}
+    for item in naverItem.objects.all():
+        sku = (item.skuID or "").strip()
+        channel = (item.channelProductID or "").strip()
+        brand = (item.account_name or "").strip() or "광고비"
+        sku_to_channel[sku] = channel
+        channel_brand_map[channel] = brand
 
+    def get_label_from_sku(sku_str):
+        """
+        기본적으로 skuID를 전달받으면, 먼저 전달된 값이 이미 channelProductID(채널 기준)라면
+        channel_brand_map에서 바로 브랜드를 반환.
+        그렇지 않으면, sku_to_channel을 통해 채널ProductID로 변환 후
+        channel_brand_map에서 브랜드(account_name)를 반환.
+        """
+        sku_str = sku_str.strip()
+        # 만약 sku_str이 channel_brand_map의 키로 이미 존재한다면 (즉, channelProductID라면)
+        if sku_str in channel_brand_map:
+            result = channel_brand_map[sku_str]
+            return result
+        channel = sku_to_channel.get(sku_str, sku_str)
+        result = channel_brand_map.get(channel, "광고비")
+        return result
+
+    # ---------------------------------------------------------
+    # (B) naverItem 맵 (상품명 매핑용) → channelProductID 기준
+    naver_item_map = {}
+    for it in naverItem.objects.all():
+        if it.channelProductID:
+            key = it.channelProductID.strip()
+            naver_item_map[key] = it.itemName
+
+    # ---------------------------------------------------------
+    # (C) NaverAdShoppingProduct 조회 → sp_map 생성
     sp_map = {}
     for sp in NaverAdShoppingProduct.objects.all():
-        sp_map[(sp.ad_group_id, sp.ad_id)] = {
-            "product_id_of_mall": sp.product_id_of_mall or "",
-            "product_name": sp.product_name or "(상품명없음)",
+        key = (sp.ad_group_id, sp.ad_id)
+        sp_map[key] = {
+            "product_name": sp.product_name.strip() if sp.product_name else "(광고상품미매칭)",
+            "product_id_of_mall": (sp.product_id_of_mall or "").strip(),  # SKU 값
         }
 
-    # (D) sales_map : product_id_of_mall -> { sold_qty, sold_revenue }
-    from collections import defaultdict
-    sales_map = defaultdict(lambda: {"sold_qty": 0, "sold_revenue": Decimal(0)})
-    for s in sales_qs:
-        final_qty = s.sales_qty - s.refunded_qty
-        final_rev = s.sales_revenue - s.refunded_revenue
-        sales_map[s.product_id]["sold_qty"] += final_qty
-        sales_map[s.product_id]["sold_revenue"] += final_rev
+    # ---------------------------------------------------------
+    # (D) NaverDailySales 조회
+    daily_sales_qs = NaverDailySales.objects.filter(
+        date__gte=start_d.strftime("%Y-%m-%d"),
+        date__lte=end_d.strftime("%Y-%m-%d")
+    )
 
-    # (E) ad_map : product_id_of_mall -> { ad_qty, ad_spend, ad_revenue }
-    ad_map = defaultdict(lambda: {"ad_qty":0, "ad_spend": Decimal(0), "ad_revenue":Decimal(0)})
-    for a in ad_qs:
-        key = (a.ad_group_id, a.ad_id)
-        sp_info = sp_map.get(key)
+    daily_map = defaultdict(lambda: {
+        "sold_items": 0,
+        "net_sales": 0,
+        "purchase_cost": 0,
+        "etc_cost": 0,
+    })
+
+    def get_brand_from_sales(ds):
+        sku = (ds.option_id or "").strip()
+        if sku:
+            brand_candidate = get_label_from_sku(sku)
+            # 만약 옵션으로 매핑한 브랜드가 "광고비"라면 store 필드 값을 사용
+            if brand_candidate == "광고비":
+                return ds.store or "판매자배송"
+            else:
+                return brand_candidate
+        else:
+            return ds.store or "판매자배송"
+
+    # 매핑되지 않는 항목 디버깅: 옵션이 있는데 get_label_from_sku 결과가 "광고비"인 경우
+    for ds in daily_sales_qs:
+        d_str = ds.date  # 날짜 그대로 사용
+        sold_qty = ds.sales_qty - ds.refunded_qty
+        net_s = ds.sales_revenue - ds.refunded_revenue
+
+        sku = (ds.option_id or "").strip()
+        brand_label = get_brand_from_sales(ds)
+        if sku and brand_label == "광고비":
+            channel = sku_to_channel.get(sku, "N/A")
+            mapped_account = channel_brand_map.get(channel, "N/A")
+            itemName = naver_item_map.get(channel, "N/A")
+                         
+
+        try:
+            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
+            unit_price = cost_obj.purchasing_price
+        except NaverPurchaseCost.DoesNotExist:
+            unit_price = 0
+        partial_cost = unit_price * sold_qty
+
+        daily_map[(d_str, brand_label)]["sold_items"] += sold_qty
+        daily_map[(d_str, brand_label)]["net_sales"] += net_s
+        daily_map[(d_str, brand_label)]["purchase_cost"] += partial_cost
+        daily_map[(d_str, brand_label)]["etc_cost"] += 0
+
+    # ---------------------------------------------------------
+    # (E) 광고 데이터 조회
+    ad_report_qs = NaverAdReport.objects.filter(
+        date__range=[start_d, end_d]
+    )
+
+    ad_map = defaultdict(lambda: {
+        "ad_sold": 0,
+        "ad_spend": Decimal("0.00"),
+        "ad_rev": Decimal("0.00"),
+    })
+
+    for ad in ad_report_qs:
+        d_str = ad.date.strftime("%Y-%m-%d") if ad.date else ""
+        key_sp = (ad.ad_group_id, ad.ad_id)
+        sp_info = sp_map.get(key_sp)
         if not sp_info:
-            continue  # 미매칭
-        pid_mall = sp_info["product_id_of_mall"]
-        ad_map[pid_mall]["ad_qty"] += (a.conversion_count or 0)
-        ad_map[pid_mall]["ad_spend"] += (a.cost or Decimal(0))
-        ad_map[pid_mall]["ad_revenue"] += (a.sales_by_conversion or Decimal(0))
+            continue
 
-    # (F) 결합
-    detail_list = []
-    all_pids = set(sales_map.keys()) | set(ad_map.keys())
-    for pid in all_pids:
-        sold_info = sales_map[pid]
-        ad_info = ad_map[pid]
-        product_name = "(알수없음)"
-        # sp_map 역추적: pid ->??? 
-        # 여기서는 (ad_group_id, ad_id) -> pid 이므로 역추적은 조금 까다롭다.
-        # 간단히 "첫번째 ad_group_id, ad_id 찾아서 sp_map"에서 product_name 가져오는 방식
-        # (사용자 환경에 맞게 구현)
-        # 여기서는 일단 그냥 pid를 키로한 DB 하나 더두거나, product_id_of_mall -> product_name
-        # (직접 저장하는 테이블) 이 필요.
+        sku_for_brand = sp_info["product_id_of_mall"]  # SKU 값
+        brand_label = get_label_from_sku(sku_for_brand)
+        
+        ad_map[(d_str, brand_label)]["ad_sold"] += (ad.conversion_count or 0)
+        ad_map[(d_str, brand_label)]["ad_spend"] += (ad.cost or Decimal("0.00"))
+        ad_map[(d_str, brand_label)]["ad_rev"]   += (ad.sales_by_conversion or Decimal("0.00"))
 
-        # 임시
-        product_name = "상품(" + pid + ")"
+    # ---------------------------------------------------------
+    # (F) 날짜+브랜드별 결합
+    date_brand_map = defaultdict(dict)
+    all_keys = set(daily_map.keys()) | set(ad_map.keys())
+    for (d_str, brand_label) in all_keys:
+        sold_part = daily_map[(d_str, brand_label)]
+        ad_part   = ad_map[(d_str, brand_label)]
 
-        sq = sold_info["sold_qty"]
-        sr = sold_info["sold_revenue"]
-        aq = ad_info["ad_qty"]
-        aspend = ad_info["ad_spend"]
-        ar = ad_info["ad_revenue"]
-        profit = sr - aspend  # 간단 처리
-        # 전환율?
-        # 광고판매비율?
-        # ROAS?
-        roas_val = float(ar / aspend * 100) if aspend>0 else 0
+        sold_qty = sold_part["sold_items"]
+        net_s = sold_part["net_sales"]
+        purchase_c = sold_part["purchase_cost"]
+        etc_c = sold_part["etc_cost"]
 
-        detail_list.append({
-            "pid_mall": pid,
-            "product_name": product_name,
-            "sold_qty": sq,
-            "sold_revenue": sr,
-            "ad_qty": aq,
-            "ad_spend": aspend,
-            "ad_revenue": ar,
-            "profit": profit,
-            "roas": roas_val,
+        ad_sold = ad_part["ad_sold"]
+        ad_sp = ad_part["ad_spend"]
+        ad_rev = ad_part["ad_rev"]
+
+        commission = net_s * Decimal("0.04")
+        profit_val = net_s - commission - ad_sp - purchase_c - etc_c
+        margin_rate = (profit_val / net_s * 100) if net_s else 0
+
+        date_brand_map[d_str][brand_label] = {
+            "kind": brand_label,
+            "qty": sold_qty,
+            "ad_qty": ad_sold,
+            "net_sales_amount": net_s,
+            "commission": commission,
+            "ad_spend": ad_sp,
+            "purchase_cost": purchase_c,
+            "etc_cost": etc_c,
+            "profit": profit_val,
+            "margin_rate": margin_rate,
+        }
+
+    daily_reports = []
+    for d_str in sorted(date_brand_map.keys()):
+        label_map = date_brand_map[d_str]
+        if not label_map:
+            continue
+        sum_qty    = sum(x["qty"] for x in label_map.values())
+        sum_ad_qty = sum(x["ad_qty"] for x in label_map.values())
+        sum_net    = sum(x["net_sales_amount"] for x in label_map.values())
+        sum_comm   = sum(x["commission"] for x in label_map.values())
+        sum_ad_sp  = sum(x["ad_spend"] for x in label_map.values())
+        sum_pc     = sum(x["purchase_cost"] for x in label_map.values())
+        sum_etc    = sum(x["etc_cost"] for x in label_map.values())
+        sum_profit = sum(x["profit"] for x in label_map.values())
+        day_margin = (sum_profit / sum_net * 100) if sum_net else 0
+
+        detail_list = list(label_map.values())
+
+        daily_reports.append({
+            "date_str": d_str,
+            "qty": sum_qty,
+            "ad_qty": sum_ad_qty,
+            "net_sales_amount": sum_net,
+            "commission": sum_comm,
+            "ad_spend": sum_ad_sp,
+            "purchase_cost": sum_pc,
+            "etc_cost": sum_etc,
+            "profit": sum_profit,
+            "margin_rate": day_margin,
+            "details": detail_list,
         })
 
-    # (G) HTML 구성 (테이블)
-    html_output = []
-    html_output.append(f"<h5>{date_str} 상품별 상세</h5>")
-    if not detail_list:
-        html_output.append("<p>해당 날짜에 대한 데이터가 없습니다.</p>")
-    else:
-        html_output.append("<table class='table table-sm table-bordered'>")
-        html_output.append("<thead><tr>")
-        html_output.append("<th>상품ID</th><th>상품명</th><th>판매수량</th><th>매출</th><th>광고판매수량</th><th>광고집행비</th><th>광고전환매출</th><th>ROAS</th><th>매출-광고비</th>")
-        html_output.append("</tr></thead><tbody>")
-        for d in detail_list:
-            html_output.append("<tr>")
-            html_output.append(f"<td>{d['pid_mall']}</td>")
-            html_output.append(f"<td>{d['product_name']}</td>")
-            html_output.append(f"<td class='text-end'>{d['sold_qty']:,}</td>")
-            html_output.append(f"<td class='text-end'>{int(d['sold_revenue'])} 원</td>")
-            html_output.append(f"<td class='text-end'>{d['ad_qty']:,}</td>")
-            html_output.append(f"<td class='text-end'>{int(d['ad_spend'])} 원</td>")
-            html_output.append(f"<td class='text-end'>{int(d['ad_revenue'])} 원</td>")
-            html_output.append(f"<td class='text-end'>{d['roas']:.2f}%</td>")
-            html_output.append(f"<td class='text-end'>{int(d['profit'])} 원</td>")
-            html_output.append("</tr>")
-        html_output.append("</tbody></table>")
+    # ---------------------------------------------------------
+    # (F) 전체 기간 소계
+    total_qty         = sum(x["qty"] for x in daily_reports)
+    total_ad_qty      = sum(x["ad_qty"] for x in daily_reports)
+    total_net_sales   = sum(x["net_sales_amount"] for x in daily_reports)
+    total_commission  = sum(x["commission"] for x in daily_reports)
+    total_ad_spend    = sum(x["ad_spend"] for x in daily_reports)
+    total_purchase    = sum(x["purchase_cost"] for x in daily_reports)
+    total_etc_cost    = sum(x["etc_cost"] for x in daily_reports)
+    total_profit      = sum(x["profit"] for x in daily_reports)
+    overall_margin    = (total_profit / total_net_sales * 100) if total_net_sales else 0
 
-    return HttpResponse("".join(html_output))
+    period_summary = {
+        "total_qty": total_qty,
+        "total_ad_qty": total_ad_qty,
+        "net_sales_amount": total_net_sales,
+        "commission": total_commission,
+        "ad_spend": total_ad_spend,
+        "purchase_cost": total_purchase,
+        "etc_cost": total_etc_cost,
+        "profit": total_profit,
+        "margin_rate": overall_margin,
+    }
+
+    # ---------------------------------------------------------
+    # (G) 전체 기간 브랜드별 상세
+    brand_summary = defaultdict(lambda: {
+        "qty": 0,
+        "ad_qty": 0,
+        "net_sales_amount": Decimal("0.00"),
+        "commission": Decimal("0.00"),
+        "ad_spend": Decimal("0.00"),
+        "purchase_cost": Decimal("0.00"),
+        "etc_cost": Decimal("0.00"),
+        "profit": Decimal("0.00"),
+    })
+
+    for day in daily_reports:
+        for det in day["details"]:
+            brand = det["kind"]
+            brand_summary[brand]["qty"] += det["qty"]
+            brand_summary[brand]["ad_qty"] += det["ad_qty"]
+            brand_summary[brand]["net_sales_amount"] += det["net_sales_amount"]
+            brand_summary[brand]["commission"] += det["commission"]
+            brand_summary[brand]["ad_spend"] += det["ad_spend"]
+            brand_summary[brand]["purchase_cost"] += det["purchase_cost"]
+            brand_summary[brand]["etc_cost"] += det["etc_cost"]
+            brand_summary[brand]["profit"] += det["profit"]
+
+    brand_details = {}
+    for b, data in brand_summary.items():
+        m_rate = (data["profit"] / data["net_sales_amount"] * 100) if data["net_sales_amount"] else 0
+        brand_details[b] = {
+            "qty": data["qty"],
+            "ad_qty": data["ad_qty"],
+            "net_sales_amount": data["net_sales_amount"],
+            "commission": data["commission"],
+            "ad_spend": data["ad_spend"],
+            "purchase_cost": data["purchase_cost"],
+            "etc_cost": data["etc_cost"],
+            "profit": data["profit"],
+            "margin_rate": m_rate,
+        }
+    period_summary["brand_details"] = brand_details
+
+    # ---------------------------------------------------------
+    # (H) 모달용: 일자별 상품별 상세 데이터
+    from collections import defaultdict, OrderedDict
+    day_p_o_map = defaultdict(lambda: {
+        "sold_qty": 0,
+        "sales_amt": Decimal("0.00"),
+        "ad_qty": 0,
+        "ad_spend": Decimal("0.00"),
+        "ad_revenue": Decimal("0.00"),
+        "click": 0,
+        "purchase_cost": Decimal("0.00"),
+        "etc_cost": Decimal("0.00"),
+    })
+
+    for ds in daily_sales_qs:
+        day_str = ds.date if isinstance(ds.date, str) else ds.date.strftime("%Y-%m-%d")
+        pid = (ds.product_id or "").strip()
+        final_qty = ds.sales_qty - ds.refunded_qty
+        final_rev = ds.sales_revenue - ds.refunded_revenue
+        key = (day_str, pid)
+        day_p_o_map[key]["sold_qty"] += final_qty
+        day_p_o_map[key]["sales_amt"] += Decimal(final_rev)
+        sku = (ds.option_id or "").strip()
+        try:
+            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
+            unit_price = cost_obj.purchasing_price
+        except NaverPurchaseCost.DoesNotExist:
+            unit_price = Decimal("0.00")
+        day_p_o_map[key]["purchase_cost"] += unit_price * final_qty
+        day_p_o_map[key]["etc_cost"] += Decimal("0.00")
+
+    for ad in ad_report_qs:
+        day_str = ad.date.strftime("%Y-%m-%d") if ad.date else ""
+        key_sp = (ad.ad_group_id, ad.ad_id)
+        sp_info = sp_map.get(key_sp)
+        if not sp_info:
+            continue
+        pid = (sp_info["product_id_of_mall"] or "").strip()
+        if not pid:
+            continue
+        key = (day_str, pid)
+        day_p_o_map[key]["ad_qty"] += (ad.conversion_count or 0)
+        day_p_o_map[key]["ad_spend"] += (ad.cost or Decimal("0.00"))
+        day_p_o_map[key]["ad_revenue"] += (ad.sales_by_conversion or Decimal("0.00"))
+        day_p_o_map[key]["click"] += (ad.click or 0)
+
+    day_products_map = defaultdict(lambda: OrderedDict())
+    for (day_str, pid), vals in day_p_o_map.items():
+        sold_qty = vals["sold_qty"]
+        sales_amt = vals["sales_amt"]
+        ad_qty = vals["ad_qty"]
+        ad_spend = vals["ad_spend"]
+        ad_rev = vals["ad_revenue"]
+        clicks = vals["click"]
+        pcost = vals["purchase_cost"]
+        etc_c = vals["etc_cost"]
+
+        commission = sales_amt * Decimal("0.04")
+        profit_val = sales_amt - commission - ad_spend - pcost - etc_c
+        margin_rate_val = (profit_val / sales_amt * 100) if sales_amt else 0
+        roas_val = (ad_rev / ad_spend * 100) if ad_spend else 0
+        ad_sales_rate_val = (ad_qty / sold_qty * 100) if sold_qty else 0
+        conv_rate_val = (ad_qty / clicks * 100) if clicks else 0
+
+        product_name = naver_item_map.get(pid, f"(상품:{pid})")
+        if pid not in day_products_map[day_str]:
+            day_products_map[day_str][pid] = {
+                "product_name": product_name,
+                "sold_qty": 0,
+                "ad_qty": 0,
+                "sales_amt": Decimal("0.00"),
+                "ad_spend": Decimal("0.00"),
+                "ad_revenue": Decimal("0.00"),
+                "profit": Decimal("0.00"),
+                "roas": 0,
+                "ad_sales_rate": 0,
+                "click": 0,
+                "conversion_rate": 0,
+                "purchase_cost": Decimal("0.00"),
+                "etc_cost": Decimal("0.00"),
+                "margin_rate": 0,
+                "commission": Decimal("0.00"),
+            }
+        rec = day_products_map[day_str][pid]
+        rec["sold_qty"] += sold_qty
+        rec["sales_amt"] += sales_amt
+        rec["ad_qty"] += ad_qty
+        rec["ad_spend"] += ad_spend
+        rec["ad_revenue"] += ad_rev
+        rec["click"] += clicks
+        rec["purchase_cost"] += pcost
+        rec["etc_cost"] += etc_c
+        rec["commission"] = commission
+        rec["profit"] = rec["sales_amt"] - rec["commission"] - rec["ad_spend"] - rec["purchase_cost"] - rec["etc_cost"]
+        rec["margin_rate"] = (rec["profit"] / rec["sales_amt"] * 100) if rec["sales_amt"] else 0
+        rec["roas"] = (rec["ad_revenue"] / rec["ad_spend"] * 100) if rec["ad_spend"] else 0
+        rec["ad_sales_rate"] = (rec["ad_qty"] / rec["sold_qty"] * 100) if rec["sold_qty"] else 0
+        rec["conversion_rate"] = (rec["ad_qty"] / rec["click"] * 100) if rec["click"] else 0
+
+    for day_str in list(day_products_map.keys()):
+        for pid in list(day_products_map[day_str].keys()):
+            rec = day_products_map[day_str][pid]
+            if (rec["sold_qty"] == 0 and rec["ad_qty"] == 0 and rec["sales_amt"] == 0 and
+                rec["ad_spend"] == 0 and rec["ad_revenue"] == 0 and rec["profit"] == 0 and
+                rec["purchase_cost"] == 0 and rec["etc_cost"] == 0):
+                del day_products_map[day_str][pid]
+        if not day_products_map[day_str]:
+            del day_products_map[day_str]
+
+    import json
+    def convert_keys(obj):
+        if isinstance(obj, dict):
+            return {str(k): convert_keys(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_keys(item) for item in obj]
+        elif isinstance(obj, Decimal):
+            return float(obj)
+        else:
+            return obj
+
+    day_products_map_json = json.dumps(convert_keys(day_products_map), ensure_ascii=False)
+
+    # ---------------------------------------------------------
+    # (9) 전체 기간 상품별 상세 데이터 (overall_products_map)
+    overall_products_map = defaultdict(lambda: {
+        "sold_qty": 0,
+        "sales_amt": Decimal("0.00"),
+        "ad_qty": 0,
+        "ad_spend": Decimal("0.00"),
+        "ad_revenue": Decimal("0.00"),
+        "purchase_cost": Decimal("0.00"),
+        "etc_cost": Decimal("0.00"),
+        "store": "N/A"  # store 기본값 추가
+    })
+
+    for ds in daily_sales_qs:
+        pid = (ds.product_id or "").strip()
+        final_qty = ds.sales_qty - ds.refunded_qty
+        final_rev = ds.sales_revenue - ds.refunded_revenue
+        sku = (ds.option_id or "").strip()
+        try:
+            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
+            unit_price = cost_obj.purchasing_price
+        except NaverPurchaseCost.DoesNotExist:
+            unit_price = Decimal("0.00")
+        purchase_val = unit_price * final_qty
+        overall_products_map[pid]["sold_qty"] += final_qty
+        overall_products_map[pid]["sales_amt"] += Decimal(final_rev)
+        overall_products_map[pid]["purchase_cost"] += purchase_val
+        overall_products_map[pid]["etc_cost"] += Decimal("0.00")
+        if overall_products_map[pid]["store"] == "N/A":
+            overall_products_map[pid]["store"] = ds.store
+            
+    for ad in ad_report_qs:
+        key_sp = (ad.ad_group_id, ad.ad_id)
+        sp_info = sp_map.get(key_sp)
+        if not sp_info:
+            continue
+        pid = (sp_info.get("product_id_of_mall") or "").strip()
+        overall_products_map[pid]["ad_qty"] += (ad.conversion_count or 0)
+        overall_products_map[pid]["ad_spend"] += (ad.cost or Decimal("0.00"))
+        overall_products_map[pid]["ad_revenue"] += (ad.sales_by_conversion or Decimal("0.00"))
+
+    overall_details = []
+    for pid, data in overall_products_map.items():
+        commission_val = data["sales_amt"] * Decimal("0.04")
+        profit_val = data["sales_amt"] - commission_val - data["ad_spend"] - data["purchase_cost"] - data["etc_cost"]
+        margin_rate_val = (profit_val / data["sales_amt"] * 100) if data["sales_amt"] else 0
+        roas_val = (data["ad_revenue"] / data["ad_spend"] * 100) if data["ad_spend"] else 0
+        ad_sales_rate_val = (data["ad_qty"] / data["sold_qty"] * 100) if data["sold_qty"] else 0
+        product_name = naver_item_map.get(pid, f"(상품:{pid})")
+        overall_details.append({
+            "product_id": pid,
+            "product_name": product_name,
+            "store": data.get("store", "N/A"),  # store 추가
+            "sold_qty": data["sold_qty"],
+            "sales_amt": data["sales_amt"],
+            "ad_qty": data["ad_qty"],
+            "ad_spend": data["ad_spend"],
+            "ad_revenue": data["ad_revenue"],
+            "purchase_cost": data["purchase_cost"],
+            "etc_cost": data["etc_cost"],
+            "profit": profit_val,
+            "margin_rate": margin_rate_val,
+            "roas": roas_val,
+            "ad_sales_rate": ad_sales_rate_val,
+        })
+
+    overall_details = [
+        od for od in overall_details
+        if not (od["sold_qty"] == 0 and od["ad_qty"] == 0 and od["sales_amt"] == 0 and
+                od["ad_spend"] == 0 and od["ad_revenue"] == 0 and od["profit"] == 0 and
+                od["purchase_cost"] == 0)
+    ]
+    overall_products_map_json = json.dumps(convert_keys(overall_details), ensure_ascii=False)
+
+
+    # --- (10) KPI 3종 (예시)
+    kpi_list = []
+    for prod_key, pinfo in overall_products_map.items():
+        commission_val = pinfo["sales_amt"] * Decimal("0.04")
+        profit_val = pinfo["sales_amt"] - commission_val - pinfo["ad_spend"] - pinfo["purchase_cost"] - pinfo["etc_cost"]
+        margin_rate_val = (profit_val / pinfo["sales_amt"] * 100) if pinfo["sales_amt"] else 0
+        product_name = naver_item_map.get(prod_key, f"(상품:{prod_key})")
+
+        kpi_list.append({
+            "product_name": product_name,
+            "store": pinfo.get("store", "N/A"),   # store 값 표시
+            "qty": pinfo["sold_qty"],
+            "ad_qty": pinfo["ad_qty"],
+            "net_sales_amount": pinfo["sales_amt"],
+            "ad_spend": pinfo["ad_spend"],
+            "purchase_cost": pinfo["purchase_cost"],
+            "profit": profit_val,
+            "margin_rate": margin_rate_val,
+        })
+
+    # 예시: 마진이 -1% 이하인 상품, 순수익 +1만원 이상, 순수익 -1만원 이하 등으로 필터링
+    kpi_margin_low = [x for x in kpi_list if x["margin_rate"] <= -1]
+    kpi_profit_high = [x for x in kpi_list if x["profit"] >= 10000]
+    kpi_profit_low = [x for x in kpi_list if x["profit"] <= -10000]
+
+    # ---------------------------------------------------------
+    # (11) 컨텍스트 및 렌더링
+    context = {
+        "start_date": start_d,
+        "end_date": end_d,
+        # 일자별 요약
+        "daily_reports": daily_reports,
+        "period_summary": period_summary,
+
+        # KPI
+        "kpi_margin_low": kpi_margin_low,
+        "kpi_profit_high": kpi_profit_high,
+        "kpi_profit_low": kpi_profit_low,
+
+        # 모달용
+        "day_products_map_json": day_products_map_json,
+        "overall_products_map_json": overall_products_map_json
+    }
+
+    return render(request, "sales_management/naver_profit_report.html", context)
+
+
+from .models import NaverPurchaseCost
+
+def naver_update_costs_from_seller_tool_view(request):
+    """
+    1) naverItem의 optioncode를 수집합니다.
+    2) 셀러툴 API를 호출하여 (optioncode -> totalPurchasePrice) 매핑 정보를 가져옵니다.
+    3) 모든 naverItem을 순회하면서, skuID와 optioncode 기준으로 NaverPurchaseCost를 update_or_create합니다.
+       - 매입가(purchasing_price)는 API에서 받은 totalPurchasePrice로 저장됩니다.
+    """
+    try:
+        # (A) 옵션코드 수집
+        items = naverItem.objects.all()
+        option_codes = {it.optioncode for it in items if it.optioncode}
+        logger.info(f"[update_costs_from_seller_tool_view] option_codes 개수={len(option_codes)}")
+        
+        if not option_codes:
+            messages.warning(request, "옵션코드가 없습니다.")
+            return redirect('profit_report')
+        
+        # (B) 셀러툴 API 호출 및 결과 처리
+        option_codes = list(option_codes)
+        result_data = fetch_seller_tool_option_info(option_codes)
+        content_list = result_data.get("content", [])
+        logger.info(f"[update_costs_from_seller_tool_view] content_list len={len(content_list)}")
+        
+        # (B-1) optioncode -> totalPurchasePrice 매핑 딕셔너리 생성
+        code_to_price = {}
+        for row in content_list:
+            code = row.get("code")
+            price = row.get("totalPurchasePrice", 0)
+            if code:
+                code_to_price[code] = price
+        
+        # (C) naverItem 순회하여 매입가 업데이트
+        updated_count = 0
+        created_count = 0
+        
+        for it in items:
+            if it.skuID:  # [수정] 조건문에 콜론 추가
+                sku_id_val = it.skuID
+                option_code_val = it.optioncode
+                # API에서 받은 매입가, 기본값 0
+                purchase_val = code_to_price.get(option_code_val, 0)
+                
+                obj, created_flag = NaverPurchaseCost.objects.update_or_create(
+                    sku_id=sku_id_val,
+                    option_code=option_code_val,
+                    defaults={"purchasing_price": purchase_val}
+                )
+                if created_flag:
+                    created_count += 1
+                    logger.info(f"NEW: sku_id={sku_id_val}, option_code={option_code_val}, price={purchase_val}")
+                else:
+                    updated_count += 1
+                    logger.info(f"UPD: sku_id={sku_id_val}, option_code={option_code_val}, price={purchase_val}")
+        
+        messages.success(
+            request,
+            f"매입가 업데이트 완료! (생성: {created_count}건, 업데이트: {updated_count}건)"
+        )
+    
+    except Exception as e:
+        logger.exception("[update_costs_from_seller_tool_view] 오류:")
+        messages.error(request, f"에러 발생: {str(e)}")
+    
+    return redirect('naver_profit_report')
+

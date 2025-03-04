@@ -30,8 +30,8 @@
                 {% for item in roas_high %}
                   <tr>
                     <td class="one-line">{{ item.product_name }}</td>
-                    <td class="text-nowrap">{{ item.ad_revenue|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_revenue|floatformat:0 }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0 }} 원</td>
                     <td class="text-nowrap">{{ item.roas|floatformat:2 }}%</td>
 
                   </tr>
@@ -58,8 +58,8 @@
                 {% for item in roas_low %}
                   <tr>
                     <td class="one-line">{{ item.product_name }}</td>
-                    <td class="text-nowrap">{{ item.ad_revenue|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_revenue|floatformat:0 }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0 }} 원</td>
                     <td class="text-nowrap">{{ item.roas|floatformat:2 }}%</td>
  
                   </tr>
@@ -89,8 +89,8 @@
                 {% for item in conv_low %}
                   <tr>
                     <td class="one-line">{{ item.product_name }}</td>
-                    <td class="text-nowrap">{{ item.ad_revenue|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.ad_spend|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_revenue|floatformat:0 }} 원</td>
+                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0 }} 원</td>
                     <td class="text-nowrap">{{ item.total_impressions|default:"0"|intcomma }}</td>
                     <td class="text-nowrap">{{ item.total_clicks|default:"0"|intcomma }}</td>
                     <td class="text-nowrap">
@@ -174,6 +174,7 @@
             <!-- 전체 기간 소계 행 -->
             <tr class="fw-bold product-row" style="background-color: #f0f0f0;">
               <td class="left-col1">
+                <button type="button" class="btn btn-sm btn-outline-primary toggle-btn" data-idx="period">+</button>
                 전체 기간
               </td>
               <td class="left-col2 text-center">
@@ -204,87 +205,107 @@
                 {% endif %}
               </td>
             </tr>
+            <!-- 전체 기간 소계 하위 세부 내역 (브랜드별) - 기본적으로 닫힘 -->
+            {% for brand, det in period_summary.brand_details.items %}
+            <tr class="child-row" data-parent-idx="period" style="display: none;">
+              <td colspan="2">{{ brand }}</td>
+              <td class="text-end">{{ det.qty|intcomma }}</td>
+              <td class="text-end">{{ det.ad_qty|intcomma }}</td>
+              <td class="text-end">{{ det.conversion_rate|floatformat:2 }}</td>
+              <td class="text-end">{{ det.net_sales_amount|floatformat:0 }} 원</td>
+              <td class="text-end">{{ det.ad_revenue|floatformat:0 }}</td>
+              <td class="text-end">{{ det.ad_spend|floatformat:0 }} 원</td>
+              <td class="text-end">{{ det.profit|floatformat:0 }} 원</td>
+              <td class="text-end">
+                {% if det.ad_spend > 0 %}
+                  {{ det.roas|floatformat:2 }} %
+                {% else %}
+                  0%
+                {% endif %}
+              </td>
+              <td class="text-end">{{ det.margin_rate|floatformat:2 }} %</td>
+            </tr>
+            {% endfor %}
+
             <!-- 일자별 데이터 -->
             {% for day in daily_reports %}
-              <tr class="fw-bold product-row">
-                <td class="left-col1">
-                  <button type="button" class="btn btn-sm btn-outline-primary toggle-btn" data-idx="{{ forloop.counter }}">+</button>
-                  {{ day.date_str }}
-                </td>
-                <td class="left-col2 text-center">
-                  소계
-                  <span class="text-primary show-modal-icon ms-2" style="cursor: pointer;" data-date="{{ day.date_str }}">
-                    <i class="fas fa-info-circle"></i>
-                  </span>
-                </td>
-                <td class="text-end">{{ day.qty|intcomma }}</td>
-                <td class="text-end">{{ day.ad_qty|intcomma }}</td>
-                <td class="text-end">{{ day.conversion_rate|floatformat:2 }} %</td>
-                <td class="text-end">{{ day.revenue|floatformat:0 }} 원</td>
-                <td class="text-end">{{ day.ad_revenue|floatformat:0 }} 원</td>
-                <td class="text-end">{{ day.ad_spend|floatformat:0 }} 원</td>
-                <td class="text-end">{{ day.profit|floatformat:0 }} 원</td>
-                <td class="text-end">
-                  {% if day.ad_spend > 0 %}
-                    {{ day.roas|floatformat:2 }} %
-                  {% else %}
-                    0%
-                  {% endif %}
-                </td>
-                <td class="text-end">
-                  {% if day.revenue > 0 %}
-                    {{ day.ad_sales_rate|floatformat:2 }} %
-                  {% else %}
-                    0%
-                  {% endif %}
-                </td>
-
-              </tr>
-              {% for det in day.details %}
-                <tr data-parent-idx="{{ forloop.parentloop.counter }}">
-                  <td colspan="2">{{ det.kind }}</td>
-                  <td class="text-end">{{ det.qty|intcomma }}</td>
-                  <td class="text-end">{{ det.ad_qty|intcomma }}</td>
-                  <td class="text-end">{{ det.conversion_rate|floatformat:2 }} %</td>
-                  <td class="text-end">{{ det.revenue|floatformat:0 }} 원</td>
-                  <td class="text-end">{{ det.ad_revenue|floatformat:0 }} 원</td>
-                  <td class="text-end">{{ det.ad_spend|floatformat:0 }} 원</td>
-                  <td class="text-end">{{ det.profit|floatformat:0 }} 원</td>
-                  <td class="text-end">
-                    {% if det.ad_spend > 0 %}
-                      {{ det.roas|floatformat:2 }} %
-                    {% else %}
-                      0%
-                    {% endif %}
-                  </td>
-                  <td class="text-end">
-                    {% if det.revenue > 0 %}
-                      {{ det.ad_sales_rate|floatformat:2 }} %
-                    {% else %}
-                      0%
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
+            <tr class="fw-bold product-row">
+              <td class="left-col1">
+                <button type="button" class="btn btn-sm btn-outline-primary toggle-btn" data-idx="{{ forloop.counter }}">+</button>
+                {{ day.date_str }}
+              </td>
+              <td class="left-col2 text-center">
+                소계
+                <span class="text-primary show-modal-icon ms-2" style="cursor: pointer;" data-date="{{ day.date_str }}">
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </td>
+              <td class="text-end">{{ day.qty|intcomma }}</td>
+              <td class="text-end">{{ day.ad_qty|intcomma }}</td>
+              <td class="text-end">{{ day.conversion_rate|floatformat:2 }} %</td>
+              <td class="text-end">{{ day.revenue|floatformat:0 }} 원</td>
+              <td class="text-end">{{ day.ad_revenue|floatformat:0 }} 원</td>
+              <td class="text-end">{{ day.ad_spend|floatformat:0 }} 원</td>
+              <td class="text-end">{{ day.profit|floatformat:0 }} 원</td>
+              <td class="text-end">
+                {% if day.ad_spend > 0 %}
+                  {{ day.roas|floatformat:2 }} %
+                {% else %}
+                  0%
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if day.revenue > 0 %}
+                  {{ day.ad_sales_rate|floatformat:2 }} %
+                {% else %}
+                  0%
+                {% endif %}
+              </td>
+            </tr>
+            {% for det in day.details %}
+            <tr class="child-row" data-parent-idx="{{ forloop.parentloop.counter }}" style="display: none;">
+              <td colspan="2">{{ det.kind }}</td>
+              <td class="text-end">{{ det.qty|intcomma }}</td>
+              <td class="text-end">{{ det.ad_qty|intcomma }}</td>
+              <td class="text-end">{{ det.conversion_rate|floatformat:2 }} %</td>
+              <td class="text-end">{{ det.revenue|floatformat:0 }} 원</td>
+              <td class="text-end">{{ det.ad_revenue|floatformat:0 }} 원</td>
+              <td class="text-end">{{ det.ad_spend|floatformat:0 }} 원</td>
+              <td class="text-end">{{ det.profit|floatformat:0 }} 원</td>
+              <td class="text-end">
+                {% if det.ad_spend > 0 %}
+                  {{ det.roas|floatformat:2 }} %
+                {% else %}
+                  0%
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if det.revenue > 0 %}
+                  {{ det.ad_sales_rate|floatformat:2 }} %
+                {% else %}
+                  0%
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
-  </div>
-</div><!-- // container-fluid -->
+  </div><!-- // container-fluid -->
 
-<!-- 모달 영역: 소계 및 상세 정보를 위한 모달 -->
-<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+<!-- 모달 영역: 일자별 상품 상세 모달 -->
+<div class="modal fade" id="detailModalDaily" tabindex="-1" aria-labelledby="detailModalDailyLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl" style="max-width: 100% !important;">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="detailModalLabel">상세보기</h5>
+        <h5 class="modal-title" id="detailModalDailyLabel">일자별 상품 상세</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div id="modal-content-area">
-          <p>날짜별/전체 기간의 상품 상세 정보가 여기에 표시됩니다.</p>
+        <div id="modal-content-area-daily">
+          <p>선택한 날짜의 상품 상세 정보가 여기에 표시됩니다.</p>
         </div>
       </div>
       <div class="modal-footer">
@@ -293,6 +314,27 @@
     </div>
   </div>
 </div>
+
+<!-- 모달 영역: 전체기간 상품 상세 모달 -->
+<div class="modal fade" id="detailModalOverall" tabindex="-1" aria-labelledby="detailModalOverallLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl" style="max-width: 100% !important;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="detailModalOverallLabel">전체기간 상품 상세</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-content-area-overall">
+          <p>전체기간의 상품 상세 정보가 여기에 표시됩니다.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 미매칭 AD_ID 목록 모달 -->
 <div class="modal fade" id="unmatchedModal" tabindex="-1" aria-labelledby="unmatchedModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg" style="max-width: 80% !important;">
@@ -331,6 +373,7 @@
   </div>
 </div>
 
+</div>
 <script>
   // 날짜 범위 설정 함수
   function setDateRange(mode) {
@@ -349,14 +392,26 @@
     document.getElementById('end_date').value = end.toISOString().split('T')[0];
   }
 
-  // 글로벌 테이블 정렬 함수
-  function sortTableGlobal(th, colIndex) {
-    const table = th.closest('table');
-    const tbody = table.querySelector('tbody');
-    let sortOrder = th.dataset.sortOrder === 'asc' ? 'desc' : 'asc';
-    th.dataset.sortOrder = sortOrder;
-    
-    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+
+  // 모달에 표시될 상세 테이블 HTML을 생성하는 함수
+  // data는 배열 형태로, 각 객체는 아래와 같은 프로퍼티를 포함한다고 가정합니다:
+  // { date_str, kind, qty, ad_qty, conversion_rate, revenue, ad_revenue, ad_spend, profit, roas, ad_sales_rate }
+  // 전역 스코프에 sortModalTable 함수를 선언합니다.
+  function sortModalTable(th, colIndex) {
+  const table = th.closest('table');
+  const tbody = table.querySelector('tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  
+  // 그룹화 여부 체크: "modal-product-row" 클래스가 있는 행이 하나라도 있는지 확인
+  const hasGrouping = rows.some(row => row.classList.contains('modal-product-row'));
+
+  // 정렬 순서 토글
+  let sortOrder = th.dataset.sortOrder === "asc" ? "desc" : "asc";
+  th.dataset.sortOrder = sortOrder;
+
+  if (!hasGrouping) {
+    // 그룹화가 없으면 단순 정렬 (sortTableGlobal과 동일하게)
     rows.sort((rowA, rowB) => {
       const cellA = rowA.querySelectorAll('td')[colIndex]?.innerText.trim() || '';
       const cellB = rowB.querySelectorAll('td')[colIndex]?.innerText.trim() || '';
@@ -365,141 +420,228 @@
       if (!isNaN(numA) && !isNaN(numB)) {
         return sortOrder === 'asc' ? numA - numB : numB - numA;
       }
-      return sortOrder === 'asc' ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+      return sortOrder === 'asc'
+        ? cellA.localeCompare(cellB)
+        : cellB.localeCompare(cellA);
     });
     tbody.innerHTML = "";
     rows.forEach(row => tbody.appendChild(row));
-  }
-
-  // 모달에 표시될 상세 테이블 HTML을 생성하는 함수
-  // data는 배열 형태로, 각 객체는 아래와 같은 프로퍼티를 포함한다고 가정합니다:
-  // { date_str, kind, qty, ad_qty, conversion_rate, revenue, ad_revenue, ad_spend, profit, roas, ad_sales_rate }
-  function buildModalDetailTable(data) {
-    let html = `
-      <div class="table-responsive">
-        <table class="table table-hover align-middle w-100">
-          <thead>
-            <tr style="background-color: #dfe6e9;">
-              <th class="left-header-col1">일자</th>
-              <th class="left-header-col2 text-center">구분</th>
-              <th class="text-center">판매수량</th>
-              <th class="text-center">광고판매수량</th>
-              <th class="text-center">전환율</th>
-              <th class="text-center">매출</th>
-              <th class="text-center">광고전환매출</th>
-              <th class="text-center">광고집행비</th>
-              <th class="text-center">매출-광고비</th>
-              <th class="text-center">ROAS</th>
-              <th class="text-center">광고판매비율</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
-    if (!data || data.length === 0) {
-      html += `<tr><td colspan="11" class="text-center">해당 데이터가 없습니다.</td></tr>`;
-    } else {
-      data.forEach(item => {
-        // 각 수치를 안전하게 숫자로 변환
-        const dateStr = item.date_str || '-';
-        const kind = item.kind || '-';
-        const qty = Number(item.qty) || 0;
-        const adQty = Number(item.ad_qty) || 0;
-        const convRate = (Number(item.conversion_rate) || 0).toFixed(2);
-        const revenue = Number(item.revenue) || 0;
-        const adRevenue = Number(item.ad_revenue) || 0;
-        const adSpend = Number(item.ad_spend) || 0;
-        const profit = Number(item.profit) || 0;
-        const roas = (Number(item.roas) || 0).toFixed(2);
-        const adSalesRate = (Number(item.ad_sales_rate) || 0).toFixed(2);
-        
-        html += `
-          <tr>
-            <td>${dateStr}</td>
-            <td class="text-center">${kind}</td>
-            <td class="text-end">${qty.toLocaleString()}</td>
-            <td class="text-end">${adQty.toLocaleString()}</td>
-            <td class="text-end">${convRate}%</td>
-            <td class="text-end">${revenue.toLocaleString()} 원</td>
-            <td class="text-end">${adRevenue.toLocaleString()} 원</td>
-            <td class="text-end">${adSpend.toLocaleString()} 원</td>
-            <td class="text-end">${profit.toLocaleString()} 원</td>
-            <td class="text-end">${roas}%</td>
-            <td class="text-end">${adSalesRate}%</td>
-          </tr>
-        `;
-      });
+  } else {
+    // 그룹화가 있는 경우: 메인행(모달-product-row) + 옵션행을 그룹으로 묶어서 정렬
+    const groups = [];
+    let currentGroup = [];
+    rows.forEach(row => {
+      if (row.classList.contains('modal-product-row')) {
+        if (currentGroup.length > 0) {
+          groups.push(currentGroup);
+        }
+        currentGroup = [row];
+      } else {
+        currentGroup.push(row);
+      }
+    });
+    if (currentGroup.length > 0) {
+      groups.push(currentGroup);
     }
-    
-    html += `
-          </tbody>
-        </table>
-      </div>
-    `;
-    return html;
+    groups.sort((groupA, groupB) => {
+      const cellA = groupA[0].querySelectorAll('td')[colIndex]?.innerText.trim() || '';
+      const cellB = groupB[0].querySelectorAll('td')[colIndex]?.innerText.trim() || '';
+      const numA = parseFloat(cellA.replace(/[^0-9.\-]/g, ''));
+      const numB = parseFloat(cellB.replace(/[^0-9.\-]/g, ''));
+      
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return sortOrder === "asc" ? numA - numB : numB - numA;
+      }
+      return sortOrder === "asc"
+        ? cellA.localeCompare(cellB)
+        : cellB.localeCompare(cellA);
+    });
+    tbody.innerHTML = "";
+    groups.forEach(group => {
+      group.forEach(row => tbody.appendChild(row));
+    });
   }
+  console.log("sortModalTable 완료 - 정렬 순서:", th.dataset.sortOrder);
+}
 
-  // 모달 설정 및 이벤트 바인딩
-  // 뷰에서 내려준 JSON 데이터(예: day_products_map_json)는 전역 변수 dayProductsMap에 저장됩니다.
-  const dayProductsMap = JSON.parse('{{ day_products_map_json|safe }}');
+function buildModalDetailTable(data, dateValue) {
+  let html = `<h5>${dateValue} 상품별 상세</h5>`;
+  html += `
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered modal-detail-table">
+        <thead>
+          <tr style="background-color: #dfe6e9;">
+            <th onclick="sortModalTable(this, 0)" style="cursor:pointer;">상품ID <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th onclick="sortModalTable(this, 1)" style="cursor:pointer;">상품명 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th class="text-end" onclick="sortModalTable(this, 2)" style="cursor:pointer;">판매수량 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th class="text-end" onclick="sortModalTable(this, 3)" style="cursor:pointer;">광고판매수량 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th class="text-end" onclick="sortModalTable(this, 4)" style="cursor:pointer;">매출 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th class="text-end" onclick="sortModalTable(this, 5)" style="cursor:pointer;">광고전환매출 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th class="text-end" onclick="sortModalTable(this, 6)" style="cursor:pointer;">광고집행비 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th class="text-end" onclick="sortModalTable(this, 7)" style="cursor:pointer;">매출-광고비 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th class="text-end" onclick="sortModalTable(this, 8)" style="cursor:pointer;">ROAS <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+            <th class="text-end" onclick="sortModalTable(this, 9)" style="cursor:pointer;">광고판매비율 <i class="sort-arrow bi bi-arrow-down-up"></i></th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  
+  if (!data || Object.keys(data).length === 0) {
+    html += `<tr><td colspan="10" class="text-center">해당 데이터가 없습니다.</td></tr>`;
+  } else {
+    for (let pid in data) {
+      let row = data[pid];
+      let profit =   Number(row.ad_revenue) - Number(row.ad_spend) ;
+      let adSalesRate = Number(row.sold_qty) === 0 ? (Number(row.ad_qty) === 0 ? 0 : 100) : (Number(row.ad_qty) / Number(row.sold_qty) * 100);
+      html += `
+        <tr>
+          <td>${row.product_id}</td>
+          <td>${row.product_name || '(이름없음)'}</td>
+          <td class="text-end">${Number(row.sold_qty).toLocaleString()}</td>
+          <td class="text-end">${Number(row.ad_qty).toLocaleString()}</td>
+          <td class="text-end">${Number(row.sales_amt).toLocaleString()} 원</td>
+          <td class="text-end">${Number(row.ad_revenue).toLocaleString()} 원</td>
+          <td class="text-end">${Number(row.ad_spend).toLocaleString()} 원</td>
+          <td class="text-end">${profit.toLocaleString()} 원</td>
+          <td class="text-end">${Number(row.roas).toFixed(2)}%</td>
+          <td class="text-end">${adSalesRate.toFixed(2)}%</td>
+          
+        </tr>
+      `;
+    }
+  }
+  
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+  // 모달 테이블이 완전히 생성된 후 (다음 태스크 큐에 실행) 정렬 이벤트가 제대로 작동하도록 잠시 지연
+  setTimeout(() => {
+    // 만약 필요하다면 여기서 추가로 이벤트를 확인할 수 있습니다.
+  }, 0);
+  return html;
+}
+
+  // JSON 파싱: 일자별 모달과 전체기간 모달용
+  const dayProductsMap = JSON.parse('{{ day_products_map_json|escapejs }}');
+  const overallProductsMap = JSON.parse('{{ overall_products_map_json|escapejs }}');
 
   document.addEventListener('DOMContentLoaded', () => {
-    const detailModalEl = document.getElementById('detailModal');
-    const detailModal = new bootstrap.Modal(detailModalEl);
-
-    const icons = document.querySelectorAll('.show-modal-icon');
-    icons.forEach(icon => {
-      icon.addEventListener('click', () => {
-        const dateValue = icon.dataset.date; // 예: "2025-03-10"
-        const productData = dayProductsMap[dateValue];
-
-        if(!productData){
-          // 모달에 "데이터 없음" 출력
-          document.getElementById('modal-content-area').innerHTML = `<p>${dateValue} 데이터 없음</p>`;
-          detailModal.show();
-          return;
+    // 일자별 모달
+    const detailModalDailyEl = document.getElementById('detailModalDaily');
+    const detailModalDaily = new bootstrap.Modal(detailModalDailyEl);
+    // 전체기간 모달
+    const detailModalOverallEl = document.getElementById('detailModalOverall');
+    const detailModalOverall = new bootstrap.Modal(detailModalOverallEl);
+    
+    // 모달 토글 버튼들 (소계 아이콘)
+    const showModalIcons = document.querySelectorAll('.show-modal-icon');
+    showModalIcons.forEach(icon => {
+      icon.addEventListener('click', (event) => {
+        const dateValue = event.currentTarget.dataset.date; 
+        // 만약 dateValue가 "period"면 전체기간 모달, 그렇지 않으면 일자별 모달
+        if (dateValue === "period") {
+          const overallHTML = buildModalDetailTable(overallProductsMap, "전체 기간");
+          document.getElementById('modal-content-area-overall').innerHTML = overallHTML;
+          detailModalOverall.show();
+        } else {
+          const dailyData = dayProductsMap[dateValue];
+          const dailyHTML = buildModalDetailTable(dailyData, dateValue);
+          document.getElementById('modal-content-area-daily').innerHTML = dailyHTML;
+          detailModalDaily.show();
         }
+      });
+    });
+  });
 
-        // 테이블 생성
-        let html = `
-          <table class="table table-bordered">
-            <thead>
-              <tr>
-                <th>상품ID</th>
-                <th>상품명</th>
-                <th>판매수량</th>
-                <th>매출</th>
-                <th>광고판매수량</th>
-                <th>광고매출</th>
-                <th>광고비</th>
-                <th>매출-광고비</th>
-                <th>ROAS</th>
-              </tr>
-            </thead>
-            <tbody>
-        `;
+  
+  
+  // KPI 테이블 정렬 (글로벌)
+  function sortTableGlobal(th, colIndex) {
+    const table = th.closest('table');
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
 
-        for(const pid_mall in productData){
-          const row = productData[pid_mall];
-          html += `
-            <tr>
-              <td>${pid_mall}</td>
-              <td>${row.product_name || '(이름없음)'}</td>
-              <td>${row.qty}</td>
-              <td>${Number(row.sales_amt).toLocaleString()} 원</td>
-              <td>${row.ad_qty}</td>
-              <td>${Number(row.ad_revenue).toLocaleString()} 원</td>
-              <td>${Number(row.ad_spend).toLocaleString()} 원</td>
-              <td>${Number(row.profit).toLocaleString()} 원</td>
-              <td>${Number(row.roas).toFixed(2)}%</td>
-            </tr>
-          `;
-        }
+    let sortOrder = th.dataset.sortOrder === 'asc' ? 'desc' : 'asc';
+    th.dataset.sortOrder = sortOrder;
 
-        html += `</tbody></table>`;
+    // 아이콘 초기화
+    const allTh = table.querySelectorAll('thead th');
+    allTh.forEach(thItem => {
+      if (thItem !== th) {
+        thItem.dataset.sortOrder = '';
+      }
+      const icon = thItem.querySelector('.sort-arrow');
+      if (icon) {
+        icon.classList.remove('bi-arrow-up', 'bi-arrow-down', 'bi-arrow-down-up');
+        icon.classList.add('bi-arrow-down-up');
+      }
+    });
 
-        document.getElementById('modal-content-area').innerHTML = html;
-        detailModal.show();
+    // 현재 <th> 아이콘 업데이트
+    const icon = th.querySelector('.sort-arrow');
+    if (icon) {
+      icon.classList.remove('bi-arrow-down-up');
+      if (sortOrder === 'asc') {
+        icon.classList.add('bi-arrow-up');
+      } else {
+        icon.classList.add('bi-arrow-down');
+      }
+    }
+
+    // 행 정렬
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((rowA, rowB) => {
+      const cellA = rowA.querySelectorAll('td')[colIndex]?.innerText.trim() ?? '';
+      const cellB = rowB.querySelectorAll('td')[colIndex]?.innerText.trim() ?? '';
+      const numA = parseFloat(cellA.replace(/[^0-9.\-]/g, ''));
+      const numB = parseFloat(cellB.replace(/[^0-9.\-]/g, ''));
+
+      if(!isNaN(numA) && !isNaN(numB)){
+        return sortOrder === 'asc' ? (numA - numB) : (numB - numA);
+      }
+      return sortOrder === 'asc'
+        ? cellA.localeCompare(cellB)
+        : cellB.localeCompare(cellA);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+  // KPI 탭 전환 기능
+  const tabButtons = document.querySelectorAll('.kpi-tab-btn');
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', function(){
+      // 모든 탭 버튼에서 active 클래스를 제거
+      tabButtons.forEach(b => b.classList.remove('active'));
+      // 모든 탭 콘텐츠(.kpi-card)를 숨김 처리
+      const kpiCards = document.querySelectorAll('.kpi-card');
+      kpiCards.forEach(card => card.style.display = 'none');
+      // 클릭된 버튼에 active 클래스 추가
+      this.classList.add('active');
+      // data-tab 속성에 지정된 id를 가진 콘텐츠를 보임 처리
+      const targetTab = this.getAttribute('data-tab');
+      document.getElementById(targetTab).style.display = 'block';
+    });
+  });
+});
+document.addEventListener('DOMContentLoaded', function(){
+    // 토글 버튼 클릭 시, 해당 버튼의 data-idx와 일치하는 자식 행들을 토글합니다.
+    const toggleButtons = document.querySelectorAll('.toggle-btn');
+    toggleButtons.forEach(btn => {
+      btn.addEventListener('click', function(){
+        const idx = this.getAttribute('data-idx');
+        // data-parent-idx가 idx와 일치하는 모든 child-row를 선택
+        const childRows = document.querySelectorAll(`tr.child-row[data-parent-idx="${idx}"]`);
+        childRows.forEach(row => {
+          if (row.style.display === 'none' || row.style.display === '') {
+            row.style.display = 'table-row';
+            this.innerHTML = '-';
+          } else {
+            row.style.display = 'none';
+            this.innerHTML = '+';
+          }
+        });
       });
     });
   });

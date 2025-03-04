@@ -32,11 +32,11 @@ urlpatterns = [
     path('naver-update-sales/', views.naver_update_sales_view, name='naver_update_sales'),
     path('naver-delete-sales/', views.deleted_naver_sales, name='naver_delete_sales'),
     path('naver-ad-report/', views.naver_ad_report_view, name='naver_ad_report'),
-    path('naver-ad-report/detail/', views.naver_ad_report_detail_view, name='naver_ad_report_detail'),
     path('naver-ad-report/update/', views.naver_update_ads_report, name='naver_update_ads_report'),
     path('naver-ad-shopping_product/update/', views.naver_update_ads_shopping_product, name='naver_update_ads_shopping_product'),
     # path('naver-sales/upload-ads-excel/', views.naver_upload_ads_excel_view, name='naver_upload_ads_excel'),
     # path('naver-sales/update-sales/', views.naver_update_sales_view, name='naver_update_sales'),
     path('naver-profit-report/', views.naver_profit_report_view, name='naver_profit_report'),
+    path('naver-profit-report/update/cost', views.naver_update_costs_from_seller_tool_view, name='naver_update_cost_profit_report'),
     # path('naver-profit-report/update/cost', views.naver_update_costs_from_seller_tool_view, name='naver_update_cost_profit_report'),
 ]

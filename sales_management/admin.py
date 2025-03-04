@@ -298,6 +298,7 @@ class NaverDailySalesAdmin(admin.ModelAdmin):
         "refunded_revenue",
         "product_id",
         "originalProductId",
+        "option_id",
     )
 
     # 2) 검색 박스에서 검색할 필드 (부분 일치)
@@ -308,6 +309,7 @@ class NaverDailySalesAdmin(admin.ModelAdmin):
         "store",
         "product_id",
         "originalProductId",
+        "option_id",
     )
 
     # 3) 필터 사이드바
@@ -325,7 +327,7 @@ class NaverDailySalesAdmin(admin.ModelAdmin):
 
 from django.contrib import admin
 from .models import NaverAdReport
-
+from django.db.models import Sum
 
 @admin.register(NaverAdReport)
 class NaverAdReportAdmin(admin.ModelAdmin):
@@ -341,10 +343,28 @@ class NaverAdReportAdmin(admin.ModelAdmin):
         'sales_by_conversion', 
         'ctr', 
         'roas',
-        
     )
-    search_fields = ('ad_id', 'ad_group_id', 'customer_id', 'product_name')
+    search_fields = ('ad_id', 'ad_group_id', 'customer_id')
     list_filter = ('date',)
+    # date_hierarchy 옵션을 추가하면 상단에 날짜별 드롭다운이 표시됩니다.
+    date_hierarchy = 'date'
+
+    def changelist_view(self, request, extra_context=None):
+        # 기본 ChangeList 결과를 가져옵니다.
+        response = super().changelist_view(request, extra_context)
+        try:
+            qs = response.context_data['cl'].queryset
+        except (AttributeError, KeyError):
+            return response
+
+        # 예시로 cost와 sales_by_conversion의 총합 집계
+        aggregate = qs.aggregate(
+            total_cost=Sum('cost'),
+            total_sales_by_conversion=Sum('sales_by_conversion'),
+        )
+        # 집계 결과를 추가 컨텍스트에 넣습니다.
+        response.context_data['aggregate'] = aggregate
+        return response
 
 
 from .models import NaverAdShoppingProduct
@@ -352,4 +372,15 @@ from .models import NaverAdShoppingProduct
 @admin.register(NaverAdShoppingProduct)
 class NaverAdShoppingProductAdmin(admin.ModelAdmin):
     list_display = ('date', 'ad_group_id', 'ad_id', 'product_id', 'product_id_of_mall', 'product_name', 'product_image_url')
-    search_fields = ('ad_id', 'product_name')
+    search_fields = ('ad_id', 'product_name','product_id_of_mall')
+
+
+
+from .models import NaverPurchaseCost
+
+@admin.register(NaverPurchaseCost)
+class NaverPurchaseCostAdmin(admin.ModelAdmin):
+    list_display = ('sku_id', 'option_code', 'manager', 'purchasing_price')
+    search_fields = ('sku_id', 'option_code', 'manager')
+    list_filter = ('manager',)
+    ordering = ('sku_id',)
