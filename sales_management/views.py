@@ -749,26 +749,48 @@ def sales_excel_file(file_path):
         logger.warning(f"엑셀 파일 읽기 실패: {e}")
         return "엑셀 파일 읽기 실패"
 
+    basename = os.path.basename(file_path)
+    logger.info(f"파일명: {basename}")
+
+    # 날짜 추출 패턴: YYYYMMDD 또는 YYYY-MM-DD 형태 모두 추출
+    pattern = r'(\d{4}(?:-?\d{2}){2})'
+    matches = re.findall(pattern, basename)
+    logger.info(f"추출된 날짜 문자열 목록: {matches}")
+
+    def parse_date(date_str):
+        for fmt in ("%Y%m%d", "%Y-%m-%d"):
+            try:
+                parsed_date = datetime.strptime(date_str, fmt).date()
+                logger.info(f"날짜 '{date_str}' 파싱 성공: {parsed_date} (포맷: {fmt})")
+                return parsed_date
+            except Exception as ex:
+                logger.info(f"날짜 '{date_str}' 파싱 실패 (포맷: {fmt}): {ex}")
+        return None
+
     date_from_filename = None
-    # 파일명에서 날짜 정보 추출 (예: Statistics-20250212~20250212_(0).xlsx)
-    match = re.search(r"Statistics-.*?(\d{8})~(\d{8})", os.path.basename(file_path))
-    if match:
-        start_str, end_str = match.group(1), match.group(2)
-        # 두 날짜 문자열이 동일한지 검사
-        if start_str != end_str:
-            logger.info("8자리 날짜가 동일하지 않습니다. 파일 건너뜁니다.")
-            return "날짜 범위 불일치"
+    if not matches:
+        logger.error(f"파일명 '{basename}'에서 날짜 형식 패턴 '{pattern}'에 해당하는 문자열이 없음. 파일 수정 시간을 사용합니다.")
         try:
-            date_from_filename = datetime.strptime(start_str, "%Y%m%d").date()
+            date_from_filename = datetime.fromtimestamp(os.path.getmtime(file_path)).date()
+            logger.info(f"파일 수정 시간으로부터 날짜 추출: {date_from_filename}")
         except Exception as e:
-            logger.error("날짜 파싱 실패: " + str(e))
-            return "날짜 파싱 실패"
+            logger.error(f"파일 수정 시간 추출 실패: {e}")
+            return "날짜 추출 실패"
     else:
-        logger.error("날짜 추출 실패. 파일명을 확인해주세요.")
-        return "날짜 추출 실패"
-    if date_from_filename is None:
-        logger.error("날짜 추출 실패. 파일명을 확인해주세요.")
-        return "날짜 추출 실패"
+        # 첫 번째 매칭된 날짜를 사용
+        date_from_filename = parse_date(matches[0])
+        if date_from_filename is None:
+            logger.error("첫 번째 날짜 문자열 파싱 실패.")
+            return "날짜 파싱 실패"
+        # 추가로 추출된 날짜가 있다면, 일치 여부를 체크 (불일치 시 경고만 남김)
+        if len(matches) > 1:
+            for other in matches[1:]:
+                other_date = parse_date(other)
+                if other_date and other_date != date_from_filename:
+                    logger.warning(f"파일명에 여러 날짜가 추출되었으나 일치하지 않음: {date_from_filename}와 {other_date}. 첫 번째 날짜를 사용합니다.")
+                    break
+
+    logger.info(f"최종적으로 사용될 날짜: {date_from_filename}")
 
     # 엑셀 각 행 순회 및 DB 저장
     for idx, row in df.iterrows():
@@ -855,9 +877,9 @@ def sales_excel_file(file_path):
             logger.exception(f"DB 저장 실패, 행({idx}): {e}")
 
     os.remove(file_path)
-    logger.info(f"파일 처리 완료 후 삭제: {os.path.basename(file_path)}")
-    # sales_excel_file 함수에서는 redirect를 리턴하지 않고 결과 메시지를 반환
+    logger.info(f"파일 처리 완료 후 삭제: {basename}")
     return "파일 처리 완료"
+
 
 
 def upload_excel_view(request):
@@ -920,29 +942,53 @@ def sales_excel_file(file_path):
         df = pd.read_excel(file_path, dtype={"옵션ID": str})
         logger.info(f"[엑셀 파싱] 컬럼: {df.columns.tolist()}")
     except Exception as e:
-        logger.warning(f"엑셀 파일 읽기 실패: {e}")
+        logger.error(f"엑셀 파일 읽기 실패: {e}", exc_info=True)
         return "엑셀 파일 읽기 실패"
 
+    basename = os.path.basename(file_path)
+    logger.info(f"파일명: {basename}")
+
+    # 날짜 추출 패턴: YYYYMMDD 또는 YYYY-MM-DD 형태 모두 추출
+    pattern = r'(\d{4}(?:-?\d{2}){2})'
+    matches = re.findall(pattern, basename)
+    logger.debug(f"정규표현식 패턴: {pattern}")
+    logger.debug(f"파일명에서 추출된 문자열 목록: {matches}")
+
+    def parse_date(date_str):
+        for fmt in ("%Y%m%d", "%Y-%m-%d"):
+            try:
+                parsed_date = datetime.strptime(date_str, fmt).date()
+                logger.debug(f"날짜 '{date_str}' 파싱 성공: {parsed_date} (포맷: {fmt})")
+                return parsed_date
+            except Exception as ex:
+                logger.debug(f"날짜 '{date_str}' 파싱 실패 (포맷: {fmt}): {ex}", exc_info=True)
+        return None
+
     date_from_filename = None
-    # 파일명에서 날짜 정보 추출 (예: Statistics-20250212~20250212_(0).xlsx)
-    match = re.search(r"Statistics-.*?(\d{8})~(\d{8})", os.path.basename(file_path))
-    if match:
-        start_str, end_str = match.group(1), match.group(2)
-        # 두 날짜 문자열이 동일한지 검사
-        if start_str != end_str:
-            logger.info("8자리 날짜가 동일하지 않습니다. 파일 건너뜁니다.")
-            return "날짜 범위 불일치"
+    if not matches:
+        logger.error(f"파일명 '{basename}'에서 날짜 형식 패턴 '{pattern}'에 해당하는 문자열이 없음")
         try:
-            date_from_filename = datetime.strptime(start_str, "%Y%m%d").date()
+            mod_time = os.path.getmtime(file_path)
+            logger.debug(f"파일 수정 시간 (timestamp): {mod_time}")
+            date_from_filename = datetime.fromtimestamp(mod_time).date()
+            logger.info(f"파일 수정 시간으로부터 날짜 추출 성공: {date_from_filename}")
         except Exception as e:
-            logger.error("날짜 파싱 실패: " + str(e))
-            return "날짜 파싱 실패"
+            logger.error(f"파일 수정 시간 추출 실패: {e}", exc_info=True)
+            return "날짜 추출 실패"
     else:
-        logger.error("날짜 추출 실패. 파일명을 확인해주세요.")
-        return "날짜 추출 실패"
-    if date_from_filename is None:
-        logger.error("날짜 추출 실패. 파일명을 확인해주세요.")
-        return "날짜 추출 실패"
+        # 첫 번째 매칭된 날짜를 사용
+        date_from_filename = parse_date(matches[0])
+        if date_from_filename is None:
+            logger.error("첫 번째 날짜 문자열 파싱 실패.")
+            return "날짜 파싱 실패"
+        if len(matches) > 1:
+            for other in matches[1:]:
+                other_date = parse_date(other)
+                if other_date and other_date != date_from_filename:
+                    logger.warning(f"파일명에 여러 날짜가 추출되었으나 일치하지 않음: {date_from_filename}와 {other_date}. 첫 번째 날짜를 사용합니다.")
+                    break
+
+    logger.info(f"최종적으로 사용될 날짜: {date_from_filename}")
 
     # 엑셀 각 행 순회 및 DB 저장
     for idx, row in df.iterrows():
@@ -1029,10 +1075,8 @@ def sales_excel_file(file_path):
             logger.exception(f"DB 저장 실패, 행({idx}): {e}")
 
     os.remove(file_path)
-    logger.info(f"파일 처리 완료 후 삭제: {os.path.basename(file_path)}")
-    # sales_excel_file 함수에서는 redirect를 리턴하지 않고 결과 메시지를 반환
+    logger.info(f"파일 처리 완료 후 삭제: {basename}")
     return "파일 처리 완료"
-
 
 def upload_excel_view(request):
     """
@@ -3000,7 +3044,7 @@ def save_naver_products_to_db(product_list, account_info):
                         'product_price': discountedPrice,
                         'option_price': optionPrice,
                         'account_name': brand_name,
-                        'market_fee': 0.04,  # 4%
+                        'market_fee': 0.06,  # 6%
                         # sale_price와 profit은 model의 save()에서 자동 계산됨
                     }
                 )
@@ -3023,7 +3067,7 @@ def save_naver_products_to_db(product_list, account_info):
                     'product_price': discountedPrice,
                     'option_price': 0,
                     'account_name': brand_name,
-                    'market_fee': 0.04,
+                    'market_fee': 0.06,
                 }
             )
             count += 1
@@ -4732,7 +4776,7 @@ def naver_profit_report_view(request):
         ad_sp = ad_part["ad_spend"]
         ad_rev = ad_part["ad_rev"]
 
-        commission = net_s * Decimal("0.04")
+        commission = net_s * Decimal("0.06")
         profit_val = net_s - commission - ad_sp - purchase_c - etc_c
         margin_rate = (profit_val / net_s * 100) if net_s else 0
 
@@ -4903,7 +4947,7 @@ def naver_profit_report_view(request):
         pcost = vals["purchase_cost"]
         etc_c = vals["etc_cost"]
 
-        commission = sales_amt * Decimal("0.04")
+        commission = sales_amt * Decimal("0.06")
         profit_val = sales_amt - commission - ad_spend - pcost - etc_c
         margin_rate_val = (profit_val / sales_amt * 100) if sales_amt else 0
         roas_val = (ad_rev / ad_spend * 100) if ad_spend else 0
@@ -5017,7 +5061,7 @@ def naver_profit_report_view(request):
 
     overall_details = []
     for pid, data in overall_products_map.items():
-        commission_val = data["sales_amt"] * Decimal("0.04")
+        commission_val = data["sales_amt"] * Decimal("0.06")
         profit_val = data["sales_amt"] - commission_val - data["ad_spend"] - data["purchase_cost"] - data["etc_cost"]
         margin_rate_val = (profit_val / data["sales_amt"] * 100) if data["sales_amt"] else 0
         roas_val = (data["ad_revenue"] / data["ad_spend"] * 100) if data["ad_spend"] else 0
@@ -5053,7 +5097,7 @@ def naver_profit_report_view(request):
     # --- (10) KPI 3종 (예시)
     kpi_list = []
     for prod_key, pinfo in overall_products_map.items():
-        commission_val = pinfo["sales_amt"] * Decimal("0.04")
+        commission_val = pinfo["sales_amt"] * Decimal("0.06")
         profit_val = pinfo["sales_amt"] - commission_val - pinfo["ad_spend"] - pinfo["purchase_cost"] - pinfo["etc_cost"]
         margin_rate_val = (profit_val / pinfo["sales_amt"] * 100) if pinfo["sales_amt"] else 0
         product_name = naver_item_map.get(prod_key, f"(상품:{prod_key})")
