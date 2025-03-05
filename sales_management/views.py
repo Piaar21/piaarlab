@@ -2421,19 +2421,7 @@ def profit_report_view(request):
         "profit": sum_dict["profit"],
         "margin_rate": overall_margin_rate
     }
-    # --------------------------
-    # (F) 매입가 0원인 옵션 목록
-    zero_purchase_list = []
-    zero_costs = NaverPurchaseCost.objects.filter(purchasing_price=0)
-    for pc in zero_costs:
-        item = naverItem.objects.filter(sku_id=pc.sku_id).first()
-        if item:
-            zero_purchase_list.append({
-                "product_name": item.product_name or "(상품명없음)",
-                "option_name": item.option_name or "(옵션없음)",
-                "option_code": getattr(pc, 'option_code', ""),
-                "purchasing_price": pc.purchasing_price,
-            })
+
     # ---------------------------
     # (F) 매입가 확인용 데이터: 해당 기간 내 PurchaseCost.purchasing_price가 0인 옵션들
     zero_purchase_list = []
