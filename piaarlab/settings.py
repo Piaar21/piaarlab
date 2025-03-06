@@ -245,6 +245,11 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': False,  # 이 부분 추가
         },
+        'traffic_management': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,  # 이 부분 추가
+        },        
     },
 }
 

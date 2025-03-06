@@ -370,17 +370,17 @@ def task_upload_excel_data(request):
         
         # 모달에서 선택한 트래픽 ID를 POST 데이터로 받음
         traffic_id = request.POST.get('traffic_id')
-        logger.debug(f"Received traffic_id: {traffic_id}")
+        logger.info(f"Received traffic_id: {traffic_id}")
         selected_traffic = None
         if traffic_id:
             try:
                 selected_traffic = Traffic.objects.get(id=traffic_id)
-                logger.debug(f"Selected Traffic: {selected_traffic} (type: {selected_traffic.type})")
+                logger.info(f"Selected Traffic: {selected_traffic} (type: {selected_traffic.type})")
             except Traffic.DoesNotExist:
-                logger.debug("Traffic with the provided ID does not exist.")
+                logger.info("Traffic with the provided ID does not exist.")
                 selected_traffic = None
         else:
-            logger.debug("No traffic_id provided in POST data.")
+            logger.info("No traffic_id provided in POST data.")
         
         try:
             # 1) 엑셀 파일 파싱
@@ -403,13 +403,13 @@ def task_upload_excel_data(request):
                 available_start_date = row[7]
                 available_end_date = row[8]
 
-                logger.debug(f"Row {idx}: product_id={product_id}, product_name={product_name_from_excel}, keyword={keyword_name}")
+                logger.info(f"Row {idx}: product_id={product_id}, product_name={product_name_from_excel}, keyword={keyword_name}")
 
                 # product_id에 맞는 Product 객체 가져오기
                 try:
                     product = Product.objects.get(id=product_id)
                 except Product.DoesNotExist:
-                    logger.debug(f"Product with id {product_id} does not exist, skipping row {idx}.")
+                    logger.info(f"Product with id {product_id} does not exist, skipping row {idx}.")
                     continue
 
                 # NAVER 랭킹 조회 로직 재사용
@@ -420,9 +420,9 @@ def task_upload_excel_data(request):
                 # Keyword 생성 또는 가져오기
                 keyword_obj, created = Keyword.objects.get_or_create(name=keyword_name)
                 if created:
-                    logger.debug(f"Keyword '{keyword_name}' created.")
+                    logger.info(f"Keyword '{keyword_name}' created.")
                 else:
-                    logger.debug(f"Keyword '{keyword_name}' already exists.")
+                    logger.info(f"Keyword '{keyword_name}' already exists.")
 
                 task_data = {
                     'product': product,
@@ -440,10 +440,10 @@ def task_upload_excel_data(request):
                     'available_end_date': available_end_date,
                     'traffic': selected_traffic,  # 모달에서 선택한 트래픽 할당
                 }
-                logger.debug(f"Task data for row {idx}: {task_data}")
+                logger.info(f"Task data for row {idx}: {task_data}")
                 tasks_to_create.append(task_data)
 
-            logger.debug(f"Total tasks to create: {len(tasks_to_create)}")
+            logger.info(f"Total tasks to create: {len(tasks_to_create)}")
             # 3) 실제 DB에 Task 및 Ranking 생성
             for task_data in tasks_to_create:
                 task = Task.objects.create(**task_data)
@@ -454,7 +454,7 @@ def task_upload_excel_data(request):
                     rank=task.start_rank if task.start_rank is not None else 1000,
                     date_time=timezone.now()
                 )
-                logger.debug(f"Task created with id: {task.id}, traffic: {task.traffic}")
+                logger.info(f"Task created with id: {task.id}, traffic: {task.traffic}")
 
             return JsonResponse({'success': True})
         except Exception as e:
