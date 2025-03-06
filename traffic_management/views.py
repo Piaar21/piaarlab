@@ -448,6 +448,7 @@ def task_upload_excel_data(request):
         return JsonResponse({'success': False, 'error': 'POST 요청이 아닙니다.'})
 
 
+
 @login_required
 def download_bulk_traffic_sample_excel(request):
     # 오늘 날짜 기준 내일과 10일 뒤 날짜 계산
@@ -455,7 +456,7 @@ def download_bulk_traffic_sample_excel(request):
     start_date = today + timedelta(days=1)
     end_date = today + timedelta(days=10)
 
-    # GET 파라미터에서 선택된 트래픽 ID 가져오기
+    # GET 파라미터에서 선택된 트래픽 ID 가져오기 (모달에서 선택)
     traffic_id = request.GET.get('traffic_id')
     traffic = None
     if traffic_id:
@@ -468,7 +469,7 @@ def download_bulk_traffic_sample_excel(request):
     wb = openpyxl.Workbook()
     ws = wb.active
 
-    # 헤더 설정
+    # 헤더 설정 (트래픽명 컬럼은 제거)
     headers = [
         '상품ID', 
         '상품명', 
@@ -476,7 +477,6 @@ def download_bulk_traffic_sample_excel(request):
         '순위조회키워드', 
         'URL', 
         '메모', 
-        '트래픽명',
         '이용권수', 
         '이용가능 시작일자', 
         '이용가능 종료일자'
@@ -487,7 +487,7 @@ def download_bulk_traffic_sample_excel(request):
     products = Product.objects.all()
 
     for product in products:
-        # 트래픽 선택에 따라 URL 결정
+        # 모달에서 선택한 트래픽에 따라 URL 결정
         if traffic:
             if traffic.type == '단일':
                 url = product.single_product_link or ''
@@ -506,7 +506,6 @@ def download_bulk_traffic_sample_excel(request):
             product.search_keyword or '',        # 순위조회키워드
             url,                                 # URL (트래픽에 따른 단일/원부 선택)
             '',                                  # 메모 (빈 값)
-            traffic.name if traffic else '',     # 트래픽명 (선택된 트래픽의 이름, 없으면 빈 값)
             1,                                   # 이용권수 (항상 1)
             start_date.strftime('%Y-%m-%d'),      # 이용가능 시작일자 (내일)
             end_date.strftime('%Y-%m-%d'),        # 이용가능 종료일자 (10일 뒤)
@@ -529,7 +528,6 @@ def download_bulk_traffic_sample_excel(request):
     response['Content-Disposition'] = 'attachment; filename=bulk_task_sample.xlsx'
     wb.save(response)
     return response
-
 
 
 def build_initial_data_from_post(request, product_ids):
