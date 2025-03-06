@@ -411,39 +411,39 @@
   
     // 엑셀 파일을 서버로 전송하여 업로드 & 파싱 & task 등록을 한 번에 처리
     function submitExcelFile() {
-      let excelFile = document.getElementById('excel_file').files[0];
-      if (!excelFile) {
-        alert('엑셀 파일을 선택해주세요.');
-        return;
-      }
-  
-      let formData = new FormData();
-      formData.append('excel_file', excelFile);
-      // 선택된 상품 id들도 같이 보낼 수 있음(필요하다면)
-      // 예: formData.append('selected_products', ...);
-  
-      // CSRF 토큰 처리
-      formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-  
-      fetch("{% url 'rankings:task_upload_excel_data' %}", {
-        method: 'POST',
-        body: formData
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          alert('엑셀 파일 업로드 및 작업 등록이 성공적으로 완료되었습니다.');
-          closeExcelModal02();
-          // 완료 후 다른 페이지로 이동하거나, 현재 페이지 새로고침
-          window.location.reload();
-        } else {
-          alert('엑셀 파일 업로드 중 오류가 발생했습니다: ' + data.error);
+        let excelFile = document.getElementById('excel_file').files[0];
+        if (!excelFile) {
+            alert('엑셀 파일을 선택해주세요.');
+            return;
         }
-      })
-      .catch(error => {
-        console.error('Error:', error);
-        alert('서버와의 통신 중 오류가 발생했습니다.');
-      });
+
+        let formData = new FormData();
+        formData.append('excel_file', excelFile);
+        // CSRF 토큰 처리
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        
+        // 트래픽 선택 값 수동 추가
+        let trafficId = document.getElementById('traffic_select').value;
+        formData.append('traffic_id', trafficId);
+
+        fetch("{% url 'rankings:task_upload_excel_data' %}", {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('엑셀 파일 업로드 및 작업 등록이 성공적으로 완료되었습니다.');
+                closeExcelModal02();
+                window.location.reload();
+            } else {
+                alert('엑셀 파일 업로드 중 오류가 발생했습니다: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('서버와의 통신 중 오류가 발생했습니다.');
+        });
     }
     function downloadExcelSample() {
         var trafficId = document.getElementById('traffic_select').value;
