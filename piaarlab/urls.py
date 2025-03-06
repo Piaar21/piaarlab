@@ -28,7 +28,7 @@ urlpatterns = [
     path('cs/', include('cs_management.urls')),    # /cs/ 경로에 cs_management.urls 포함
     path('webhook/', include('webhook.urls')),  # 새로 추가
     path('sales/', include('sales_management.urls')),  
-
+    path('traffic/', include('traffic_management.urls')),  
 ]
 
 

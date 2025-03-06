@@ -1,0 +1,13 @@
+<!-- ad_confirm_delete.html -->
+
+{% extends 'traffic_management_base.html' %}
+
+{% block content %}
+<h1>광고 삭제</h1>
+<p>정말로 '{{ ad.name }}' 광고를 삭제하시겠습니까?</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">삭제</button>
+    <a href="{% url 'rankings:ad_single_summary' %}" class="btn btn-secondary">취소</a>
+</form>
+{% endblock %}

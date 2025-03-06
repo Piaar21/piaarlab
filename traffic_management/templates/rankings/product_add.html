@@ -1,0 +1,198 @@
+<!-- templates/rankings/product_add.html -->
+
+{% extends 'traffic_management_base.html' %}
+
+{% block content %}
+
+<div class="py-10 px-4">
+    <h2 class="text-2xl font-bold mb-6">상품 등록</h2>
+    
+    <!-- 상품 등록 폼 -->
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-4 space-x-2">
+            <button type="button" id="add-row-button" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">추가</button>
+            <button type="submit" name="register_products" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">등록</button>
+            <a href="{% url 'rankings:download_product_sample_excel' %}" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 inline-block">예제 파일 다운로드</a>
+        </div>
+        <div class="overflow-x-auto" style="max-height: 60vh; overflow-y: auto;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">카테고리</th>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">상품명</th>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">순위 조회 키워드</th> <!-- 추가된 부분 -->
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">단일상품링크</th>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">단일상품 MID값</th>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">원부 링크</th>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">원부 MID</th>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">스토어명</th>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">담당자</th>
+                        <th class="px-4 py-3 text-center sticky top-0 bg-gray-50">삭제</th>
+                        
+                    </tr>
+                </thead>
+                <tbody id="product-table-body" class="bg-white divide-y divide-gray-200">
+                    {% if excel_data %}
+                        {% for data in excel_data %}
+                            <tr>
+                                <td class="px-6 py-4 text-center">
+                                    <select name="category[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                        <option value="네이버" {% if data.category == '네이버' %}selected{% endif %}>네이버</option>
+                                        <!-- 다른 카테고리 옵션 추가 가능 -->
+                                    </select>
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <input type="text" name="name[]" value="{{ data.name }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <input type="text" name="search_keyword[]" value="{{ data.search_keyword }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <input type="url" name="single_product_link[]" value="{{ data.single_product_link }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <input type="text" name="single_product_mid[]" value="{{ data.single_product_mid }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <input type="url" name="original_link[]" value="{{ data.original_link }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <input type="text" name="original_mid[]" value="{{ data.original_mid }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <input type="text" name="store_name[]" value="{{ data.store_name }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <input type="text" name="manager[]" value="{{ data.manager }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <button type="button" class="text-red-500 hover:text-red-700 remove-row-button">삭제</button>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <!-- 빈 행 표시 -->
+                        <tr>
+                            <td class="px-6 py-4 text-center">
+                                <select name="category[]" class="w-full px-2 py-1 border border-gray-300 rounded appearance-none bg-white">
+                                    <option value="네이버">네이버</option>
+                                    <!-- 다른 카테고리 옵션 추가 가능 -->
+                                </select>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="name[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="search_keyword[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="url" name="single_product_link[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="single_product_mid[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="url" name="original_link[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="original_mid[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="store_name[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="manager[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <button type="button" class="text-red-500 hover:text-red-700 remove-row-button">삭제</button>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        
+    </form>
+
+    <!-- 엑셀 업로드 폼 -->
+    <form method="post" enctype="multipart/form-data" class="mt-6">
+        {% csrf_token %}
+        <div class="flex items-center space-x-2">
+            <label for="excel_file" class="text-sm font-medium">엑셀 파일 업로드:</label>
+            <input type="file" name="excel_file" id="excel_file" class="w-64">
+            <button type="submit" name="upload_excel" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">엑셀 업로드</button>
+        </div>
+    </form>
+</div>
+
+<!-- Tailwind CSS 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+<script>
+    document.getElementById('add-row-button').addEventListener('click', function() {
+        var tableBody = document.getElementById('product-table-body');
+        var newRow = document.createElement('tr');
+
+        newRow.innerHTML = `
+            <tr>
+                <td class="px-6 py-4 text-center">
+                    <select name="category[]" class="w-full px-2 py-1 border border-gray-300 rounded appearance-none bg-white">
+                        <option value="네이버">네이버</option>
+                        <!-- 다른 카테고리 옵션 추가 가능 -->
+                    </select>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <input type="text" name="name[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <input type="text" name="search_keyword[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <input type="url" name="single_product_link[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <input type="text" name="single_product_mid[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <input type="url" name="original_link[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <input type="text" name="original_mid[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <input type="text" name="store_name[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <input type="text" name="manager[]" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <button type="button" class="text-red-500 hover:text-red-700 remove-row-button">삭제</button>
+                </td>
+            </tr>
+        `;
+
+        tableBody.appendChild(newRow);
+    });
+
+    // 행 삭제 기능
+    document.getElementById('product-table-body').addEventListener('click', function(e) {
+        if(e.target && e.target.classList.contains('remove-row-button')) {
+            var row = e.target.closest('tr');
+            row.parentNode.removeChild(row);
+        }
+    });
+    document.addEventListener('DOMContentLoaded', function() {
+    // Add event listener to the table or parent element
+    document.querySelector('table').addEventListener('click', function(event) {
+        if (event.target && event.target.classList.contains('remove-row-button')) {
+            // Find the closest row and remove it
+            const row = event.target.closest('tr');
+            if (row) {
+                row.remove();
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

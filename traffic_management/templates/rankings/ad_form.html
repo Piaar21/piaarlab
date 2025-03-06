@@ -1,0 +1,310 @@
+<!-- templates/rankings/ad_form.html -->
+
+{% extends 'traffic_management_base.html' %}
+
+{% block content %}
+
+<div class="py-10 px-4">
+    <h1 class="text-2xl font-bold mb-6">{% if form.instance.pk %}광고 수정{% else %}광고 등록{% endif %}</h1>
+
+
+    {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+                <div class="p-4 text-white rounded-lg {% if message.tags == 'error' %}bg-red-500{% elif message.tags == 'success' %}bg-green-500{% else %}bg-gray-500{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    
+    <form method="post">
+        {% csrf_token %}
+        <!-- 버튼들 -->
+        <div class="mb-4 space-x-2">
+            {% if not form.instance.pk %}
+            <button type="button" id="add-row-button" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">추가</button>
+            {% endif %}
+            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">{% if form.instance.pk %}수정{% else %}등록{% endif %}</button>
+            <a href="{% url 'rankings:ad_single_summary' %}" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 inline-block">취소</a>
+            <a href="{% url 'rankings:download_sample_excel' %}" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 inline-block">예제 파일 다운로드</a>
+        </div>
+        <div class="overflow-x-auto" style="max-height: 65vh; overflow-y: auto;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50"><span class="text-red-500">*</span>기간</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50"><span class="text-red-500">*</span>
+                            채널
+                            <span class="tooltip-icon" data-tooltip="네이버카페, 인스타, 쿠팡 등 진행한 채널을 입력해주세요">?</span>
+                        </th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50"><span class="text-red-500">*</span>
+                            광고명
+                            <span class="tooltip-icon" data-tooltip="핫딜, 공구, 광고 등을 입력하세요">?</span>
+                        </th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">카테고리</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50"><span class="text-red-500">*</span>상품명</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50"><span class="text-red-500">*</span>매출</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50"><span class="text-red-500">*</span>마진</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50"><span class="text-red-500">*</span>비용</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">메모</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">
+                            페이지 링크
+                            <span class="tooltip-icon" data-tooltip="진행되는 페이지 링크를 기입해주세요">?</span>
+                        </th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50"><span class="text-red-500">*</span>
+                            업체
+                            <span class="tooltip-icon" data-tooltip="진행한 거래처를 입력해주세요">?</span>
+                        </th>
+                        {% if not form.instance.pk %}
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">삭제</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody id="ad-table-body" class="bg-white divide-y divide-gray-200">
+                    {% if ads_data %}
+                        {% for ad_data in ads_data %}
+                        <tr>
+                            <!-- 기간 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" class="date_range w-full px-2 py-1 border border-gray-300 rounded" name="date_range" readonly>
+                                <input type="hidden" name="start_date" class="start_date" value="{{ ad_data.start_date }}">
+                                <input type="hidden" name="end_date" class="end_date" value="{{ ad_data.end_date }}">
+                            </td>
+                            <!-- 채널 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="channel" value="{{ ad_data.channel|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 광고명 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="name" value="{{ ad_data.name|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 카테고리 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="category" value="{{ ad_data.category|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 상품명 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="product" value="{{ ad_data.product|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 매출 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="sales" value="{{ ad_data.sales|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 마진 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="margin" value="{{ ad_data.margin|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 비용 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="cost" value="{{ ad_data.cost|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 메모 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="memo" value="{{ ad_data.memo|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 페이지 링크 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="url" name="page_link" value="{{ ad_data.page_link|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 업체 -->
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="company" value="{{ ad_data.company|default_if_none:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <!-- 삭제 버튼 -->
+                            {% if not form.instance.pk %}
+                            <td class="px-6 py-4 text-center">
+                                <button type="button" class="text-red-500 hover:text-red-700 remove-row-button">삭제</button>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                    <tr>
+                        <!-- 기간 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="text" class="date_range w-full px-2 py-1 border border-gray-300 rounded" name="date_range" readonly>
+                            <input type="hidden" name="start_date" class="start_date">
+                            <input type="hidden" name="end_date" class="end_date">
+                        </td>
+                        <!-- 채널 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="text" name="channel" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 광고명 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="text" name="name" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 카테고리 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="text" name="category" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 상품명 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="text" name="product" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 매출 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="number" name="sales" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 마진 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="number" name="margin" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 비용 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="number" name="cost" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 메모 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="text" name="memo" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 페이지 링크 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="url" name="page_link" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 업체 -->
+                        <td class="px-6 py-4 text-center">
+                            <input type="text" name="company" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <!-- 삭제 버튼 (등록 시에만 표시) -->
+                        {% if not form.instance.pk %}
+                        <td class="px-6 py-4 text-center">
+                            <button type="button" class="text-red-500 hover:text-red-700 remove-row-button">삭제</button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        
+    </form>
+
+    {% if not form.instance.pk %}
+    <form method="post" enctype="multipart/form-data" class="mt-6">
+        {% csrf_token %}
+        <div class="flex items-center space-x-2">
+            <label for="excel_file" class="text-sm font-medium">엑셀 파일 업로드:</label>
+            <input type="file" name="excel_file" id="excel_file" class="w-64">
+            <button type="submit" name="upload_excel" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">엑셀 업로드</button>
+        </div>
+    </form>
+    {% endif %}
+</div>
+
+<!-- Tailwind CSS 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+<!-- Date Range Picker 스크립트 -->
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+<script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+
+<!-- 툴팁 스타일 -->
+<style>
+    .tooltip-icon {
+        display: inline-block;
+        margin-left: 5px;
+        color: #1890ff;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .tooltip-icon::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        left: 50%;
+        bottom: 125%;
+        transform: translateX(-50%);
+        background-color: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        padding: 6px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+        font-size: 12px;
+        display: none;
+        z-index: 1000;
+    }
+
+    .tooltip-icon:hover::after {
+        display: block;
+    }
+</style>
+
+<script>
+    // Date Range Picker 초기화 함수
+    function initializeDateRangePicker(row) {
+        var startDateInput = row.find('.start_date');
+        var endDateInput = row.find('.end_date');
+        var dateRangeInput = row.find('.date_range');
+
+        var startDate = startDateInput.val() || moment().format('YYYY-MM-DD');
+        var endDate = endDateInput.val() || moment().format('YYYY-MM-DD');
+
+        dateRangeInput.daterangepicker({
+            locale: {
+                format: 'MM.DD',  // 표시 형식을 MM.DD로 변경
+                separator: '~',
+                applyLabel: '확인',
+                cancelLabel: '취소',
+                fromLabel: 'From',
+                toLabel: 'To',
+                customRangeLabel: 'Custom',
+                weekLabel: 'W',
+                daysOfWeek: ['일', '월', '화', '수', '목', '금', '토'],
+                monthNames: [
+                    '1월', '2월', '3월', '4월', '5월', '6월',
+                    '7월', '8월', '9월', '10월', '11월', '12월'
+                ],
+                firstDay: 0
+            },
+            startDate: startDate,
+            endDate: endDate,
+            autoUpdateInput: false  // 자동으로 입력 필드 업데이트하지 않음
+        }, function(start, end, label) {
+            startDateInput.val(start.format('YYYY-MM-DD'));
+            endDateInput.val(end.format('YYYY-MM-DD'));
+            dateRangeInput.val(start.format('MM.DD') + '~' + end.format('MM.DD'));
+        });
+
+        // 초기 값 설정
+        dateRangeInput.val(moment(startDate).format('MM.DD') + '~' + moment(endDate).format('MM.DD'));
+        startDateInput.val(startDate);
+        endDateInput.val(endDate);
+    }
+
+    $(document).ready(function() {
+        // 모든 행에 대해 Date Range Picker 초기화
+        $('#ad-table-body tr').each(function() {
+            initializeDateRangePicker($(this));
+        });
+
+        // 행 추가 기능 (등록 페이지에서만 작동)
+        $('#add-row-button').click(function() {
+            var newRow = $('#ad-table-body tr:first').clone();
+            newRow.find('input').each(function() {
+                var name = $(this).attr('name');
+                if (name && name !== 'date_range') {
+                    $(this).val('');
+                }
+            });
+            $('#ad-table-body').append(newRow);
+            initializeDateRangePicker(newRow);
+        });
+
+        // 행 삭제 기능
+        $(document).on('click', '.remove-row-button', function() {
+            var rowCount = $('#ad-table-body tr').length;
+            if (rowCount > 1) {
+                $(this).closest('tr').remove();
+            } else {
+                alert('최소 한 개의 행은 있어야 합니다.');
+            }
+        });
+    });
+</script>
+
+{% endblock %}

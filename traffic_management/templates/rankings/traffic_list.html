@@ -1,0 +1,178 @@
+<!-- templates/rankings/traffic_list.html -->
+
+{% extends 'traffic_management_base.html' %}
+
+{% block content %}
+<div class="py-10 px-4">
+    <h1 class="text-3xl font-bold mb-6">트래픽 리스트</h1>
+    <form method="post" action="{% url 'rankings:traffic_list' %}" onsubmit="validateTrafficForm(event)">
+        {% csrf_token %}
+        <!-- 상단 버튼 및 페이지 당 항목 수 선택 -->
+        <div class="flex justify-between items-center mb-4">
+            <div class="flex space-x-2">
+                <a href="{% url 'rankings:traffic_register' %}">
+                    <button type="button" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">트래픽 등록</button>
+                </a>
+                <button type="submit" name="edit_traffics" formaction="{% url 'rankings:traffic_bulk_edit' %}" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">트래픽 수정</button>
+                <button type="submit" name="delete_traffics" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">트래픽 삭제</button>
+            </div>
+            <!-- 페이지 당 항목 수 선택 -->
+            <div class="flex items-center">
+                <label for="per_page" class="mr-2">페이지 당 항목 수:</label>
+                <select id="per_page" name="per_page" onchange="changePerPage(this.value)" class="border rounded p-1">
+                    {% for option in per_page_options %}
+                        <option value="{{ option }}" {% if option == selected_per_page %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="rounded-md border" style="max-height: 600px; overflow-y: auto; position: relative;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <!-- 테이블 헤더 고정 -->
+                        <th class="sticky top-0 bg-gray-50 z-10 w-12 px-6 py-3">
+                            <input type="checkbox" id="select-all" class="form-checkbox h-4 w-4 text-blue-600">
+                        </th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">번호</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">트래픽명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">금액</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">방식</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">일자</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">유입수</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">링크</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">업체명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">등록일자</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for traffic in traffics %}
+                    <tr class="hover:bg-gray-100 cursor-pointer" onclick="toggleCheckbox(this)">
+                        <td class="px-6 py-4 text-center">
+                            <input type="checkbox" name="selected_traffics" value="{{ traffic.id }}" class="form-checkbox h-4 w-4 text-blue-600">
+                        </td>
+                        <td class="px-6 py-4 text-center">{{ forloop.counter }}</td>
+                        <td class="px-6 py-4 text-center">{{ traffic.name }}</td>
+                        <td class="px-6 py-4 text-center">{{ traffic.price }}</td>
+                        <td class="px-6 py-4 text-center">{{ traffic.get_method_display }}</td>
+                        <td class="px-6 py-4 text-center">{{ traffic.days }}</td>
+                        <td class="px-6 py-4 text-center">{{ traffic.inflow_count }}</td>
+                        <td class="px-6 py-4 text-center">
+                            {% if traffic.link %}
+                                <a href="{{ traffic.link }}" target="_blank" class="text-blue-500 hover:underline">
+                                    {{ traffic.link|default_if_none:""|cut:"http://"|cut:"https://"|truncatechars:30 }}
+                                </a>
+                            {% else %}
+                                {{ traffic.link|default_if_none:"" }}
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">{{ traffic.vendor|default_if_none:"" }}</td>
+                        <td class="px-6 py-4 text-center">{{ traffic.created_at|date:"Y-m-d" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" class="px-6 py-4 text-center">등록된 트래픽이 없습니다.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <!-- 페이지네이션 -->
+        <div class="flex justify-center mt-4">
+            <nav class="flex items-center space-x-1" aria-label="Pagination">
+                <!-- 이전 페이지 버튼 -->
+                {% if traffics.has_previous %}
+                <a href="?page={{ traffics.previous_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                    <span class="material-icons">chevron_left</span>
+                </a>
+                {% else %}
+                <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                    <span class="material-icons">chevron_left</span>
+                </span>
+                {% endif %}
+
+                <!-- 페이지 번호 -->
+                {% for num in traffics.paginator.page_range %}
+                    {% if num > traffics.number|add:'-3' and num < traffics.number|add:'3' %}
+                        {% if num == traffics.number %}
+                        <span class="px-3 py-2 rounded-md bg-blue-500 text-white">{{ num }}</span>
+                        {% else %}
+                        <a href="?page={{ num }}&per_page={{ selected_per_page }}" class="px-3 py-2 rounded-md hover:bg-gray-200">{{ num }}</a>
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+
+                <!-- 다음 페이지 버튼 -->
+                {% if traffics.has_next %}
+                <a href="?page={{ traffics.next_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                    <span class="material-icons">chevron_right</span>
+                </a>
+                {% else %}
+                <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                    <span class="material-icons">chevron_right</span>
+                </span>
+                {% endif %}
+            </nav>
+        </div>
+    </form>
+</div>
+<!-- Tailwind CSS 및 Material Icons 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<script>
+    document.getElementById('select-all').onclick = function() {
+        var checkboxes = document.getElementsByName('selected_traffics');
+        for (var checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    }
+    function toggleCheckbox(row) {
+        var checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+        }
+    }
+    function validateTrafficForm(event) {
+        const checkboxes = document.querySelectorAll('input[name="selected_traffics"]:checked');
+        if (checkboxes.length === 0) {
+            alert("트래픽을 선택해주세요.");
+            event.preventDefault(); // 폼 제출 중단
+        }
+    }
+    function deleteSelectedTraffics() {
+        if (confirm("선택한 트래픽을 삭제하시겠습니까?")) {
+            var form = document.createElement('form');
+            form.method = 'post';
+            form.action = "{% url 'rankings:traffic_list' %}";
+            var csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrfmiddlewaretoken';
+            csrfInput.value = '{{ csrf_token }}';
+            form.appendChild(csrfInput);
+            var selectedTraffics = document.querySelectorAll('input[name="selected_traffics"]:checked');
+            selectedTraffics.forEach(function(traffic) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'selected_traffics';
+                input.value = traffic.value;
+                form.appendChild(input);
+            });
+            // 삭제 동작을 위해 hidden input 추가
+            var deleteInput = document.createElement('input');
+            deleteInput.type = 'hidden';
+            deleteInput.name = 'delete_traffics';
+            deleteInput.value = '1';
+            form.appendChild(deleteInput);
+
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+    function changePerPage(value) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('per_page', value);
+        urlParams.set('page', 1); // 페이지 번호를 1로 초기화
+        window.location.search = urlParams.toString();
+    }
+</script>
+{% endblock %}

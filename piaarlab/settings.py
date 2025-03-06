@@ -56,6 +56,10 @@ SECRET_KEY = 'django-insecure-n4(7c9kkttt1r%pq%aa=a!!+^w9)3^9z@8vc8=(n9o()*+27n3
 # SECURITY WARNING: don't run with debug turned on in production!
 # DEBUG = True
 
+FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY')
+if not FIELD_ENCRYPTION_KEY:
+    raise Exception("FIELD_ENCRYPTION_KEY를 환경 변수에 설정해주세요.")
+
 
 
 # Application definition
@@ -75,9 +79,16 @@ INSTALLED_APPS = [
     'django_extensions',
     'sales_management',
     'django.contrib.humanize',
-    
+    'traffic_management',
+    'django.contrib.sites',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
 
 ]
+
+SITE_ID = 1
+
 
 CRONJOBS = [
     ('0 14 * * *', 'django.core.management.call_command', ['update_returns_command']),
@@ -94,6 +105,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',  # 추가
 ]
 
 ROOT_URLCONF = 'piaarlab.urls'

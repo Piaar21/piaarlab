@@ -1,0 +1,375 @@
+<!-- templates/rankings/task_register.html -->
+
+{% extends 'traffic_management_base.html' %}
+{% load rankings_filters %}
+{% block content %}
+<div class="py-10 px-4">
+    <h1 class="text-2xl font-bold mb-6">작업 등록</h1>
+
+    {% if formset.errors %}
+        <div class="text-red-500 mb-4">
+            {{ formset.errors }}
+        </div>
+    {% endif %}
+    {% if error %}
+    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+        {{ error }}
+    </div>
+    {% endif %}
+    {% if success %}
+        <div class="text-green-500 mb-4">작업이 성공적으로 등록되었습니다!</div>
+    {% elif error %}
+        <div class="text-red-500 mb-4">작업 등록에 실패했습니다. 다시 시도해주세요.</div>
+    {% endif %}
+    <form method="post" action="">
+        {% csrf_token %}
+        <div class="overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
+            <table id="task-table" class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">번호</th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">상품명</th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">카테고리</th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">
+                            순위조회키워드<br>(필수키워드)
+                            <span class="cursor-pointer text-yellow-500" onclick="openBulkInputModal('keyword')" title="일괄입력">⚙️</span>
+                        </th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">
+                            URL 타입
+                            <span class="cursor-pointer text-yellow-500" onclick="openBulkSelectModal('url_type')" title="일괄선택">⚙️</span>
+                        </th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">
+                            URL
+                            <span class="cursor-pointer text-yellow-500" onclick="openBulkInputModal('url')" title="일괄입력">⚙️</span>
+                        </th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">
+                            메모
+                            <span class="cursor-pointer text-yellow-500" onclick="openBulkInputModal('memo')" title="일괄입력">⚙️</span>
+                        </th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">
+                            트래픽명
+                            <span class="cursor-pointer text-yellow-500" onclick="openBulkSelectModal('traffic')" title="일괄선택">⚙️</span>
+                        </th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">
+                            이용권 수
+                            <span class="cursor-pointer text-yellow-500" onclick="openBulkInputModal('ticket_count')" title="일괄입력">⚙️</span>
+                        </th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">
+                            이용가능<br>시작일자
+                            <span class="cursor-pointer text-yellow-500" onclick="openBulkDateModal('available_start_date')" title="일괄입력">📅</span>
+                        </th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">
+                            이용가능<br>종료일자
+                            <span class="cursor-pointer text-yellow-500" onclick="openBulkDateModal('available_end_date')" title="일괄입력">📅</span>
+                        </th>
+                        <th class="px-4 py-2 sticky top-0 bg-gray-50">행 삭제</th>
+                    </tr>
+                </thead>
+                <tbody id="task-table-body" class="bg-white divide-y divide-gray-200">
+                    {% for product in products %}
+                    {% with data=initial_data|get_item:product.id %}
+                    <tr data-product-id="{{ product.id }}" class="hover:bg-gray-100">
+                        <td class="px-4 py-2 text-center">{{ forloop.counter }}</td>
+                        <td class="px-4 py-2 text-center">
+                            {{ product.name }}
+                            <input type="hidden" name="product_name_{{ product.id }}" value="{{ product.name }}">
+                            <input type="hidden" name="product_ids" value="{{ product.id }}">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="hidden" name="category_{{ product.id }}" value="네이버">
+                            네이버
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <input type="text" name="keyword_{{ product.id }}" value="{{ data.keyword|default:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <select name="url_type_{{ product.id }}" onchange="updateURL(this, {{ product.id }})" required data-single-url="{{ product.single_product_link }}" data-original-url="{{ product.original_link }}" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                                <option value="">선택</option>
+                                <option value="single" {% if data.url_type == 'single' %}selected{% endif %}>단일</option>
+                                <option value="original" {% if data.url_type == 'original' %}selected{% endif %}>원부</option>
+                            </select>
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="url" id="url_{{ product.id }}" name="url_{{ product.id }}" value="{{ data.url|default:'' }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="text" name="memo_{{ product.id }}" value="{{ data.memo|default:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <select name="traffic_{{ product.id }}" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                                <option value="">선택</option>
+                                {% for traffic in traffics %}
+                                    <option value="{{ traffic.id }}" {% if data.traffic_id == traffic.id|stringformat:"s" %}selected{% endif %}>{{ traffic.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="number" name="ticket_count_{{ product.id }}" value="{{ data.ticket_count|default:'' }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="date" name="available_start_date_{{ product.id }}" value="{{ data.available_start_date|date:'Y-m-d' }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="date" name="available_end_date_{{ product.id }}" value="{{ data.available_end_date|date:'Y-m-d' }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <button type="button" onclick="deleteRow(this)" class="text-red-500 hover:text-red-700">삭제</button>
+                        </td>
+                    </tr>
+                    {% endwith %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-4 space-x-2">
+            <button type="submit" name="register" value="register" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">등록</button>
+            <button type="button" onclick="setDateRange(9)" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">10일</button>
+            <button type="button" onclick="setDateRange(29)" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">30일</button>
+        </div>
+    </form>
+
+    <!-- 모달 구조 (일반 입력용) -->
+    <div id="bulkInputModal" class="fixed z-10 inset-0 overflow-y-auto hidden">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all max-w-sm w-full">
+                <div class="px-4 py-3 border-b">
+                    <h3 id="modalTitle" class="text-lg font-medium leading-6 text-gray-900">일괄 입력</h3>
+                    <span class="absolute top-2 right-2 text-gray-500 hover:text-gray-700 cursor-pointer" onclick="closeModal()">&times;</span>
+                </div>
+                <div class="px-4 py-3">
+                    <input type="text" id="bulkInputValue" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </div>
+                <div class="px-4 py-3 border-t flex justify-end space-x-2">
+                    <button onclick="closeModal()" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">취소</button>
+                    <button onclick="applyBulkInput()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">일괄입력</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모달 구조 (Select용) -->
+    <div id="bulkSelectModal" class="fixed z-10 inset-0 overflow-y-auto hidden">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all max-w-sm w-full">
+                <div class="px-4 py-3 border-b">
+                    <h3 id="modalSelectTitle" class="text-lg font-medium leading-6 text-gray-900">일괄 선택</h3>
+                    <span class="absolute top-2 right-2 text-gray-500 hover:text-gray-700 cursor-pointer" onclick="closeModal()">&times;</span>
+                </div>
+                <div class="px-4 py-3">
+                    <select id="bulkSelectValue" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                        <!-- 옵션은 스크립트에서 동적으로 추가 -->
+                    </select>
+                </div>
+                <div class="px-4 py-3 border-t flex justify-end space-x-2">
+                    <button onclick="closeModal()" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">취소</button>
+                    <button onclick="applyBulkSelect()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">일괄선택</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모달 구조 (날짜 선택용) -->
+    <div id="bulkDateModal" class="fixed z-10 inset-0 overflow-y-auto hidden">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all max-w-sm w-full">
+                <div class="px-4 py-3 border-b">
+                    <h3 id="modalDateTitle" class="text-lg font-medium leading-6 text-gray-900">일괄 입력</h3>
+                    <span class="absolute top-2 right-2 text-gray-500 hover:text-gray-700 cursor-pointer" onclick="closeModal()">&times;</span>
+                </div>
+                <div class="px-4 py-3">
+                    <input type="date" id="bulkDateValue" class="w-full px-2 py-1 border border-gray-300 rounded">
+                </div>
+                <div class="px-4 py-3 border-t flex justify-end space-x-2">
+                    <button onclick="closeModal()" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">취소</button>
+                    <button onclick="applyBulkDate()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">일괄입력</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tailwind CSS 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+<!-- jQuery 추가 -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<script>
+    // JavaScript 코드는 기존과 동일하게 유지하며, 모달의 표시/숨김을 위한 클래스를 조정합니다.
+
+    var currentFieldName = ''; // 현재 선택된 필드명
+
+    // URL 업데이트 함수
+    function updateURL(selectElement, productId) {
+        var urlInput = document.getElementById('url_' + productId);
+        var singleUrl = selectElement.getAttribute('data-single-url');
+        var originalUrl = selectElement.getAttribute('data-original-url');
+
+        if (selectElement.value === 'single') {
+            urlInput.value = singleUrl || '';
+        } else if (selectElement.value === 'original') {
+            urlInput.value = originalUrl || '';
+        } else {
+            urlInput.value = '';
+        }
+    }
+
+    // 날짜 범위 설정 함수
+    function setDateRange(days) {
+        var today = new Date();
+        var startDate = new Date(today);
+        startDate.setDate(today.getDate() + 1);  // 내일부터 시작
+        var endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + days);
+
+        var startDateStr = startDate.toISOString().split('T')[0];
+        var endDateStr = endDate.toISOString().split('T')[0];
+
+        // 모든 상품의 날짜 필드에 적용
+        var rows = document.querySelectorAll('#task-table-body tr');
+        rows.forEach(function(row) {
+            var startDateInput = row.querySelector('input[name^="available_start_date_"]');
+            var endDateInput = row.querySelector('input[name^="available_end_date_"]');
+            startDateInput.value = startDateStr;
+            endDateInput.value = endDateStr;
+        });
+    }
+
+    // 행 삭제 함수
+    function deleteRow(button) {
+        var row = button.closest('tr');
+        row.parentNode.removeChild(row);
+    }
+
+    // 모달 열기 함수 (Input용)
+    function openBulkInputModal(fieldName) {
+        currentFieldName = fieldName;
+        document.getElementById('bulkInputValue').value = '';
+        document.getElementById('modalTitle').innerText = fieldName + ' 일괄 입력';
+        document.getElementById('bulkInputModal').classList.remove('hidden');
+    }
+
+    // 모달 열기 함수 (Select용)
+    function openBulkSelectModal(fieldName) {
+        currentFieldName = fieldName;
+        var modalSelect = document.getElementById('bulkSelectValue');
+        modalSelect.innerHTML = ''; // 기존 옵션 제거
+
+        // 첫 번째 행에서 옵션을 가져옴
+        var firstRow = document.querySelector('#task-table-body tr');
+        if (firstRow) {
+            var select = firstRow.querySelector('select[name^="' + fieldName + '_"]');
+            if (select) {
+                // 옵션들을 복사하여 모달의 select에 추가
+                for (var i = 0; i < select.options.length; i++) {
+                    var option = document.createElement('option');
+                    option.value = select.options[i].value;
+                    option.text = select.options[i].text;
+                    modalSelect.add(option);
+                }
+            }
+        }
+
+        document.getElementById('modalSelectTitle').innerText = fieldName + ' 일괄 선택';
+        document.getElementById('bulkSelectModal').classList.remove('hidden');
+    }
+
+    // 모달 열기 함수 (Date용)
+    function openBulkDateModal(fieldName) {
+        currentFieldName = fieldName;
+        document.getElementById('bulkDateValue').value = '';
+        document.getElementById('modalDateTitle').innerText = fieldName + ' 일괄 입력';
+        document.getElementById('bulkDateModal').classList.remove('hidden');
+    }
+
+    // 모달 닫기 함수
+    function closeModal() {
+        document.getElementById('bulkInputModal').classList.add('hidden');
+        document.getElementById('bulkSelectModal').classList.add('hidden');
+        document.getElementById('bulkDateModal').classList.add('hidden');
+    }
+
+    // 모달 외부 클릭 시 닫힘
+    window.onclick = function(event) {
+        var bulkInputModal = document.getElementById('bulkInputModal');
+        var bulkSelectModal = document.getElementById('bulkSelectModal');
+        var bulkDateModal = document.getElementById('bulkDateModal');
+        if (event.target == bulkInputModal) {
+            bulkInputModal.classList.add('hidden');
+        }
+        if (event.target == bulkSelectModal) {
+            bulkSelectModal.classList.add('hidden');
+        }
+        if (event.target == bulkDateModal) {
+            bulkDateModal.classList.add('hidden');
+        }
+    }
+
+    // 일괄 입력 적용 함수
+    function applyBulkInput() {
+    var value = document.getElementById('bulkInputValue').value;
+    var rows = document.querySelectorAll('#task-table-body tr');
+    rows.forEach(function(row) {
+        var input = row.querySelector('input[name^="' + currentFieldName + '_"]');
+        if (input) {
+            input.value = value;
+            input.focus(); // 일괄 입력 후 해당 필드로 포커스
+        }
+    });
+    closeModal();
+}   
+
+    // 일괄 선택 적용 함수
+    function applyBulkSelect() {
+        var selectValue = document.getElementById('bulkSelectValue').value;
+        var rows = document.querySelectorAll('#task-table-body tr');
+        rows.forEach(function(row) {
+            var select = row.querySelector('select[name^="' + currentFieldName + '_"]');
+            if (select) {
+                select.value = selectValue;
+                if (currentFieldName === 'url_type') {
+                    var productId = row.getAttribute('data-product-id');
+                    updateURL(select, productId);
+                }
+            }
+        });
+        closeModal();
+    }
+
+    // 일괄 날짜 적용 함수
+    function applyBulkDate() {
+        var dateValue = document.getElementById('bulkDateValue').value;
+        var rows = document.querySelectorAll('#task-table-body tr');
+        rows.forEach(function(row) {
+            var dateInput = row.querySelector('input[name^="' + currentFieldName + '_"]');
+            if (dateInput) {
+                dateInput.value = dateValue;
+            }
+        });
+        closeModal();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var taskData = sessionStorage.getItem('taskData');
+        if (taskData) {
+            taskData = JSON.parse(taskData);
+            // taskData를 사용하여 테이블을 동적으로 생성
+            generateTaskTable(taskData);
+            // 작업 완료 후 sessionStorage에서 데이터 삭제
+            sessionStorage.removeItem('taskData');
+        } else {
+            // 서버에서 전달된 products와 initial_data를 사용하여 테이블을 구성
+            // 이 부분은 서버에서 렌더링되므로 추가 작업이 필요 없습니다.
+        }
+    });
+
+    function generateTaskTable(taskData) {
+        var tbody = document.getElementById('task-table-body');
+        taskData.forEach(function(data, index) {
+            // 각 행을 생성하고 데이터 채우기
+            // 상품명으로 Product를 조회하거나 필요한 정보를 가져옵니다.
+            // ...
+        });
+    }
+</script>
+{% endblock %}
