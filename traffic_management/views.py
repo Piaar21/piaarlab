@@ -370,12 +370,17 @@ def task_upload_excel_data(request):
         
         # 모달에서 선택한 트래픽 ID를 POST 데이터로 받음
         traffic_id = request.POST.get('traffic_id')
+        logger.debug(f"Received traffic_id: {traffic_id}")
         selected_traffic = None
         if traffic_id:
             try:
                 selected_traffic = Traffic.objects.get(id=traffic_id)
+                logger.debug(f"Selected Traffic: {selected_traffic} (type: {selected_traffic.type})")
             except Traffic.DoesNotExist:
+                logger.debug("Traffic with the provided ID does not exist.")
                 selected_traffic = None
+        else:
+            logger.debug("No traffic_id provided in POST data.")
         
         try:
             # 1) 엑셀 파일 파싱
@@ -387,7 +392,7 @@ def task_upload_excel_data(request):
             # 0: 상품ID, 1: 상품명, 2: 카테고리, 3: 순위조회키워드,
             # 4: URL, 5: 메모, 6: 이용권수, 7: 이용가능 시작일자, 8: 이용가능 종료일자
             tasks_to_create = []
-            for row in ws.iter_rows(min_row=2, values_only=True):  # 헤더 제외, 2행부터
+            for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 product_id = row[0]
                 product_name_from_excel = row[1]
                 category = row[2]
@@ -395,14 +400,17 @@ def task_upload_excel_data(request):
                 url = row[4]
                 memo = row[5]
                 ticket_count = row[6]
-                available_start_date = row[7]  # datetime 또는 문자열
+                available_start_date = row[7]
                 available_end_date = row[8]
+
+                logger.debug(f"Row {idx}: product_id={product_id}, product_name={product_name_from_excel}, keyword={keyword_name}")
 
                 # product_id에 맞는 Product 객체 가져오기
                 try:
                     product = Product.objects.get(id=product_id)
                 except Product.DoesNotExist:
-                    continue  # 존재하지 않으면 건너뜁니다.
+                    logger.debug(f"Product with id {product_id} does not exist, skipping row {idx}.")
+                    continue
 
                 # NAVER 랭킹 조회 로직 재사용
                 start_rank = get_naver_rank(keyword_name, url)
@@ -411,6 +419,10 @@ def task_upload_excel_data(request):
 
                 # Keyword 생성 또는 가져오기
                 keyword_obj, created = Keyword.objects.get_or_create(name=keyword_name)
+                if created:
+                    logger.debug(f"Keyword '{keyword_name}' created.")
+                else:
+                    logger.debug(f"Keyword '{keyword_name}' already exists.")
 
                 task_data = {
                     'product': product,
@@ -422,14 +434,16 @@ def task_upload_excel_data(request):
                     'current_rank': start_rank,
                     'difference_rank': 0,
                     'memo': memo,
-                    'product_name': product_name_from_excel,  # 엑셀에서 읽은 상품명 사용
+                    'product_name': product_name_from_excel,
                     'ticket_count': ticket_count if ticket_count else 0,
                     'available_start_date': available_start_date,
                     'available_end_date': available_end_date,
                     'traffic': selected_traffic,  # 모달에서 선택한 트래픽 할당
                 }
+                logger.debug(f"Task data for row {idx}: {task_data}")
                 tasks_to_create.append(task_data)
 
+            logger.debug(f"Total tasks to create: {len(tasks_to_create)}")
             # 3) 실제 DB에 Task 및 Ranking 생성
             for task_data in tasks_to_create:
                 task = Task.objects.create(**task_data)
@@ -440,9 +454,11 @@ def task_upload_excel_data(request):
                     rank=task.start_rank if task.start_rank is not None else 1000,
                     date_time=timezone.now()
                 )
+                logger.debug(f"Task created with id: {task.id}, traffic: {task.traffic}")
 
             return JsonResponse({'success': True})
         except Exception as e:
+            logger.exception("Error occurred while processing the excel file.")
             return JsonResponse({'success': False, 'error': str(e)})
     else:
         return JsonResponse({'success': False, 'error': 'POST 요청이 아닙니다.'})
