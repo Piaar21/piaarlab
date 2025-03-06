@@ -456,7 +456,7 @@ def download_bulk_traffic_sample_excel(request):
     start_date = today + timedelta(days=1)
     end_date = today + timedelta(days=10)
 
-    # GET 파라미터에서 선택된 트래픽 ID 가져오기 (모달에서 선택)
+    # 모달에서 선택한 트래픽 ID(GET 파라미터)로 Traffic 객체 조회
     traffic_id = request.GET.get('traffic_id')
     traffic = None
     if traffic_id:
@@ -469,7 +469,7 @@ def download_bulk_traffic_sample_excel(request):
     wb = openpyxl.Workbook()
     ws = wb.active
 
-    # 헤더 설정 (트래픽명 컬럼은 제거)
+    # 헤더 설정 (트래픽명 컬럼은 엑셀에 포함하지 않음)
     headers = [
         '상품ID', 
         '상품명', 
@@ -487,7 +487,7 @@ def download_bulk_traffic_sample_excel(request):
     products = Product.objects.all()
 
     for product in products:
-        # 모달에서 선택한 트래픽에 따라 URL 결정
+        # 모달에서 선택한 트래픽의 type에 따라 URL 결정
         if traffic:
             if traffic.type == '단일':
                 url = product.single_product_link or ''
@@ -496,7 +496,7 @@ def download_bulk_traffic_sample_excel(request):
             else:
                 url = ''
         else:
-            # 트래픽 미선택 시 기본적으로 단일 링크 사용
+            # 모달에서 트래픽이 선택되지 않은 경우 기본 단일 링크 사용
             url = product.single_product_link or ''
 
         row = [
@@ -504,7 +504,7 @@ def download_bulk_traffic_sample_excel(request):
             product.name or '',                  # 상품명
             "네이버",                            # 카테고리 (항상 네이버)
             product.search_keyword or '',        # 순위조회키워드
-            url,                                 # URL (트래픽에 따른 단일/원부 선택)
+            url,                                 # URL (모달에서 선택한 트래픽 기준)
             '',                                  # 메모 (빈 값)
             1,                                   # 이용권수 (항상 1)
             start_date.strftime('%Y-%m-%d'),      # 이용가능 시작일자 (내일)
@@ -618,7 +618,6 @@ def dashboard(request):
         'tasks': tasks,
         'per_page_options': per_page_options,
         'selected_per_page': per_page,
-        'traffics': Traffic.objects.all(),  # Traffic 객체들을 추가
     }
     return render(request, 'rankings/dashboard.html', context)
 
