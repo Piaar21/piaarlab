@@ -367,16 +367,25 @@ def task_upload_excel_data(request):
         excel_file = request.FILES.get('excel_file')
         if not excel_file:
             return JsonResponse({'success': False, 'error': '엑셀 파일이 전송되지 않았습니다.'})
-
+        
+        # 모달에서 선택한 트래픽 ID를 POST 데이터로 받음
+        traffic_id = request.POST.get('traffic_id')
+        selected_traffic = None
+        if traffic_id:
+            try:
+                selected_traffic = Traffic.objects.get(id=traffic_id)
+            except Traffic.DoesNotExist:
+                selected_traffic = None
+        
         try:
             # 1) 엑셀 파일 파싱
             wb = load_workbook(filename=excel_file, data_only=True)
             ws = wb.active  # 활성 시트 사용
 
             # 2) 엑셀 내 데이터 추출
-            # 엑셀 열 순서:
+            # 엑셀 열 순서 (트래픽명은 엑셀에 포함하지 않음):
             # 0: 상품ID, 1: 상품명, 2: 카테고리, 3: 순위조회키워드,
-            # 4: URL, 5: 메모, 6: 트래픽명, 7: 이용권수, 8: 이용가능 시작일자, 9: 이용가능 종료일자
+            # 4: URL, 5: 메모, 6: 이용권수, 7: 이용가능 시작일자, 8: 이용가능 종료일자
             tasks_to_create = []
             for row in ws.iter_rows(min_row=2, values_only=True):  # 헤더 제외, 2행부터
                 product_id = row[0]
@@ -385,24 +394,15 @@ def task_upload_excel_data(request):
                 keyword_name = row[3]
                 url = row[4]
                 memo = row[5]
-                traffic_name = row[6]
-                ticket_count = row[7]
-                available_start_date = row[8]  # datetime 또는 문자열
-                available_end_date = row[9]
+                ticket_count = row[6]
+                available_start_date = row[7]  # datetime 또는 문자열
+                available_end_date = row[8]
 
                 # product_id에 맞는 Product 객체 가져오기
                 try:
                     product = Product.objects.get(id=product_id)
                 except Product.DoesNotExist:
                     continue  # 존재하지 않으면 건너뜁니다.
-
-                # 트래픽명으로 Traffic 객체 조회
-                traffic = None
-                if traffic_name:
-                    try:
-                        traffic = Traffic.objects.get(name=traffic_name)
-                    except Traffic.DoesNotExist:
-                        traffic = None  # 없으면 None으로 둡니다.
 
                 # NAVER 랭킹 조회 로직 재사용
                 start_rank = get_naver_rank(keyword_name, url)
@@ -426,7 +426,7 @@ def task_upload_excel_data(request):
                     'ticket_count': ticket_count if ticket_count else 0,
                     'available_start_date': available_start_date,
                     'available_end_date': available_end_date,
-                    'traffic': traffic,  # 조회된 트래픽 할당
+                    'traffic': selected_traffic,  # 모달에서 선택한 트래픽 할당
                 }
                 tasks_to_create.append(task_data)
 
@@ -620,6 +620,7 @@ def dashboard(request):
         'tasks': tasks,
         'per_page_options': per_page_options,
         'selected_per_page': per_page,
+        'traffics': Traffic.objects.all(),  # Traffic 객체들을 추가
     }
     return render(request, 'rankings/dashboard.html', context)
 
