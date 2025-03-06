@@ -1,0 +1,390 @@
+<!-- templates/rankings/product_list.html -->
+{% extends 'traffic_management_base.html' %}
+
+{% block content %}
+<div class="py-10 px-4">
+    <h1 class="text-3xl font-bold mb-6">상품 리스트</h1>
+    <form method="get" action="{% url 'rankings:task_register' %}" id="productForm">
+        {% csrf_token %}
+        <div class="flex justify-between items-center mb-4">
+            <div class="flex space-x-2">
+                <a href="{% url 'rankings:product_add' %}">
+                    <button type="button" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">상품 등록</button>
+                </a>
+                <button type="button" onclick="submitTaskForm()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">작업 등록</button>
+                <button type="button" onclick="openExcelModal()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" disabled>엑셀 작업 등록</button>
+                <button type="submit" name="edit_products" formaction="{% url 'rankings:product_bulk_edit' %}" formmethod="get" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">상품 수정</button>
+                <button type="button" name="delete_products" onclick="deleteSelectedProducts()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">상품 삭제</button>
+            </div>
+            <!-- 페이지 당 항목 수 선택 -->
+            <div class="flex items-center">
+                <label for="per_page" class="mr-2">페이지 당 항목 수:</label>
+                <select id="per_page" name="per_page" onchange="changePerPage(this.value)" class="border rounded p-1">
+                    {% for option in per_page_options %}
+                        <option value="{{ option }}" {% if option == selected_per_page %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="rounded-md border" style="max-height: 600px; overflow-y: auto; position: relative;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="sticky top-0 bg-gray-50 z-10 w-12 px-6 py-3">
+                            <input type="checkbox" id="select-all" class="form-checkbox h-4 w-4 text-blue-600">
+                        </th>
+                        <!-- 나머지 th 요소들에도 동일하게 적용 -->
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">상품리스트번호</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">카테고리</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">상품명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">순위 조회 키워드</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">단일상품링크</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">단일상품 MID값</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">원부 링크</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">원부 MID</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">스토어명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">담당자</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for product in products %}
+                    <tr class="hover:bg-gray-100 cursor-pointer" onclick="toggleCheckbox(this)">
+                        <td class="px-6 py-4 text-center">
+                            <input type="checkbox" name="selected_products" value="{{ product.id }}" class="form-checkbox h-4 w-4 text-blue-600"
+                                data-product-name="{{ product.name }}"
+                                data-category="{{ product.category }}"
+                                data-search-keyword="{{ product.search_keyword }}">
+                        </td>
+                        <td class="px-6 py-4 text-center">{{ forloop.counter }}</td>
+                        <td class="px-6 py-4 text-center">{{ product.category }}</td>
+                        <td class="px-6 py-4 text-center">{{ product.name }}</td>
+                        <td class="px-6 py-4 text-center">{{ product.search_keyword }}</td> <!-- 추가된 부분 -->
+                        <td class="px-6 py-4 text-center">
+                            {% if product.single_product_link %}
+                                <a href="{{ product.single_product_link }}" target="_blank" class="text-blue-500 hover:underline">
+                                    {{ product.single_product_link|default_if_none:""|cut:"http://"|cut:"https://"|truncatechars:30 }}
+                                </a>
+                            {% else %}
+                                {{ product.single_product_link|default_if_none:"" }}
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">{{ product.single_product_mid }}</td>
+                        <td class="px-6 py-4 text-center">
+                            {% if product.original_link %}
+                                <a href="{{ product.original_link }}" target="_blank" class="text-blue-500 hover:underline">
+                                    {{ product.original_link|default_if_none:""|cut:"http://"|cut:"https://"|truncatechars:30 }}
+                                </a>
+                            {% else %}
+                                {{ product.original_link|default_if_none:"" }}
+                            {% endif %}
+                        </td>
+                        
+                        <td class="px-6 py-4 text-center">{{ product.original_mid }}</td>
+                        <td class="px-6 py-4 text-center">{{ product.store_name }}</td>
+                        <td class="px-6 py-4 text-center">{{ product.manager }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="11" class="px-6 py-4 text-center">등록된 상품이 없습니다.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+            <!-- 엑셀 작업 등록 모달 -->
+        <div id="excelModal" class="fixed z-10 inset-0 overflow-y-auto hidden">
+            <div class="flex items-center justify-center min-h-screen">
+                <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all max-w-3xl w-full">
+                    <div class="px-4 py-3 border-b flex justify-between items-center">
+                        <h3 class="text-lg font-medium leading-6 text-gray-900">엑셀 작업 등록</h3>
+                        <button class="text-gray-500 hover:text-gray-700" onclick="closeExcelModal()">&times;</button>
+                    </div>
+                    <div class="px-4 py-3">
+                        <!-- 선택된 상품명 표시 -->
+                        <div class="mb-4">
+                            <h4 class="font-bold mb-2">선택된 상품:</h4>
+                            <div id="selectedProductNames" class="flex flex-wrap space-x-2">
+                                <!-- 선택된 상품명들이 추가될 영역 -->
+                            </div>
+                        </div>
+                        <!-- 엑셀 다운로드 버튼 -->
+                        <div class="mb-4">
+                            <button type="button" onclick="downloadExcel()" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">엑셀 다운로드</button>
+                        </div>
+                        <!-- 엑셀 업로드 폼 -->
+                        <!-- <form method="post" action="{% url 'rankings:upload_excel_data' %}" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            <div class="mb-4">
+                                <label for="excel_file" class="block text-sm font-medium text-gray-700">엑셀 파일 업로드:</label>
+                                <input type="file" name="excel_file" id="excel_file" accept=".xls,.xlsx" class="mt-1 block w-full">
+                            </div>
+                            <div class="mb-4">
+                                <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" >업로드</button>
+                            </div>
+                        </form> -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    <!-- 페이지네이션 -->
+    <div class="flex justify-center mt-4">
+        <nav class="flex items-center space-x-1" aria-label="Pagination">
+            <!-- 이전 페이지 버튼 -->
+            {% if products.has_previous %}
+            <a href="?page={{ products.previous_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                <span class="material-icons">chevron_left</span>
+            </a>
+            {% else %}
+            <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                <span class="material-icons">chevron_left</span>
+            </span>
+            {% endif %}
+
+            <!-- 페이지 번호 -->
+            {% for num in products.paginator.page_range %}
+                {% if num > products.number|add:'-3' and num < products.number|add:'3' %}
+                    {% if num == products.number %}
+                    <span class="px-3 py-2 rounded-md bg-blue-500 text-white">{{ num }}</span>
+                    {% else %}
+                    <a href="?page={{ num }}&per_page={{ selected_per_page }}" class="px-3 py-2 rounded-md hover:bg-gray-200">{{ num }}</a>
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+
+            <!-- 다음 페이지 버튼 -->
+            {% if products.has_next %}
+            <a href="?page={{ products.next_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                <span class="material-icons">chevron_right</span>
+            </a>
+            {% else %}
+            <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                <span class="material-icons">chevron_right</span>
+            </span>
+            {% endif %}
+        </nav>
+    </div>
+</form>
+</div>
+<!-- Tailwind CSS 및 Material Icons 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<script>
+    document.getElementById('select-all').addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('input[name="selected_products"]');
+        checkboxes.forEach(checkbox => checkbox.checked = this.checked);
+    });
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(event) {
+        // "작업 등록" 버튼인지 확인
+        if (event.submitter && event.submitter.textContent.trim() === '작업 등록') {
+            event.preventDefault();  // 기본 제출 동작 중단
+            const selectedProducts = [];
+            document.querySelectorAll('input[name="selected_products"]:checked').forEach(function(checkbox) {
+                selectedProducts.push(checkbox.value);
+            });
+            if (selectedProducts.length === 0) {
+                alert('상품을 선택해주세요.');
+                return;
+            }
+            // 선택된 상품 IDs를 GET 파라미터로 추가하여 폼 제출
+            const url = new URL(form.action, window.location.origin);
+            selectedProducts.forEach(function(id) {
+                url.searchParams.append('selected_products', id);
+            });
+            window.location.href = url.toString();
+        }
+    });
+
+    function toggleCheckbox(row) {
+        var checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+        }
+    }
+
+    function deleteSelectedProducts() {
+        if (confirm("선택한 상품을 삭제하시겠습니까?")) {
+            var form = document.createElement('form');
+            form.method = 'post';
+            form.action = "{% url 'rankings:product_delete' %}";
+
+            var csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrfmiddlewaretoken';
+            csrfInput.value = '{{ csrf_token }}';
+            form.appendChild(csrfInput);
+
+            var selectedProducts = document.querySelectorAll('input[name="selected_products"]:checked');
+            selectedProducts.forEach(function(product) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'selected_products';
+                input.value = product.value;
+                form.appendChild(input);
+            });
+
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+
+    function changePerPage(value) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('per_page', value);
+        urlParams.set('page', 1); // 페이지 번호를 1로 초기화
+        window.location.search = urlParams.toString();
+    }
+    function openExcelModal() {
+            const selectedProducts = [];
+            document.querySelectorAll('input[name="selected_products"]:checked').forEach(function(checkbox) {
+                selectedProducts.push({
+                    id: checkbox.value,
+                    name: checkbox.dataset.productName,
+                    category: checkbox.dataset.category,
+                    searchKeyword: checkbox.dataset.searchKeyword
+                });
+            });
+            if (selectedProducts.length === 0) {
+                alert('상품을 선택해주세요.');
+                return;
+            }
+
+            // 선택된 상품명 표시
+            const productNamesContainer = document.getElementById('selectedProductNames');
+            productNamesContainer.innerHTML = '';
+            selectedProducts.forEach(function(product) {
+                const span = document.createElement('span');
+                span.textContent = product.name + ' ';
+                productNamesContainer.appendChild(span);
+            });
+
+            // 모달 표시
+            document.getElementById('excelModal').classList.remove('hidden');
+        }
+
+        // 모달 닫기
+        function closeExcelModal() {
+            document.getElementById('excelModal').classList.add('hidden');
+        }
+
+
+    function triggerExcelUpload() {
+        document.getElementById('excel_file').click();
+    }
+
+    // 파일 선택 시 파일명 표시 및 업로드 버튼 활성화
+    document.getElementById('excel_file').addEventListener('change', function() {
+        if (this.files.length > 0) {
+            const fileName = this.files[0].name;
+            // 파일명 표시
+            document.getElementById('uploadedFileName').textContent = '선택된 파일: ' + fileName;
+            // 업로드 버튼 활성화
+            document.getElementById('uploadButton').disabled = false;
+        } else {
+            // 파일이 선택되지 않았을 경우
+            document.getElementById('uploadedFileName').textContent = '';
+            document.getElementById('uploadButton').disabled = true;
+        }
+    });
+
+
+     // 엑셀 다운로드 버튼 클릭 시
+     function downloadExcel() {
+        const selectedProductIds = [];
+        document.querySelectorAll('input[name="selected_products"]:checked').forEach(function(checkbox) {
+            selectedProductIds.push(checkbox.value);
+        });
+        if (selectedProductIds.length === 0) {
+            alert('상품을 선택해주세요.');
+            return;
+        }
+        const url = "{% url 'rankings:download_selected_products_excel' %}?product_ids=" + selectedProductIds.join(',');
+        window.location.href = url;
+    }
+
+
+    // 엑셀 업로드
+    function uploadExcel() {
+        const form = document.getElementById('excelUploadForm');
+        const formData = new FormData(form);
+
+        fetch("{% url 'rankings:upload_excel_data' %}", {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('엑셀 파일이 성공적으로 업로드되었습니다.');
+                // 업로드된 데이터를 전역 변수에 저장
+                window.uploadedTaskData = data.task_data;
+            } else {
+                alert('엑셀 파일 업로드 중 오류가 발생했습니다: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    }
+
+    // 업로드 버튼 클릭 시
+    function submitTasks() {
+        var excelFileInput = document.getElementById('excel_file');
+        var excelFile = excelFileInput.files[0];
+        if (!excelFile) {
+            alert('엑셀 파일을 선택해주세요.');
+            return;
+        }
+
+        var formData = new FormData();
+        formData.append('excel_file', excelFile);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        fetch("{% url 'rankings:upload_excel_data' %}", {
+            method: 'POST',
+            credentials: 'same-origin',  // CSRF 토큰을 함께 보냄
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('엑셀 파일이 성공적으로 업로드되었습니다.');
+                // 업로드 버튼 비활성화
+                document.getElementById('uploadButton').disabled = true;
+                // 필요한 경우 추가 작업 수행
+            } else {
+                alert('엑셀 파일 업로드 중 오류가 발생했습니다: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('서버와의 통신 중 오류가 발생했습니다.');
+        });
+    }
+
+    function submitTaskForm() {
+        const selectedProducts = [];
+        document.querySelectorAll('input[name="selected_products"]:checked').forEach(function(checkbox) {
+            selectedProducts.push(checkbox.value);
+        });
+        if (selectedProducts.length === 0) {
+            alert('상품을 선택해주세요.');
+            return;
+        }
+        // 선택된 상품 IDs를 GET 파라미터로 추가하여 폼 제출
+        const url = "{% url 'rankings:task_register' %}?" + selectedProducts.map(id => 'selected_products=' + id).join('&');
+        window.location.href = url;
+    }
+
+    function goToTaskRegister() {
+        // 작업 등록 페이지로 이동
+        window.location.href = "{% url 'rankings:task_register_from_excel' %}";
+    }
+</script>
+{% endblock %}

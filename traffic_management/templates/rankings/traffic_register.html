@@ -1,0 +1,174 @@
+<!-- templates/rankings/traffic_register.html -->
+
+{% extends 'traffic_management_base.html' %}
+
+{% block content %}
+
+<div class="py-10 px-4">
+    <h2 class="text-2xl font-bold mb-6">트래픽 등록</h2>
+
+    <!-- 트래픽 등록 폼 -->
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-4 space-x-2">
+            <button type="button" id="add-row-button" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">추가</button>
+            <button type="submit" name="register_traffic" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">등록</button>
+            <a href="{% url 'rankings:download_traffic_sample_excel' %}" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 inline-block">예제 파일 다운로드</a>
+        </div>
+        <div class="overflow-x-auto" style="max-height: 55vh; overflow-y: auto;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">트래픽명</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">금액</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">방식</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">일자</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">유입수</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">링크</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">업체명</th> <!-- 추가된 부분 -->
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">삭제</th>
+                    </tr>
+                </thead>
+                <tbody id="traffic-table-body" class="bg-white divide-y divide-gray-200">
+                    {% if traffics_data %}
+                        {% for traffic in traffics_data %}
+                        <tr>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="name" value="{{ traffic.name }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="price" value="{{ traffic.price|floatformat:0 }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <select name="method" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                                    <option value="">선택</option>
+                                    <option value="유입플" {% if traffic.method == '유입플' %}selected{% endif %}>유입플</option>
+                                    <option value="리워드" {% if traffic.method == '리워드' %}selected{% endif %}>리워드</option>
+                                    <option value="복합플" {% if traffic.method == '복합플' %}selected{% endif %}>복합플</option>
+                                    <!-- 필요한 방식들을 추가하세요 -->
+                                </select>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="days" value="{{ traffic.days }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="inflow_count" value="{{ traffic.inflow_count }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="url" name="link" value="{{ traffic.link }}" pattern=".*" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="vendor" value="{{ traffic.vendor }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <button type="button" class="text-red-500 hover:text-red-700 remove-row-button">삭제</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <!-- 첫 번째 입력 행 -->
+                        <tr>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="name" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="price" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <select name="method" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                                    <option value="">선택</option>
+                                    <option value="유입플">유입플</option>
+                                    <option value="리워드">리워드</option>
+                                    <option value="복합플">복합플</option>
+                                    <!-- 필요한 방식들을 추가하세요 -->
+                                </select>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="days" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="number" name="inflow_count" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="url" name="link" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <input type="text" name="vendor" class="w-full px-2 py-1 border border-gray-300 rounded">
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <button type="button" class="text-red-500 hover:text-red-700 remove-row-button">삭제</button>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+    </form>
+
+    <!-- 엑셀 업로드 폼 -->
+    <form method="post" enctype="multipart/form-data" class="mt-6">
+        {% csrf_token %}
+        <div class="flex items-center space-x-2">
+            <label for="excel_file" class="text-sm font-medium">엑셀 파일 업로드:</label>
+            <input type="file" name="excel_file" id="excel_file" class="w-64">
+            <button type="submit" name="upload_excel" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">업로드</button>
+        </div>
+    </form>
+</div>
+
+
+<!-- Tailwind CSS 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+<script>
+    document.getElementById('add-row-button').addEventListener('click', function() {
+        var tableBody = document.getElementById('traffic-table-body');
+        var newRow = document.createElement('tr');
+
+        newRow.innerHTML = `
+            <td class="px-6 py-4 text-center">
+                <input type="text" name="name" class="w-full px-2 py-1 border border-gray-300 rounded">
+            </td>
+            <td class="px-6 py-4 text-center">
+                <input type="number" name="price" class="w-full px-2 py-1 border border-gray-300 rounded">
+            </td>
+            <td class="px-6 py-4 text-center">
+                <select name="method" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                    <option value="">선택</option>
+                    <option value="유입플">유입플</option>
+                    <option value="리워드">리워드</option>
+                    <option value="복합플">복합플</option>
+                    <!-- 필요한 방식들을 추가하세요 -->
+                </select>
+            </td>
+            <td class="px-6 py-4 text-center">
+                <input type="number" name="days" class="w-full px-2 py-1 border border-gray-300 rounded">
+            </td>
+            <td class="px-6 py-4 text-center">
+                <input type="number" name="inflow_count" class="w-full px-2 py-1 border border-gray-300 rounded">
+            </td>
+            <td class="px-6 py-4 text-center">
+                <input type="url" name="link" class="w-full px-2 py-1 border border-gray-300 rounded">
+            </td>
+            <td class="px-6 py-4 text-center">
+                <input type="text" name="vendor" class="w-full px-2 py-1 border border-gray-300 rounded">
+            </td>
+            <td class="px-6 py-4 text-center">
+                <button type="button" class="text-red-500 hover:text-red-700 remove-row-button">삭제</button>
+            </td>
+        `;
+
+        tableBody.appendChild(newRow);
+    });
+
+    // 행 삭제 기능
+    document.getElementById('traffic-table-body').addEventListener('click', function(e) {
+        if(e.target && e.target.classList.contains('remove-row-button')) {
+            var row = e.target.closest('tr');
+            row.parentNode.removeChild(row);
+        }
+    });
+</script>
+
+{% endblock %}

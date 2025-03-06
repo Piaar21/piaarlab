@@ -1,0 +1,153 @@
+<!-- templates/rankings/task_edit.html -->
+
+{% extends 'traffic_management_base.html' %}
+{% load rankings_filters %}
+{% block content %}
+
+<div class="py-10 px-4">
+    <h1 class="text-2xl font-bold mb-6">작업 수정</h1>
+
+    <form method="post" action="{% url 'rankings:task_update' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <div class="overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">번호</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">상품명</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">카테고리</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">순위조회키워드<br>(필수키워드)</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">URL 타입</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">URL</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">일자</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">메모</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">트래픽명</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">이용권 수</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">이용가능<br>시작일자</th>
+                        <th class="px-4 py-2 text-center sticky top-0 bg-gray-50">이용가능<br>종료일자</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for task in tasks %}
+                    <tr>
+                        <td class="px-4 py-2 text-center">{{ forloop.counter }}</td>
+                        <td class="px-4 py-2 text-center">
+                            <a href="#" onclick="openProductSelect({{ task.id }}); return false;" id="product_name_{{ task.id }}" class="text-blue-500 hover:underline">{{ task.product_name }}</a>
+                            <!-- 선택된 상품 ID를 저장할 숨겨진 필드 -->
+                            <input type="hidden" name="product_id_{{ task.id }}" id="product_id_{{ task.id }}" value="{{ task.product.id }}">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <select name="category_{{ task.id }}" required class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                                <option value="">선택</option>
+                                <option value="네이버" {% if task.category == "네이버" %}selected{% endif %}>네이버</option>
+                                <!-- 다른 카테고리 옵션들 -->
+                            </select>
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="text" name="keyword_{{ task.id }}" id="keyword_{{ task.id }}" value="{{ task.keyword.name }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <select name="url_type_{{ task.id }}" onchange="updateURL(this, {{ task.id }})" required class="w-full px-2 py-1 border border-gray-300 rounded bg-white" data-single-url="{{ task.product.single_product_link }}" data-original-url="{{ task.product.original_link }}">
+                                <option value="">선택</option>
+                                <option value="single" {% if task.url == task.product.single_product_link %}selected{% endif %}>단일</option>
+                                <option value="original" {% if task.url == task.product.original_link %}selected{% endif %}>원부</option>
+                            </select>
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="url" name="url_{{ task.id }}" id="url_{{ task.id }}" value="{{ task.url }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ task.last_checked_date|date:"Y-m-d" }}</td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="text" name="memo_{{ task.id }}" value="{{ task.memo }}" class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ task.traffic.name }}</td> <!-- 읽기 전용 -->
+                        <td class="px-4 py-2 text-center">{{ task.ticket_count }}</td> <!-- 읽기 전용 -->
+                        <td class="px-4 py-2 text-center">
+                            <input type="date" name="available_start_date_{{ task.id }}" value="{{ task.available_start_date|date:'Y-m-d' }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <input type="date" name="available_end_date_{{ task.id }}" value="{{ task.available_end_date|date:'Y-m-d' }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="submit" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">작업 수정</button>
+    </form>
+</div>
+
+<!-- Tailwind CSS 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+<div id="product-modal" class="fixed z-10 inset-0 overflow-y-auto hidden">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        <!-- 모달 창 크기 조정: max-w-6xl -->
+        <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all sm:max-w-6xl w-full">
+            <div class="bg-white p-6 max-h-screen overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">상품 선택</h3>
+                    <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700">
+                        <!-- 닫기 아이콘 -->
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <!-- 모달 내용 -->
+                <div id="modal-content">
+                    <!-- 여기에 상품 선택 페이지의 내용을 로드합니다. -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openProductSelect(taskId) {
+        // 모달 창 열기
+        var modal = document.getElementById('product-modal');
+        modal.classList.remove('hidden');
+
+        // 상품 선택 페이지 로드
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', "{% url 'rankings:product_select' %}?task_id=" + taskId, true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                document.getElementById('modal-content').innerHTML = xhr.responseText;
+            }
+        };
+        xhr.send();
+    }
+
+    function closeModal() {
+        var modal = document.getElementById('product-modal');
+        modal.classList.add('hidden');
+    }
+
+    // 전역 범위에 updateProduct 함수 정의
+    function updateProduct(taskId, productId, productName, productKeyword, productURL) {
+        document.getElementById('product_id_' + taskId).value = productId;
+        // 상품명 링크의 텍스트 업데이트
+        document.getElementById('product_name_' + taskId).textContent = productName;
+        // 키워드와 URL 업데이트
+        document.getElementById('keyword_' + taskId).value = productKeyword;
+        document.getElementById('url_' + taskId).value = productURL;
+
+        // 모달 창 닫기
+        closeModal();
+    }
+
+    // 전역 범위에 selectProduct 함수 정의
+    function selectProduct(taskId, productId, productName, productKeyword, productURL) {
+        // 부모 창의 함수를 호출하여 상품 정보 업데이트
+        updateProduct(taskId, productId, productName, productKeyword, productURL);
+    }
+
+</script>
+
+{% endblock %}

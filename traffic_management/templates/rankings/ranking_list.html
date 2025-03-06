@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>키워드별 순위</title>
+</head>
+<body>
+    <h1>키워드별 순위</h1>
+    {% for keyword in keywords %}
+        <h2>{{ keyword.name }}</h2>
+        <table border="1">
+            <tr>
+                <th>상품명</th>
+                <th>순위</th>
+                <th>날짜</th>
+            </tr>
+            {% for ranking in keyword.ranking_set.all %}
+            <tr>
+                <td>{{ ranking.product.name }}</td>
+                <td>{{ ranking.rank }}</td>
+                <td>{{ ranking.date }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    {% endfor %}
+</body>
+</html>

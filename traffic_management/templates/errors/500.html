@@ -1,0 +1,60 @@
+<!-- templates/500.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>서버 오류</title>
+    <!-- Tailwind CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- 추가적인 스타일 및 애니메이션을 위한 CSS (404.html과 동일) -->
+    <style>
+        .fade-in-down {
+            animation: fadeInDown 0.5s ease-in-out;
+        }
+
+        .scale-up {
+            animation: scaleUp 0.5s ease-in-out;
+            animation-delay: 0.2s;
+            animation-fill-mode: backwards;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes scaleUp {
+            from {
+                transform: scale(0.5);
+            }
+            to {
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-blue-100 to-blue-200 flex flex-col items-center justify-center p-4 text-center">
+    <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full fade-in-down">
+        <h1 class="text-4xl font-bold text-blue-600 mb-4 scale-up">500</h1>
+        <h2 class="text-2xl font-semibold text-gray-800 mb-4">서버 오류가 발생했습니다</h2>
+        <p class="text-gray-600 mb-6">
+            죄송합니다. 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요. 문제가 지속되면 관리자에게 문의해 주세요.
+        </p>
+        <a href="/"
+           class="inline-flex items-center justify-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75">
+            <!-- Home 아이콘 대체 -->
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" stroke-width="2"
+                 viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"></path>
+            </svg>
+            <span>홈으로 돌아가기</span>
+        </a>
+    </div>
+</body>
+</html>

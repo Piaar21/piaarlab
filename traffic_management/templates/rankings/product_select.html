@@ -1,0 +1,54 @@
+<!-- templates/rankings/product_select.html -->
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>상품 선택</title>
+    <!-- Tailwind CSS 추가 -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="p-4">
+        <h2 class="text-xl font-bold mb-4">상품 선택</h2>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-sm whitespace-nowrap">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-center">선택</th>
+                        <th class="px-4 py-2 text-center">상품리스트번호</th>
+                        <th class="px-4 py-2 text-center">카테고리</th>
+                        <th class="px-4 py-2 text-center">상품명</th>
+                        <th class="px-4 py-2 text-center">단일상품링크</th>
+                        <th class="px-4 py-2 text-center">단일상품 MID값</th>
+                        <th class="px-4 py-2 text-center">원부 링크</th>
+                        <th class="px-4 py-2 text-center">원부 MID</th>
+                        <th class="px-4 py-2 text-center">스토어명</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for product in products %}
+                    <tr>
+                        <td class="px-4 py-2 text-center">
+                            <button onclick="selectProduct({{ task_id }}, {{ product.id }}, '{{ product.name|escapejs }}', '{{ product.name|escapejs }}', '{{ product.single_product_link|escapejs }}'); window.parent.closeModal();" class="px-2 py-1 bg-blue-500 text-white rounded">선택</button>
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ forloop.counter }}</td>
+                        <td class="px-4 py-2 text-center">{{ product.category }}</td>
+                        <td class="px-4 py-2 text-center">{{ product.name }}</td>
+                        <td class="px-4 py-2 text-center">
+                            <a href="{{ product.single_product_link }}" target="_blank" class="text-blue-500 hover:underline">{{ product.single_product_link|truncatechars:30 }}</a>
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ product.single_product_mid }}</td>
+                        <td class="px-4 py-2 text-center">
+                            <a href="{{ product.original_link }}" target="_blank" class="text-blue-500 hover:underline">{{ product.original_link|truncatechars:30 }}</a>
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ product.original_mid }}</td>
+                        <td class="px-4 py-2 text-center">{{ product.store_name }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

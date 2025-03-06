@@ -1,0 +1,85 @@
+{% extends 'traffic_management_base.html' %}
+{% load rankings_filters %}
+{% block content %}
+<!-- 콘텐츠 영역에 상단 패딩 추가 -->
+<div class="py-10 px-4">
+    <h1 class="text-2xl font-bold mb-6">마이페이지</h1>
+
+   
+
+    <div class="bg-white p-6 shadow-md rounded-lg mb-4 max-w-md mx-auto">
+        {% if settings_completed %}
+            <div class="mb-4">
+                <label for="client-id" class="block font-bold mb-2 text-gray-700">NAVER_CLIENT_ID</label>
+                <input type="text" id="client-id" value="{{ client_id }}" readonly class="w-full px-4 py-3 border border-gray-300 rounded">
+            </div>
+
+            <div class="mb-4">
+                <label for="client-secret" class="block font-bold mb-2 text-gray-700">NAVER_CLIENT_SECRET</label>
+                <div class="flex items-center">
+                    <input type="password" id="client-secret" value="*****" readonly class="flex-grow px-4 py-3 border border-gray-300 rounded">
+                    <button type="button" onclick="toggleVisibility()" class="ml-2 px-4 py-3 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none">
+                        <span id="eye-icon" class="text-lg">👁️</span>
+                    </button>
+                </div>
+            </div>
+
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit" name="modify" class="w-full py-3 px-4 bg-blue-500 text-white rounded hover:bg-blue-600">수정</button>
+            </form>
+        {% else %}
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-4">
+                    <label for="{{ form.naver_client_id.id_for_label }}" class="block font-bold mb-2 text-gray-700">{{ form.naver_client_id.label }}</label>
+                    {{ form.naver_client_id|add_class:"w-full px-4 py-3 border border-gray-300 rounded" }}
+                    {% if form.naver_client_id.errors %}
+                        <p class="text-red-500 text-sm mt-1">{{ form.naver_client_id.errors }}</p>
+                    {% endif %}
+                </div>
+                <div class="mb-4">
+                    <label for="{{ form.naver_client_secret.id_for_label }}" class="block font-bold mb-2 text-gray-700">{{ form.naver_client_secret.label }}</label>
+                    {{ form.naver_client_secret|add_class:"w-full px-4 py-3 border border-gray-300 rounded" }}
+                    {% if form.naver_client_secret.errors %}
+                        <p class="text-red-500 text-sm mt-1">{{ form.naver_client_secret.errors }}</p>
+                    {% endif %}
+                </div>
+                <button type="submit" class="w-full py-3 px-4 bg-blue-500 text-white rounded hover:bg-blue-600">저장</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+ <!-- 메시지 표시 -->
+ {% if messages %}
+ <div class="mb-4">
+     {% for message in messages %}
+         <div class="px-4 py-2 mb-4 rounded {% if message.tags == 'error' %}bg-red-100 text-red-800{% elif message.tags == 'success' %}bg-green-100 text-green-800{% else %}bg-yellow-100 text-yellow-800{% endif %}">
+             {{ message }}
+         </div>
+     {% endfor %}
+ </div>
+{% endif %}
+{% if settings_completed %}
+<script>
+    const actualClientSecret = '{{ client_secret|escapejs }}';
+    let isSecretVisible = false;
+
+    function toggleVisibility() {
+        const secretField = document.getElementById('client-secret');
+        const eyeIcon = document.getElementById('eye-icon');
+        if (isSecretVisible) {
+            secretField.type = 'password';
+            secretField.value = '*****';
+            eyeIcon.textContent = '👁️';
+            isSecretVisible = false;
+        } else {
+            secretField.type = 'text';
+            secretField.value = actualClientSecret;
+            eyeIcon.textContent = '🙈';
+            isSecretVisible = true;
+        }
+    }
+</script>
+{% endif %}
+{% endblock %}

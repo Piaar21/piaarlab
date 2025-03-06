@@ -1,0 +1,377 @@
+<!-- templates/rankings/dashboard.html -->
+{% extends 'traffic_management_base.html' %}
+{% load rankings_filters %}
+{% load static %}
+
+{% block content %}
+<style>
+    .memo-text {
+        position: relative;
+        display: inline-block;
+        cursor: pointer;
+        max-width: 50px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .tooltip {
+        position: fixed;
+        background-color: black;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 5px;
+        z-index: 1000;
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.2s;
+        white-space: normal;
+        max-width: 200px;
+    }
+    .modal-content {
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    /* 배경 스크롤 방지 */
+    body.modal-open {
+        overflow: hidden;
+    }
+</style>
+<div class="py-10 px-4">
+    <h1 class="text-3xl font-bold mb-6">대시보드</h1>
+    <!-- 상단 버튼들 및 페이지 당 항목 수 선택 -->
+    <form method="post" action="{% url 'rankings:task_action' %}" id="taskForm">
+        {% csrf_token %}
+        <!-- 상단 버튼들 및 페이지 당 항목 수 선택 -->
+        <div class="flex justify-between items-center mb-4">
+            <!-- 버튼 그룹 -->
+            <div class="flex space-x-2 items-center">
+                <!-- '일괄 순위 조회' 버튼 -->
+                <button id="bulk-update-button" formaction="{% url 'rankings:update_all_rankings' %}" type="submit" onclick="setClickedButton('bulk-update')" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">일괄 순위 조회</button>
+                <!-- 작업 버튼들 -->
+                <button type="submit" name="action" value="edit" onclick="setClickedButton('other-action')" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">작업 수정</button>
+                <button type="submit" name="action" value="complete" onclick="setClickedButton('other-action')" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">작업 완료</button>
+                <button type="submit" name="action" value="delete" onclick="setClickedButton('other-action')" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">작업 삭제</button>
+                <button type="submit" name="action" value="extend" onclick="setClickedButton('other-action')" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">10일 연장</button>                
+            </div>
+        <!-- 페이지 당 항목 수 선택 -->
+        <div class="flex items-center">
+            <label for="per_page" class="mr-2">페이지 당 항목 수:</label>
+            <select id="per_page" name="per_page" onchange="changePerPage(this.value)" class="border rounded p-1">
+                {% for option in per_page_options %}
+                    <option value="{{ option }}" {% if option == selected_per_page %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <!-- 테이블 및 체크박스 폼 -->
+        <div class="rounded-md border" style="max-height: 600px; overflow-y: auto; position: relative;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <!-- 테이블 헤더 -->
+                <thead class="bg-gray-50">
+                    <tr>
+                        <!-- 테이블 헤더 고정 -->
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">
+                            <input type="checkbox" id="select-all" class="form-checkbox h-4 w-4 text-blue-600">
+                        </th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">번호</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">상태</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">카테고리</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">상품명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">순위조회키워드</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">URL</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">시작 순위</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">현재 순위</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">트래픽명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">메모</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">이용권 수</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">이용가능일자</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for task in tasks %}
+                    <tr class="hover:bg-gray-100 cursor-pointer" onclick="toggleCheckbox(this)">
+                        <td class="px-4 py-2 text-center">
+                            <input type="checkbox" name="selected_tasks" value="{{ task.id }}" class="form-checkbox h-4 w-4 text-blue-600">
+                        </td>
+                        <!-- 번호 표시 수정 -->
+                        <td class="px-4 py-2 text-center">{{ tasks.start_index|add:forloop.counter0 }}</td>
+                        <td class="px-4 py-2 text-center">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                {% if task.status == '굿굿' %}
+                                    bg-green-500 text-white
+                                {% elif task.status == '살짝오름' %}
+                                    bg-green-200 text-black
+                                {% elif task.status == '환불권장' %}
+                                    bg-red-500 text-white
+                                {% elif task.status == '효과없음' %}
+                                    bg-gray-500 text-white
+                                {% endif %}
+                            ">
+                                {{ task.status }}
+                                {% if task.needs_attention %}
+                                    <span class="material-icons text-red-500 cursor-pointer" title="추가 트래픽 혹은 가구매 권장">
+                                        error_outline
+                                    </span>
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ task.category }}</td>
+                        <td class="px-4 py-2 text-center">
+                            {% if task.product %}
+                                {{ task.product.name }}
+                            {% else %}
+                                삭제된 상품
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ task.keyword.name }}</td>
+                        <td class="px-4 py-2 text-center">
+                            <a href="{{ task.url }}" target="_blank" class="text-blue-500 hover:underline">{{ task.url }}</a>
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            {% if task.start_rank %}
+                                {{ task.start_rank }}
+                            {% else %}
+                                1000위 이상
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            {% if task.current_rank %}
+                                {{ task.current_rank }}
+                                <span class="material-icons text-blue-500 cursor-pointer ml-2" onclick="openRankingModal({{ task.id }})" style="vertical-align: middle;">bar_chart</span>
+                            {% else %}
+                                1000위 이상
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            {% if task.traffic %}
+                                <div class="flex items-center">
+                                    {{ task.traffic.name }}
+                                    <a href="{{ task.traffic.link }}" target="_blank" class="ml-2">
+                                        <span class="material-icons text-blue-500">link</span>
+                                    </a>
+                                </div>
+                            {% else %}
+                                삭제된 트래픽
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-center">
+                            <div class="memo-text" data-memo="{{ task.memo }}" onclick="event.stopPropagation();">
+                                {{ task.memo|truncatechars:20 }}
+                            </div>
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ task.ticket_count }}</td>
+                        <td class="px-4 py-2 text-center">{{ task.available_start_date|date:"y-m-d" }} ~ {{ task.available_end_date|date:"y-m-d" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="13" class="px-4 py-2 text-center">등록된 작업이 없습니다.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <!-- 페이지네이션 -->
+        <div class="flex justify-center mt-4">
+            <nav class="flex items-center space-x-1" aria-label="Pagination">
+                <!-- 이전 페이지 버튼 -->
+                {% if tasks.has_previous %}
+                <a href="?page={{ tasks.previous_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                    <span class="material-icons">chevron_left</span>
+                </a>
+                {% else %}
+                <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                    <span class="material-icons">chevron_left</span>
+                </span>
+                {% endif %}
+
+                <!-- 페이지 번호 -->
+                {% for num in tasks.paginator.page_range %}
+                    {% if num > tasks.number|add:'-3' and num < tasks.number|add:'3' %}
+                        {% if num == tasks.number %}
+                        <span class="px-3 py-2 rounded-md bg-blue-500 text-white">{{ num }}</span>
+                        {% else %}
+                        <a href="?page={{ num }}&per_page={{ selected_per_page }}" class="px-3 py-2 rounded-md hover:bg-gray-200">{{ num }}</a>
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+
+                <!-- 다음 페이지 버튼 -->
+                {% if tasks.has_next %}
+                <a href="?page={{ tasks.next_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                    <span class="material-icons">chevron_right</span>
+                </a>
+                {% else %}
+                <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                    <span class="material-icons">chevron_right</span>
+                </span>
+                {% endif %}
+            </nav>
+        </div>
+    </form>
+    <!-- 모달 창 구조 -->
+    <div id="rankingModal" class="fixed inset-0 hidden" style="z-index: 1000;">
+        <!-- 배경 -->
+        <div id="modalBackground" class="absolute inset-0 bg-black opacity-50"></div>
+    
+        <!-- 모달 내용 -->
+        <div class="fixed inset-0 flex items-center justify-center p-4" style="z-index: 1100;">
+            <div class="bg-white rounded-lg shadow-xl transform transition-all sm:max-w-2xl w-full modal-content">
+                <!-- 모달 헤더 -->
+                <div class="px-4 py-5 sm:px-6 flex justify-between items-center border-b">
+                    <h2 class="text-lg leading-6 font-medium text-gray-900">순위 변동 정보</h2>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-500">
+                        <span class="material-icons">close</span>
+                    </button>
+                </div>
+                <div class="px-4 py-5 sm:p-6">
+                    <table class="min-w-full divide-y divide-gray-200" id="rankingTable">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-center">일자</th>
+                                <th class="px-6 py-3 text-center">키워드</th>
+                                <th class="px-6 py-3 text-center">순위</th>
+                                <th class="px-6 py-3 text-center">등락폭</th>
+                                <th class="px-6 py-3 text-center">시작대비</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <!-- 순위 데이터가 여기에 추가됩니다 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<!-- Tailwind CSS 및 Material Icons 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<script>
+    document.getElementById('select-all').onclick = function() {
+        var checkboxes = document.getElementsByName('selected_tasks');
+        for (var checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    }
+    function toggleCheckbox(row) {
+        var checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+        }
+    }
+    // 순위 변동 표시 로직 수정
+    function openRankingModal(taskId) {
+        fetch(`/api/get_ranking_data/?task_id=${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                var tbody = document.querySelector('#rankingTable tbody');
+                tbody.innerHTML = '';
+                data.rankings.forEach(function(ranking) {
+                    let differenceSymbol = '';
+                    let differenceColor = '';
+                    let startDifferenceSymbol = '';
+                    let startDifferenceColor = '';
+
+                    // 등락폭 처리
+                    if (ranking.difference > 0) {
+                        differenceSymbol = '▼';
+                        differenceColor = 'text-blue-500';
+                    } else if (ranking.difference < 0) {
+                        differenceSymbol = '▲';
+                        differenceColor = 'text-red-500';
+                    } else {
+                        differenceSymbol = '-';
+                        differenceColor = '';
+                    }
+
+                    // 시작대비 처리
+                    if (ranking.start_difference > 0) {
+                        startDifferenceSymbol = '▼';
+                        startDifferenceColor = 'text-blue-500';
+                    } else if (ranking.start_difference < 0) {
+                        startDifferenceSymbol = '▲';
+                        startDifferenceColor = 'text-red-500';
+                    } else {
+                        startDifferenceSymbol = '-';
+                        startDifferenceColor = '';
+                    }
+
+                    let differenceValue = Math.abs(parseInt(ranking.difference));
+                    let startDifferenceValue = Math.abs(parseInt(ranking.start_difference));
+                    
+                    differenceValue = isNaN(differenceValue) ? '' : differenceValue;
+                    startDifferenceValue = isNaN(startDifferenceValue) ? '' : startDifferenceValue;
+
+                    let differenceDisplay = differenceSymbol !== '-' ? `${differenceSymbol}${differenceValue}` : '-';
+                    let startDifferenceDisplay = startDifferenceSymbol !== '-' ? `${startDifferenceSymbol}${startDifferenceValue}` : '-';
+
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="px-4 py-2 text-center">${ranking.date_time}</td>
+                        <td class="px-4 py-2 text-center">${ranking.keyword}</td>
+                        <td class="px-4 py-2 text-center">${ranking.rank}</td>
+                        <td class="px-4 py-2 text-center ${differenceColor}">${differenceDisplay}</td>
+                        <td class="px-4 py-2 text-center ${startDifferenceColor}">${startDifferenceDisplay}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                document.getElementById('rankingModal').classList.remove('hidden');
+                document.body.classList.add('modal-open'); // 배경 스크롤 방지
+            })
+            .catch(error => {
+                console.error('Error fetching ranking data:', error);
+            });
+    }
+
+    function closeModal() {
+        document.getElementById('rankingModal').classList.add('hidden');
+        document.body.classList.remove('modal-open'); // 배경 스크롤 허용
+    }
+    // 모달 배경 클릭 시 모달 닫기
+    document.getElementById('modalBackground').addEventListener('click', function(event) {
+        closeModal();
+    });
+
+    // ESC 키로 모달 닫기
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeModal();
+        }
+    });
+    
+    // 페이지 당 항목 수 변경 시 처리
+    function changePerPage(value) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('per_page', value);
+        urlParams.set('page', 1); // 페이지 번호를 1로 초기화
+        window.location.search = urlParams.toString();
+    }
+
+    var clickedButtonType = '';
+
+    function setClickedButton(buttonType) {
+        clickedButtonType = buttonType;
+    }
+
+    document.getElementById('taskForm').addEventListener('submit', function(event) {
+        // 'bulk-update' 버튼이 클릭되지 않은 경우에만 체크박스 검사를 수행합니다.
+        if (clickedButtonType !== 'bulk-update') {
+            var selectedTasks = document.querySelectorAll('input[name="selected_tasks"]:checked');
+            if (selectedTasks.length === 0) {
+                alert('작업을 선택해주세요.');
+                event.preventDefault(); // 폼 제출 중단
+            }
+        }
+
+        // 폼 제출 후 변수 초기화
+        clickedButtonType = '';
+    });
+</script>
+
+{% endblock %}

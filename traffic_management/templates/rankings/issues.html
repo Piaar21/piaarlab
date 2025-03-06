@@ -1,0 +1,191 @@
+<!-- templates/rankings/issues.html -->
+
+{% extends 'traffic_management_base.html' %}
+{% load rankings_filters %}
+
+{% block content %}
+<div class="py-10 px-4">
+    <h1 class="text-3xl font-bold mb-6">문제</h1>
+    <form method="post" action="{% url 'rankings:task_action' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'rankings:issues' %}">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <button type="submit" name="action" value="edit" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">작업 수정</button>
+            </div>
+            <div class="flex items-center">
+                <label for="per_page" class="mr-2">페이지 당 항목 수:</label>
+                <select id="per_page" name="per_page" onchange="changePerPage(this.value)" class="border rounded p-1">
+                    {% for option in per_page_options %}
+                        <option value="{{ option }}" {% if option == selected_per_page %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="rounded-md border">
+            <div style="max-height: 600px; overflow-y: auto; border: 1px solid #e5e7eb;">
+                <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="sticky top-0 bg-gray-50 z-10 w-12 px-6 py-3">
+                            <input type="checkbox" id="select-all" class="form-checkbox h-4 w-4 text-blue-600">
+                        </th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">번호</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">카테고리</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">키워드</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">상품명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">시작 순위</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">어제 순위</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">현재 순위</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">순위 변화</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">마지막 체크 날짜</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">메모</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">이용권 수</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">이용가능 시작일</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">이용가능 종료일</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for task in tasks %}
+                    <tr class="hover:bg-gray-100 cursor-pointer" onclick="toggleCheckbox(this)">
+                        <td class="px-6 py-4 text-center">
+                            <input type="checkbox" name="selected_tasks" value="{{ task.id }}" class="form-checkbox h-4 w-4 text-blue-600">
+                        </td>
+                        <td class="px-6 py-4 text-center">{{ forloop.counter }}</td>
+                        <td class="px-6 py-4 text-center">{{ task.category }}</td>
+                        <td class="px-6 py-4 text-center">{{ task.keyword.name }}</td>
+                        <td class="px-6 py-4 text-center">
+                            <a href="{{ task.url }}" class="text-blue-500 hover:underline">{{ task.product_name }}</a>
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {% if task.start_rank %}
+                                {{ task.start_rank }}
+                            {% else %}
+                                1000위 이상
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {% if task.yesterday_rank %}
+                                {{ task.yesterday_rank }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {% if task.current_rank %}
+                                {{ task.current_rank }}
+                            {% else %}
+                                <span class="text-red-500">1000위 이상</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {% if task.difference_rank %}
+                                {% if task.difference_rank > 0 %}
+                                    <span class="text-red-500">
+                                        <span class="material-icons" style="vertical-align: middle;">arrow_drop_up</span>
+                                        {{ task.difference_rank }}
+                                    </span>
+                                {% elif task.difference_rank < 0 %}
+                                    <span class="text-blue-500">
+                                        <span class="material-icons" style="vertical-align: middle;">arrow_drop_down</span>
+                                        {{ task.difference_rank|abs }}
+                                    </span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {% if task.last_checked_date %}
+                                {{ task.last_checked_date|date:"Y-m-d H:i" }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">{{ task.memo }}</td>
+                        <td class="px-6 py-4 text-center">{{ task.ticket_count }}</td>
+                        <td class="px-6 py-4 text-center">
+                            {% if task.available_start_date %}
+                                {{ task.available_start_date|date:"Y-m-d" }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {% if task.available_end_date %}
+                                {{ task.available_end_date|date:"Y-m-d" }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <!-- 페이지네이션 컨트롤 -->
+        <div class="flex justify-center mt-4">
+            <nav class="flex items-center space-x-1" aria-label="Pagination">
+                <!-- 이전 페이지 버튼 -->
+                {% if tasks.has_previous %}
+                <a href="?page={{ tasks.previous_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                    <span class="material-icons">chevron_left</span>
+                </a>
+                {% else %}
+                <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                    <span class="material-icons">chevron_left</span>
+                </span>
+                {% endif %}
+
+                <!-- 페이지 번호 -->
+                {% for num in tasks.paginator.page_range %}
+                    {% if num > tasks.number|add:'-3' and num < tasks.number|add:'3' %}
+                        {% if num == tasks.number %}
+                        <span class="px-3 py-2 rounded-md bg-blue-500 text-white">{{ num }}</span>
+                        {% else %}
+                        <a href="?page={{ num }}&per_page={{ selected_per_page }}" class="px-3 py-2 rounded-md hover:bg-gray-200">{{ num }}</a>
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+
+                <!-- 다음 페이지 버튼 -->
+                {% if tasks.has_next %}
+                <a href="?page={{ tasks.next_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                    <span class="material-icons">chevron_right</span>
+                </a>
+                {% else %}
+                <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                    <span class="material-icons">chevron_right</span>
+                </span>
+                {% endif %}
+            </nav>
+        </div>
+    </form>
+</div>
+<!-- Tailwind CSS 및 Material Icons 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<script>
+    document.getElementById('select-all').onclick = function() {
+        var checkboxes = document.getElementsByName('selected_tasks');
+        for (var checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    }
+    function toggleCheckbox(row) {
+        var checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+        }
+    }
+    function changePerPage(value) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('per_page', value);
+        urlParams.set('page', 1); // 페이지 수를 1로 초기화
+        window.location.search = urlParams.toString();
+    }
+</script>
+{% endblock %}

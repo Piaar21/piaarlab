@@ -1,0 +1,89 @@
+<!-- templates/rankings/ad_bulk_edit.html -->
+
+{% extends 'traffic_management_base.html' %}
+
+{% block content %}
+
+<div class="py-10 px-4">
+    <h2 class="text-2xl font-bold mb-6">광고 수정</h2>
+
+    {% if formset.errors %}
+        <div class="text-red-500 mb-4">
+            {{ formset.errors }}
+        </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <div class="overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">시작일자<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">끝난일자<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">채널<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">광고명<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">카테고리</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">상품명<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">매출<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">마진<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">비용<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">메모</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">페이지 링크</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">업체<span class="text-red-500">*</span></th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for form in formset %}
+                    <tr>
+                        {{ form.id }}  <!-- 숨겨진 id 필드 -->
+                        <td class="px-6 py-4 text-center">
+                            {{ form.start_date }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.end_date }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.channel }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.name }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.category }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.product }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.sales }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.margin }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.cost }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.memo }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.page_link }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.company }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="submit" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">수정</button>
+    </form>
+</div>
+
+<!-- Tailwind CSS 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+{% endblock %}

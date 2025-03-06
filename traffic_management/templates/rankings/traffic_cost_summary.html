@@ -1,0 +1,160 @@
+<!-- templates/rankings/traffic_cost_summary.html -->
+
+{% extends 'traffic_management_base.html' %}
+{% load static %}
+{% load rankings_filters %} <!-- 여기서 custom_filters 로드 -->
+
+
+{% block content %}
+
+<div class="py-10 px-4">
+    <h2 class="text-2xl font-bold mb-6">트래픽 비용 정리</h2>
+
+    <!-- 필터 폼 -->
+    <form method="get" id="filterForm" class="space-y-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="space-y-2">
+                <label for="product" class="block font-medium text-gray-700">상품 선택:</label>
+                <select name="product" id="product" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                    <option value="">전체</option>
+                    {% for product in products %}
+                        <option value="{{ product.id }}" {% if selected_product_id == product.id %}selected{% endif %}>{{ product.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="space-y-2">
+                <label for="traffic" class="block font-medium text-gray-700">트래픽 선택:</label>
+                <select name="traffic" id="traffic" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                    <option value="">전체</option>
+                    {% for traffic in traffics %}
+                        <option value="{{ traffic.id }}" {% if selected_traffic_id == traffic.id %}selected{% endif %}>{{ traffic.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="space-y-2">
+                <label for="date_range" class="block font-medium text-gray-700">날짜 범위:</label>
+                <input type="text" name="date_range" id="date_range" readonly class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                <!-- 숨겨진 인풋 -->
+                <input type="hidden" name="start_date" id="start_date" value="{{ start_date }}">
+                <input type="hidden" name="end_date" id="end_date" value="{{ end_date }}">
+            </div>
+        </div>
+        <button type="submit" class="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">필터 적용</button>
+    </form>
+
+    <!-- 총 트래픽 금액 표시 -->
+    <div class="text-xl font-bold mb-6">
+        총 트래픽 금액: {{ total_cost|intcomma }}원
+    </div>
+
+    <!-- 그래프 컨테이너 -->
+    <div id="costChartContainer" class="relative h-96">
+        <canvas id="costChart"></canvas>
+    </div>
+</div>
+
+<!-- Tailwind CSS 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+<!-- Chart.js 및 Date Range Picker 스크립트 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Moment.js -->
+<script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+<!-- Date Range Picker JS -->
+<script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+<!-- Date Range Picker CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+
+<script>
+    // 날짜 범위 선택기 초기화
+    $(function() {
+        var start = moment("{{ start_date }}");
+        var end = moment("{{ end_date }}");
+
+        function cb(start, end) {
+            $('#date_range').val(start.format('YYYY-MM-DD') + ' - ' + end.format('YYYY-MM-DD'));
+            // 숨겨진 인풋에 값을 설정하여 서버로 전송
+            $('#start_date').val(start.format('YYYY-MM-DD'));
+            $('#end_date').val(end.format('YYYY-MM-DD'));
+        }
+
+        $('#date_range').daterangepicker({
+            startDate: start,
+            endDate: end,
+            ranges: {
+                '최근 7일': [moment().subtract(6, 'days'), moment()],
+                '최근 30일': [moment().subtract(29, 'days'), moment()],
+                '최근 90일': [moment().subtract(89, 'days'), moment()],
+                '이번 달': [moment().startOf('month'), moment().endOf('month')],
+                '저번 달': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+            },
+            locale: {
+                format: 'YYYY-MM-DD',
+                separator: ' - ',
+                applyLabel: '적용',
+                cancelLabel: '취소',
+                customRangeLabel: '직접 선택',
+                daysOfWeek: ['일','월','화','수','목','금','토'],
+                monthNames: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
+                firstDay: 0
+            }
+        }, cb);
+
+        cb(start, end);
+    });
+
+    // Chart.js 그래프 초기화
+    var ctx = document.getElementById('costChart').getContext('2d');
+    var dateLabels = {{ date_labels_json|safe }};
+    var costData = {{ cost_data_json|safe }};
+
+    var chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: dateLabels,
+            datasets: [{
+                label: '트래픽 비용',
+                data: costData,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'category',
+                    title: {
+                        display: true,
+                        text: '날짜'
+                    },
+                    ticks: {
+                        autoSkip: true,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: '비용 (원)'
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            var value = context.parsed.y;
+                            return '비용: ' + value.toLocaleString() + '원';
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+
+{% endblock %}

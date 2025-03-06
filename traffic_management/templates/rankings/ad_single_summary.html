@@ -1,0 +1,357 @@
+<!-- templates/rankings/ad_single_summary.html -->
+
+{% extends 'traffic_management_base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block content %}
+<style>
+    .tooltip-container {
+        position: relative;
+        display: inline-block;
+    }
+
+    .tooltip {
+        visibility: hidden;
+        opacity: 0;
+        position: fixed;
+        background-color: black;
+        color: white;
+        text-align: center;
+        border-radius: 5px;
+        padding: 5px 10px;
+        z-index: 1000;
+        white-space: normal;
+        max-width: 200px;
+        transition: opacity 0.3s ease-in-out;
+    }
+
+    .memo-text {
+        display: inline-block;
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+</style>
+
+<div class="py-10 px-4">
+    <h1 class="text-3xl font-bold mb-6">광고 단건 정리</h1>
+
+    
+    <!-- <form method="get" id="filterForm" class="mb-4">
+        <div class="flex items-center space-x-2">
+            <label for="date_range" class="font-semibold">기간 선택:</label>
+            <input type="text" id="date_range" name="date_range" class="border rounded p-1" />
+            <input type="hidden" id="start_date" name="start_date" value="{{ start_date|date:'Y-m-d' }}" />
+            <input type="hidden" id="end_date" name="end_date" value="{{ end_date|date:'Y-m-d' }}" />
+        </div>
+    </form> -->
+
+    <form method="post" action="{% url 'rankings:ad_bulk_edit' %}" onsubmit="validateAdForm(event)">
+        {% csrf_token %}
+        <!-- 상단 버튼 및 페이지 당 항목 수 선택 -->
+        <div class="flex justify-between items-center mb-4">
+            <div class="flex space-x-2">
+                <a href="{% url 'rankings:ad_create' %}" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">광고 등록</a>
+                <button type="submit" name="edit_ads" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">광고 수정</button>
+                <button type="button" onclick="deleteSelectedAds()" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">선택 삭제</button>
+            </div>
+            <!-- 페이지 당 항목 수 선택 -->
+            <div class="flex items-center">
+                <label for="per_page" class="mr-2">페이지 당 항목 수:</label>
+                <select id="per_page" name="per_page" onchange="changePerPage(this.value)" class="border rounded p-1">
+                    {% for option in per_page_options %}
+                        <option value="{{ option }}" {% if option == selected_per_page %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="rounded-md border" style="max-height: 600px; overflow-y: auto; position: relative;">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <!-- 테이블 헤더 고정 -->
+                        <th class="sticky top-0 bg-gray-50 z-10 w-12 px-4 py-2">
+                            <input type="checkbox" id="select-all" class="form-checkbox h-4 w-4 text-blue-600">
+                        </th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">번호</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">진행기간</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">채널</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">광고명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">카테고리</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">상품명</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">매출</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">마진</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">비용</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">이익</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">마진율</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">수익률</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">ROAS</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">ROI</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">메모</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">페이지 링크</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-4 py-2 text-center">업체</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for ad in ads %}
+                    <tr class="hover:bg-gray-100 cursor-pointer" onclick="toggleCheckbox(this)">
+                        <td class="px-6 py-4 text-center">
+                            <input type="checkbox" name="ad_ids" value="{{ ad.id }}" class="form-checkbox h-4 w-4 text-blue-600">
+                        </td>
+                        <!-- 번호 표시 추가 -->
+                        <td class="px-4 py-2 text-center">{{ ads.start_index|add:forloop.counter0 }}</td>
+                        <td class="px-4 py-2 text-center">
+                            {{ ad.start_date|date:"Y-m-d" }} ~ {{ ad.end_date|date:"Y-m-d" }}
+                        </td>
+                        <td class="px-4 py-2 text-center">{{ ad.channel }}</td>
+                        <td class="px-4 py-2 text-center">{{ ad.ad_name }}</td>
+                        <td class="px-4 py-2 text-center">{{ ad.category }}</td>
+                        <td class="px-4 py-2 text-center">{{ ad.product_name }}</td>
+                        <td class="px-4 py-2 text-center">{{ ad.sales|floatformat:"0"|intcomma }}</td>
+                        <td class="px-4 py-2 text-center">{{ ad.margin|floatformat:"0"|intcomma }}</td>
+                        <td class="px-4 py-2 text-center">{{ ad.cost|floatformat:"0"|intcomma }}</td>
+                        <td class="px-4 py-2 text-center">{{ ad.profit|floatformat:"0"|intcomma }}</td>
+                        <td class="px-4 py-2 text-center">{{ ad.margin_rate|floatformat:2 }}%</td>
+                        <td class="px-4 py-2 text-center">{{ ad.profit_rate|floatformat:2 }}%</td>
+                        <td class="px-4 py-2 text-center">{{ ad.roas|floatformat:2 }}%</td>
+                        <td class="px-4 py-2 text-center
+                            {% if ad.roi < 0 %}
+                                bg-red-500 text-white
+                            {% elif ad.roi <= 100 %}
+                                bg-green-200 text-black
+                            {% else %}
+                                bg-green-500 text-white
+                            {% endif %}
+                        ">
+                            {{ ad.roi|floatformat:2 }}%
+                        </td>
+                        <!-- 메모 컬럼 수정 -->
+                        <td class="px-4 py-2 text-center">
+                            <div class="memo-text" data-memo="{{ ad.memo }}" onclick="event.stopPropagation();">
+                                {{ ad.memo|truncatechars:20 }}
+                            </div>
+                        </td>
+                        <!-- 페이지 링크 수정 -->
+                        <td class="px-4 py-2 text-center">
+                            {% if ad.page_link %}
+                                <a href="{{ ad.page_link }}" target="_blank" class="text-blue-500 hover:underline">링크</a>
+                            {% else %}
+                                <!-- 링크가 없을 때 아무 것도 표시하지 않음 -->
+                            {% endif %}
+                        </td>
+                        <!-- 업체 컬럼 수정 -->
+                        <td class="px-4 py-2 text-center">
+                            <div class="memo-text" data-memo="{{ ad.company }}" onclick="event.stopPropagation();">
+                                {{ ad.company|truncatechars:20 }}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="18" class="px-6 py-4 text-center">광고 데이터가 없습니다.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <!-- 페이지네이션 -->
+        <div class="flex justify-center mt-4">
+            <nav class="flex items-center space-x-1" aria-label="Pagination">
+                <!-- 이전 페이지 버튼 -->
+                {% if ads.has_previous %}
+                <a href="?page={{ ads.previous_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                    <span class="material-icons">chevron_left</span>
+                </a>
+                {% else %}
+                <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                    <span class="material-icons">chevron_left</span>
+                </span>
+                {% endif %}
+
+                <!-- 페이지 번호 -->
+                {% for num in ads.paginator.page_range %}
+                    {% if num > ads.number|add:'-3' and num < ads.number|add:'3' %}
+                        {% if num == ads.number %}
+                        <span class="px-3 py-2 rounded-md bg-blue-500 text-white">{{ num }}</span>
+                        {% else %}
+                        <a href="?page={{ num }}&per_page={{ selected_per_page }}" class="px-3 py-2 rounded-md hover:bg-gray-200">{{ num }}</a>
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+
+                <!-- 다음 페이지 버튼 -->
+                {% if ads.has_next %}
+                <a href="?page={{ ads.next_page_number }}&per_page={{ selected_per_page }}" class="p-2 rounded-md hover:bg-gray-200">
+                    <span class="material-icons">chevron_right</span>
+                </a>
+                {% else %}
+                <span class="p-2 rounded-md opacity-50 cursor-not-allowed">
+                    <span class="material-icons">chevron_right</span>
+                </span>
+                {% endif %}
+            </nav>
+        </div>
+    </form>
+</div>
+
+<!-- Tailwind CSS 및 필요한 스크립트 추가 -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Moment.js -->
+<script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+<!-- Date Range Picker JS -->
+<script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+<!-- Date Range Picker CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+<!-- Material Icons -->
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+<!-- 툴팁 관련 스크립트 추가 -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const memoElements = document.querySelectorAll('.memo-text');
+    let tooltip = document.createElement('div');
+    tooltip.className = 'tooltip';
+    document.body.appendChild(tooltip);
+
+    memoElements.forEach(element => {
+        element.addEventListener('mouseenter', function(event) {
+            const memoText = event.target.getAttribute('data-memo');
+            tooltip.textContent = memoText;
+            tooltip.style.visibility = 'visible';
+            tooltip.style.opacity = '1';
+        });
+
+        element.addEventListener('mousemove', function(event) {
+            const offsetX = 15; // 기본적으로 오른쪽으로 띄움
+            const offsetY = -30; // 위로 띄움
+            let tooltipWidth = tooltip.offsetWidth;
+            let screenWidth = window.innerWidth;
+
+            // 툴팁 위치 계산
+            let leftPosition = event.clientX + offsetX;
+            if (leftPosition + tooltipWidth > screenWidth) {
+                // 화면을 넘어가는 경우 왼쪽으로 위치 조정
+                leftPosition = event.clientX - tooltipWidth - offsetX;
+            }
+
+            tooltip.style.left = `${leftPosition}px`;
+            tooltip.style.top = `${event.clientY + offsetY}px`;
+        });
+
+        element.addEventListener('mouseleave', function() {
+            tooltip.style.visibility = 'hidden';
+            tooltip.style.opacity = '0';
+        });
+    });
+});
+</script>
+<script>
+    // 날짜 범위 선택기 초기화
+    $(function() {
+        // 날짜 데이터 초기화
+        var start = moment("{{ start_date|date:'YYYY-MM-DD' }}", 'YYYY-MM-DD');
+        var end = moment("{{ end_date|date:'YYYY-MM-DD' }}", 'YYYY-MM-DD');
+
+        function cb(start, end) {
+            $('#date_range').val(start.format('YYYY-MM-DD') + ' - ' + end.format('YYYY-MM-DD'));
+            $('#start_date').val(start.format('YYYY-MM-DD'));
+            $('#end_date').val(end.format('YYYY-MM-DD'));
+        }
+
+        $('#date_range').daterangepicker({
+            startDate: start,
+            endDate: end,
+            autoUpdateInput: false,
+            locale: {
+                format: 'YYYY-MM-DD',
+                separator: ' - ',
+                applyLabel: '적용',
+                cancelLabel: '취소',
+                customRangeLabel: '직접 선택',
+                daysOfWeek: ['일','월','화','수','목','금','토'],
+                monthNames: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
+                firstDay: 0
+            }
+        }, cb);
+
+        // 초기 값 설정
+        cb(start, end);
+
+        // '적용' 버튼 클릭 시 폼 자동 제출
+        $('#date_range').on('apply.daterangepicker', function(ev, picker) {
+            // 선택된 날짜 값 설정
+            cb(picker.startDate, picker.endDate);
+            // 폼 제출
+            $('#filterForm').submit();
+        });
+
+        // '취소' 버튼 클릭 시 동작 (선택 사항)
+        $('#date_range').on('cancel.daterangepicker', function(ev, picker) {
+            // 입력 필드 비우기 또는 기본 값으로 재설정
+            $(this).val('');
+            $('#start_date').val('');
+            $('#end_date').val('');
+        });
+    });
+</script>
+<script>
+    function validateAdForm(event) {
+        const checkboxes = document.querySelectorAll('input[name="ad_ids"]:checked');
+        if (checkboxes.length === 0) {
+            alert("광고를 선택해주세요.");
+            event.preventDefault();
+        }
+    }
+
+    function deleteSelectedAds() {
+        if (confirm("선택한 광고를 삭제하시겠습니까?")) {
+            var form = document.createElement('form');
+            form.method = 'post';
+            form.action = "{% url 'rankings:ad_delete_multiple' %}";
+            var csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrfmiddlewaretoken';
+            csrfInput.value = '{{ csrf_token }}';
+            form.appendChild(csrfInput);
+            var selectedAds = document.querySelectorAll('input[name="ad_ids"]:checked');
+            selectedAds.forEach(function(ad) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'ad_ids';
+                input.value = ad.value;
+                form.appendChild(input);
+            });
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+
+    // 체크박스 전체 선택 기능
+    document.getElementById('select-all').onclick = function() {
+        var checkboxes = document.getElementsByName('ad_ids');
+        for (var checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    };
+
+    function toggleCheckbox(row) {
+        var checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+        }
+    }
+
+    function changePerPage(value) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('per_page', value);
+        urlParams.set('page', 1); // 페이지 번호를 1로 초기화
+        window.location.search = urlParams.toString();
+    }
+</script>
+
+{% endblock %}

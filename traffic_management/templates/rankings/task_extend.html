@@ -1,0 +1,12 @@
+{% extends 'traffic_management_base.html' %}
+
+{% block content %}
+<h2>작업 연장</h2>
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="task_ids" value="{{ task_ids }}">
+    <label for="new_end_date">새로운 종료일자:</label>
+    <input type="date" name="new_end_date" required>
+    <button type="submit">연장하기</button>
+</form>
+{% endblock %}
