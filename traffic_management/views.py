@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, date
 from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
 from django.utils.encoding import smart_str
+from openpyxl import load_workbook  # 엑셀 파일 파싱을 위해
 
 
 
@@ -360,6 +361,163 @@ def task_register(request):
         }
         return render(request, 'rankings/task_register.html', context)
     
+@login_required
+def task_upload_excel_data(request):
+    if request.method == 'POST':
+        excel_file = request.FILES.get('excel_file')
+        if not excel_file:
+            return JsonResponse({'success': False, 'error': '엑셀 파일이 전송되지 않았습니다.'})
+
+        try:
+            # 1) 엑셀 파일 파싱
+            wb = load_workbook(filename=excel_file, data_only=True)
+            ws = wb.active  # 활성화된 sheet 하나를 사용 (여러 시트라면 추가 로직 필요)
+
+            # 2) 엑셀 내 데이터 추출 예시
+            #    예: A열: 상품 ID / B열: 카테고리 / C열: 키워드 / D열: URL / ...
+            #    원하는 형식으로 엑셀 구조를 정한 다음, 파싱 로직 작성
+            tasks_to_create = []
+            for row in ws.iter_rows(min_row=2, values_only=True):  # 헤더 제외, 2행부터
+                product_id = row[0]
+                category = row[1]
+                keyword_name = row[2]
+                url = row[3]
+                memo = row[4]
+                product_name = row[5]
+                ticket_count = row[6]
+                available_start_date = row[7]  # datetime
+                available_end_date = row[8]
+
+                # product_id에 맞는 Product 객체 가져오기
+                try:
+                    product = Product.objects.get(id=product_id)
+                except Product.DoesNotExist:
+                    # 존재하지 않는 product면 무시하거나, 로직 추가
+                    continue
+
+                # NAVER 랭킹 조회 로직 재사용 (혹은 별도 함수화)
+                start_rank = get_naver_rank(keyword_name, url)
+                if start_rank == -1 or start_rank > 1000:
+                    start_rank = None
+
+                # Keyword 생성 or get
+                keyword_obj, created = Keyword.objects.get_or_create(name=keyword_name)
+
+                # 작업 생성 준비
+                tasks_to_create.append({
+                    'product': product,
+                    'category': category,
+                    'keyword': keyword_obj,
+                    'url': url,
+                    'start_rank': start_rank,
+                    'yesterday_rank': start_rank,
+                    'current_rank': start_rank,
+                    'difference_rank': 0,
+                    'memo': memo,
+                    'product_name': product_name,
+                    'ticket_count': ticket_count if ticket_count else 0,
+                    'available_start_date': available_start_date,
+                    'available_end_date': available_end_date,
+                })
+
+            # 3) 실제 DB에 Task 생성 & Ranking 생성
+            for task_data in tasks_to_create:
+                task = Task.objects.create(**task_data)
+                Ranking.objects.create(
+                    task=task,
+                    product=task.product,
+                    keyword=task.keyword,
+                    rank=task.start_rank if task.start_rank is not None else 1000,
+                    date_time=timezone.now()
+                )
+
+            return JsonResponse({'success': True})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    else:
+        return JsonResponse({'success': False, 'error': 'POST 요청이 아닙니다.'})
+
+
+@login_required
+def download_bulk_traffic_sample_excel(request):
+    # 오늘 날짜 기준 내일과 10일 뒤 날짜 계산
+    today = timezone.localdate()
+    start_date = today + timedelta(days=1)
+    end_date = today + timedelta(days=10)
+
+    # GET 파라미터에서 선택된 트래픽 ID 가져오기
+    traffic_id = request.GET.get('traffic_id')
+    traffic = None
+    if traffic_id:
+        try:
+            traffic = Traffic.objects.get(id=traffic_id)
+        except Traffic.DoesNotExist:
+            traffic = None
+
+    # 워크북 생성
+    wb = openpyxl.Workbook()
+    ws = wb.active
+
+    # 헤더 설정
+    headers = [
+        '상품ID', 
+        '카테고리', 
+        '순위조회키워드', 
+        'URL', 
+        '메모', 
+        '상품명', 
+        '이용권수', 
+        '이용가능 시작일자', 
+        '이용가능 종료일자'
+    ]
+    ws.append(headers)
+
+    # DB에 등록된 모든 상품 조회
+    products = Product.objects.all()
+    for product in products:
+        # 트래픽 선택에 따라 URL 결정
+        if traffic:
+            if traffic.type == '단일':
+                url = product.single_product_link or ''
+            elif traffic.type == '원부':
+                url = product.original_link or ''
+            else:
+                url = ''
+        else:
+            # 트래픽 미선택 시 기본적으로 단일 링크 사용
+            url = product.single_product_link or ''
+
+        row = [
+            product.id,                          # 상품ID
+            "네이버",                            # 카테고리 (항상 네이버)
+            product.search_keyword or '',        # 순위조회키워드
+            url,                                 # URL (트래픽에 따른 단일/원부 선택)
+            '',                                  # 메모 (빈 값)
+            product.name or '',                  # 상품명
+            1,                                   # 이용권수 (항상 1)
+            start_date.strftime('%Y-%m-%d'),      # 이용가능 시작일자 (내일)
+            end_date.strftime('%Y-%m-%d'),        # 이용가능 종료일자 (10일 뒤)
+        ]
+        ws.append(row)
+
+    # 열 너비 자동 조정
+    for column_cells in ws.columns:
+        max_length = 0
+        for cell in column_cells:
+            if cell.value:
+                max_length = max(max_length, len(str(cell.value)))
+        column_letter = column_cells[0].column_letter
+        ws.column_dimensions[column_letter].width = max_length + 2
+
+    # 엑셀 파일 응답 생성
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename=bulk_task_sample.xlsx'
+    wb.save(response)
+    return response
+
+
 
 def build_initial_data_from_post(request, product_ids):
     initial_data = {}
@@ -950,7 +1108,7 @@ def traffic_register(request):
                     inflow_count = row[4]
                     link = row[5].strip() if row[5] else ''  # 링크가 없으면 빈 문자열 처리
                     vendor = row[6] if len(row) > 6 else ''  # 업체명 (추가된 부분)
-                    
+                    type_value = row[7] if len(row) > 7 else ''  # 노출방식 (추가된 부분)
                     # 필수 값 검증
                     if not (name and price and method and days and inflow_count):
                         continue  # 필수 값이 없으면 건너뜁니다
@@ -975,7 +1133,8 @@ def traffic_register(request):
                         'days': days,
                         'inflow_count': inflow_count,
                         'link': link,
-                        'vendor': vendor,  # 추가된 부분
+                        'vendor': vendor,  
+                        'type': type_value,  # 추가된 부분
 
                     })
 
@@ -996,6 +1155,7 @@ def traffic_register(request):
             inflow_counts = request.POST.getlist('inflow_count')
             links = request.POST.getlist('link')
             vendors = request.POST.getlist('vendor')  
+            types = request.POST.getlist('type')  # 추가된 부분: 노출방식
             for i in range(len(names)):
                 name = names[i]
                 price = prices[i]
@@ -1004,6 +1164,7 @@ def traffic_register(request):
                 inflow_count = inflow_counts[i]
                 link = links[i].strip() if links[i] else ''  # 링크가 없으면 빈 문자열로 저장
                 vendor = vendors[i].strip() if vendors[i] else ''  # 링크가 없으면 빈 문자열로 저장
+                type_value = types[i].strip() if types[i] else ''  # 추가된 부분: 노출방식
 
                 # 필수 값 검증
                 if not (name and price and method and days and inflow_count):
@@ -1030,6 +1191,7 @@ def traffic_register(request):
                     inflow_count=inflow_count,
                     link=link or '',
                     vendor=vendor,  # 추가된 부분
+                    type=type_value,  # 추가된 부분
 
                 )
             messages.success(request, "트래픽을 성공적으로 등록했습니다.")
@@ -1039,11 +1201,6 @@ def traffic_register(request):
         return render(request, 'rankings/traffic_register.html')
 
 
-
-@login_required
-def traffic_list(request):
-    traffics = Traffic.objects.all()
-    return render(request, 'rankings/traffic_list.html', {'traffics': traffics})
 
 @login_required
 def traffic_delete(request):
@@ -1345,11 +1502,11 @@ def traffic_cost_summary(request):
 
 
 # 로그인한 사용자만 접근 가능
-@login_required
-def my_data_view(request):
-    # 로그인한 사용자 본인의 데이터만 가져오기
-    user_data = MyModel.objects.all()
-    return render(request, 'my_template.html', {'user_data': user_data})
+# @login_required
+# def my_data_view(request):
+#     # 로그인한 사용자 본인의 데이터만 가져오기
+#     user_data = MyModel.objects.all()
+#     return render(request, 'my_template.html', {'user_data': user_data})
 
 @login_required
 def dashboard_view(request):
@@ -1385,16 +1542,16 @@ def product_list_view(request):
 
     # 페이지네이션 설정
     page = request.GET.get('page', 1)
-    per_page = request.GET.get('per_page', 10)
-    per_page_options = [10, 30, 50, 100]
+    per_page = request.GET.get('per_page', 100)
+    per_page_options = [100, 300, 500, 1000]
 
     # per_page 값 검증
     try:
         per_page = int(per_page)
         if per_page not in per_page_options:
-            per_page = 10
+            per_page = 100
     except ValueError:
-        per_page = 10
+        per_page = 100
 
     paginator = Paginator(products_list, per_page)
 
@@ -1411,6 +1568,7 @@ def product_list_view(request):
         'products': products,
         'per_page_options': per_page_options,
         'selected_per_page': per_page,
+        'traffics': Traffic.objects.all(),  # Traffic 객체들을 추가
     }
 
     return render(request, 'rankings/product_list.html', context)
@@ -1437,16 +1595,16 @@ def traffic_list(request):
 
     # 페이지네이션 설정
     page = request.GET.get('page', 1)
-    per_page = request.GET.get('per_page', 10)
-    per_page_options = [10, 30, 50, 100]
+    per_page = request.GET.get('per_page', 100)
+    per_page_options = [100, 300, 500, 1000]
 
     # per_page 값 검증
     try:
         per_page = int(per_page)
         if per_page not in per_page_options:
-            per_page = 10
+            per_page = 100
     except ValueError:
-        per_page = 10
+        per_page = 100
 
     paginator = Paginator(traffics_list, per_page)
 

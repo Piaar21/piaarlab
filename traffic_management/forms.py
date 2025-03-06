@@ -56,25 +56,26 @@ class ProductForm(forms.ModelForm):
 class TrafficForm(forms.ModelForm):
     class Meta:
         model = Traffic
-        fields = ['id', 'name', 'price', 'method', 'inflow_count', 'days', 'link', 'vendor']
+        fields = ['id', 'name', 'price', 'method', 'type', 'inflow_count', 'days', 'link', 'vendor']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded'}),
             'price': forms.NumberInput(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded'}),
             'method': forms.Select(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded bg-white'}),
+            'type': forms.Select(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded bg-white'}),
             'inflow_count': forms.NumberInput(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded'}),
             'days': forms.NumberInput(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded'}),
             'link': forms.URLInput(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded'}),
-            'vendor': forms.TextInput(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded'}),  # 추가된 부분
-
+            'vendor': forms.TextInput(attrs={'class': 'w-full px-2 py-1 border border-gray-300 rounded'}),
         }
         labels = {
             'name': '트래픽명',
             'price': '금액',
             'method': '방식',
+            'type': '노출방식',
             'inflow_count': '유입수',
             'days': '일자',
             'link': '링크',
-            'vendor': '업체명',  # 추가된 부분            
+            'vendor': '업체명',
         }
 
 class UserProfileForm(forms.ModelForm):

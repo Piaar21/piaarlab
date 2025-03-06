@@ -22,6 +22,7 @@
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">트래픽명</th>
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">금액</th>
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">방식</th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">노출방식</th> <!-- 추가된 부분 -->
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">일자</th>
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">유입수</th>
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">링크</th>
@@ -81,6 +82,12 @@
                                     <option value="리워드">리워드</option>
                                     <option value="복합플">복합플</option>
                                     <!-- 필요한 방식들을 추가하세요 -->
+                                </select>
+                            </td>
+                            <td>
+                                <select name="type" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                                    <option value="원부" {% if traffic.type == "원부" %}selected{% endif %}>원부</option>
+                                    <option value="단일" {% if traffic.type == "단일" %}selected{% endif %}>단일</option>
                                 </select>
                             </td>
                             <td class="px-6 py-4 text-center">

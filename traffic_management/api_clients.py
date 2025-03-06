@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from .models import UserProfile
 from asgiref.sync import async_to_sync
 from decouple import config
+from proxy_config import proxies
 
 logger = logging.getLogger(__name__)
 
