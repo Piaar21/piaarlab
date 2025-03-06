@@ -371,40 +371,48 @@ def task_upload_excel_data(request):
         try:
             # 1) 엑셀 파일 파싱
             wb = load_workbook(filename=excel_file, data_only=True)
-            ws = wb.active  # 활성화된 sheet 하나를 사용 (여러 시트라면 추가 로직 필요)
+            ws = wb.active  # 활성 시트 사용
 
-            # 2) 엑셀 내 데이터 추출 예시
-            #    예: A열: 상품 ID / B열: 카테고리 / C열: 키워드 / D열: URL / ...
-            #    원하는 형식으로 엑셀 구조를 정한 다음, 파싱 로직 작성
+            # 2) 엑셀 내 데이터 추출
+            # 엑셀 열 순서:
+            # 0: 상품ID, 1: 상품명, 2: 카테고리, 3: 순위조회키워드,
+            # 4: URL, 5: 메모, 6: 트래픽명, 7: 이용권수, 8: 이용가능 시작일자, 9: 이용가능 종료일자
             tasks_to_create = []
             for row in ws.iter_rows(min_row=2, values_only=True):  # 헤더 제외, 2행부터
                 product_id = row[0]
-                category = row[1]
-                keyword_name = row[2]
-                url = row[3]
-                memo = row[4]
-                product_name = row[5]
-                ticket_count = row[6]
-                available_start_date = row[7]  # datetime
-                available_end_date = row[8]
+                product_name_from_excel = row[1]
+                category = row[2]
+                keyword_name = row[3]
+                url = row[4]
+                memo = row[5]
+                traffic_name = row[6]
+                ticket_count = row[7]
+                available_start_date = row[8]  # datetime 또는 문자열
+                available_end_date = row[9]
 
                 # product_id에 맞는 Product 객체 가져오기
                 try:
                     product = Product.objects.get(id=product_id)
                 except Product.DoesNotExist:
-                    # 존재하지 않는 product면 무시하거나, 로직 추가
-                    continue
+                    continue  # 존재하지 않으면 건너뜁니다.
 
-                # NAVER 랭킹 조회 로직 재사용 (혹은 별도 함수화)
+                # 트래픽명으로 Traffic 객체 조회
+                traffic = None
+                if traffic_name:
+                    try:
+                        traffic = Traffic.objects.get(name=traffic_name)
+                    except Traffic.DoesNotExist:
+                        traffic = None  # 없으면 None으로 둡니다.
+
+                # NAVER 랭킹 조회 로직 재사용
                 start_rank = get_naver_rank(keyword_name, url)
                 if start_rank == -1 or start_rank > 1000:
                     start_rank = None
 
-                # Keyword 생성 or get
+                # Keyword 생성 또는 가져오기
                 keyword_obj, created = Keyword.objects.get_or_create(name=keyword_name)
 
-                # 작업 생성 준비
-                tasks_to_create.append({
+                task_data = {
                     'product': product,
                     'category': category,
                     'keyword': keyword_obj,
@@ -414,13 +422,15 @@ def task_upload_excel_data(request):
                     'current_rank': start_rank,
                     'difference_rank': 0,
                     'memo': memo,
-                    'product_name': product_name,
+                    'product_name': product_name_from_excel,  # 엑셀에서 읽은 상품명 사용
                     'ticket_count': ticket_count if ticket_count else 0,
                     'available_start_date': available_start_date,
                     'available_end_date': available_end_date,
-                })
+                    'traffic': traffic,  # 조회된 트래픽 할당
+                }
+                tasks_to_create.append(task_data)
 
-            # 3) 실제 DB에 Task 생성 & Ranking 생성
+            # 3) 실제 DB에 Task 및 Ranking 생성
             for task_data in tasks_to_create:
                 task = Task.objects.create(**task_data)
                 Ranking.objects.create(
@@ -461,11 +471,12 @@ def download_bulk_traffic_sample_excel(request):
     # 헤더 설정
     headers = [
         '상품ID', 
+        '상품명', 
         '카테고리', 
         '순위조회키워드', 
         'URL', 
         '메모', 
-        '상품명', 
+        '트래픽명',
         '이용권수', 
         '이용가능 시작일자', 
         '이용가능 종료일자'
@@ -474,6 +485,7 @@ def download_bulk_traffic_sample_excel(request):
 
     # DB에 등록된 모든 상품 조회
     products = Product.objects.all()
+
     for product in products:
         # 트래픽 선택에 따라 URL 결정
         if traffic:
@@ -489,11 +501,12 @@ def download_bulk_traffic_sample_excel(request):
 
         row = [
             product.id,                          # 상품ID
+            product.name or '',                  # 상품명
             "네이버",                            # 카테고리 (항상 네이버)
             product.search_keyword or '',        # 순위조회키워드
             url,                                 # URL (트래픽에 따른 단일/원부 선택)
             '',                                  # 메모 (빈 값)
-            product.name or '',                  # 상품명
+            traffic.name or '',
             1,                                   # 이용권수 (항상 1)
             start_date.strftime('%Y-%m-%d'),      # 이용가능 시작일자 (내일)
             end_date.strftime('%Y-%m-%d'),        # 이용가능 종료일자 (10일 뒤)
