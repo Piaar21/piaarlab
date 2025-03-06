@@ -506,7 +506,7 @@ def download_bulk_traffic_sample_excel(request):
             product.search_keyword or '',        # 순위조회키워드
             url,                                 # URL (트래픽에 따른 단일/원부 선택)
             '',                                  # 메모 (빈 값)
-            traffic.name or '',
+            traffic.name if traffic else '',     # 트래픽명 (선택된 트래픽의 이름, 없으면 빈 값)
             1,                                   # 이용권수 (항상 1)
             start_date.strftime('%Y-%m-%d'),      # 이용가능 시작일자 (내일)
             end_date.strftime('%Y-%m-%d'),        # 이용가능 종료일자 (10일 뒤)
