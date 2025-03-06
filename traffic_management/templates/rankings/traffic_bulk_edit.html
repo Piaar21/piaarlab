@@ -23,6 +23,7 @@
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">트래픽명<span class="text-red-500">*</span></th>
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">금액<span class="text-red-500">*</span></th>
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">방식<span class="text-red-500">*</span></th>
+                        <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">노출방식<span class="text-red-500">*</span></th> <!-- 추가된 부분 -->
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">일자<span class="text-red-500">*</span></th>
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">유입수<span class="text-red-500">*</span></th>
                         <th class="px-6 py-3 text-center sticky top-0 bg-gray-50">링크</th>
@@ -41,6 +42,9 @@
                         </td>
                         <td class="px-6 py-4 text-center">
                             {{ form.method }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            {{ form.type }}
                         </td>
                         <td class="px-6 py-4 text-center">
                             {{ form.days }}

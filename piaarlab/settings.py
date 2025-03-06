@@ -60,9 +60,9 @@ SECRET_KEY = 'django-insecure-n4(7c9kkttt1r%pq%aa=a!!+^w9)3^9z@8vc8=(n9o()*+27n3
 # DEBUG = True
 
 FIELD_ENCRYPTION_KEY = config('FIELD_ENCRYPTION_KEY',default=None)
-# logger.info(f"FIELD_ENCRYPTION_KEY: {FIELD_ENCRYPTION_KEY}")
-# if not FIELD_ENCRYPTION_KEY:
-#     raise Exception("FIELD_ENCRYPTION_KEY를 환경 변수에 설정해주세요.")
+logger.info(f"FIELD_ENCRYPTION_KEY: {FIELD_ENCRYPTION_KEY}")
+if not FIELD_ENCRYPTION_KEY:
+    raise Exception("FIELD_ENCRYPTION_KEY를 환경 변수에 설정해주세요.")
 
 
 

@@ -38,6 +38,7 @@
                         <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">트래픽명</th>
                         <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">금액</th>
                         <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">방식</th>
+                        <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">노출방식</th>
                         <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">일자</th>
                         <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">유입수</th>
                         <th class="sticky top-0 bg-gray-50 z-10 px-6 py-3 text-center">링크</th>
@@ -55,6 +56,7 @@
                         <td class="px-6 py-4 text-center">{{ traffic.name }}</td>
                         <td class="px-6 py-4 text-center">{{ traffic.price }}</td>
                         <td class="px-6 py-4 text-center">{{ traffic.get_method_display }}</td>
+                        <td class="px-6 py-4 text-center">{{ traffic.type }}</td>
                         <td class="px-6 py-4 text-center">{{ traffic.days }}</td>
                         <td class="px-6 py-4 text-center">{{ traffic.inflow_count }}</td>
                         <td class="px-6 py-4 text-center">
@@ -66,6 +68,8 @@
                                 {{ traffic.link|default_if_none:"" }}
                             {% endif %}
                         </td>
+                        
+                        
                         <td class="px-6 py-4 text-center">{{ traffic.vendor|default_if_none:"" }}</td>
                         <td class="px-6 py-4 text-center">{{ traffic.created_at|date:"Y-m-d" }}</td>
                     </tr>

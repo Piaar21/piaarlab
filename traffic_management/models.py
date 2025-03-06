@@ -47,6 +47,12 @@ class Traffic(models.Model):
         ('복합플', '복합플'),
         # 필요한 방식들을 추가하세요
     ]
+    TYPE_CHOICES = [
+        ('단일', '단일'),
+        ('원부', '원부'),
+        
+        # 필요한 방식들을 추가하세요
+    ]
 
     name = models.CharField(max_length=255, verbose_name='트래픽명')
     price = models.DecimalField(max_digits=10, decimal_places=0, verbose_name='금액')
@@ -57,7 +63,7 @@ class Traffic(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='등록일자')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일자')
     vendor = models.CharField(max_length=255, blank=True, null=True, verbose_name='업체명')  # 추가된 필드    
-
+    type = models.CharField(max_length=100, choices=TYPE_CHOICES, blank=True, null=True, verbose_name='단일,원부')  # 추가된 필드
 
     def __str__(self):
         return self.name
