@@ -13,7 +13,9 @@ class TaskAdmin(admin.ModelAdmin):
         'difference_rank', 
         'is_completed', 
         'traffic', 
-        'created_at'
+        'created_at',
+        'available_start_date',
+        'available_end_date',
     )
     list_filter = (
         'category', 
