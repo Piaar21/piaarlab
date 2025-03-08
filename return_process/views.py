@@ -246,14 +246,20 @@ def upload_returns_excel(request):
         if not excel_file:
             logger.warning("엑셀 파일이 선택되지 않았습니다.")
             return JsonResponse({'success': False, 'message': '엑셀 파일을 선택해주세요.'})
-        
+        import unicodedata
+
+        # 엑셀 파일명에 "API_반품" 문자열 포함 여부 확인
+        file_name = unicodedata.normalize('NFC', excel_file.name)
+        if "API_반품" not in file_name:
+            logger.warning("잘못된 엑셀 파일명: %s", file_name)
+            return JsonResponse({'success': False, 'message': '파일명을 확인하세요 API_반품이 파일명에 포함되어야 합니다.'})
         try:
             wb = openpyxl.load_workbook(excel_file, data_only=True)
             logger.debug("셀러툴 엑셀 파일 로드 성공")
         except Exception as e:
             logger.error(f"엑셀 파일 로드 오류: {str(e)}")
             return JsonResponse({'success': False, 'message': '유효한 엑셀 파일이 아닙니다.'})
-
+        
         ws = wb.active
 
         success_items = []
@@ -328,22 +334,17 @@ def upload_returns_excel(request):
 
             # 특정 스토어일 경우 platform='Naver' 설정
             naver_stores = ["니뜰리히", "노는개최고양", "아르빙", "수비다"]
-            # store_name이 매핑된 후의 값으로 확인
-            # 예: "노는 개 최고양" -> "노는개최고양" 후에 체크
             if store_name in naver_stores:
                 platform_val = 'Naver'
             else:
-                platform_val = ''  # 혹은 필요하다면 다른 값
+                platform_val = ''
 
-            # 기존에 platform='Naver'로 제한했던 get_or_create 제거
             item, created = ReturnItem.objects.get_or_create(
                 order_number=order_number,
                 option_code=option_code
             )
             
-            # platform 설정
             item.platform = platform_val
-
             item.processing_status = processing_status
             item.claim_type = claim_type
             item.store_name = store_name
@@ -370,7 +371,6 @@ def upload_returns_excel(request):
                     return None
                 try:
                     logger.debug(f"parse_date: attempting to parse {raw_val}")
-                    # raw_val이 "YYYY-MM-DD" 형태로 들어온다고 가정
                     parsed = datetime.datetime.strptime(raw_val, "%Y-%m-%d")
                     parsed = parsed.replace(hour=10, minute=0)
                     logger.debug(f"parse_date: {raw_val} -> {parsed}")
@@ -388,14 +388,13 @@ def upload_returns_excel(request):
             item.claim_request_date = claim_request_date
             item.save()
 
-            # 날짜 포맷 변환
             formatted_delivered = format_korean_datetime(item.delivered_date)
             formatted_claim_request = format_korean_datetime(item.claim_request_date)
             logger.debug(f"[Row {row_idx}] formatted_delivered={formatted_delivered}, formatted_claim_request={formatted_claim_request}")
 
             success_items.append({
                 'order_number': item.order_number,
-                'display_status': getattr(item, 'display_status', ''), # display_status 필드가 없을 수 있으니 getattr 사용
+                'display_status': getattr(item, 'display_status', ''),
                 'claim_type': item.claim_type,
                 'store_name': item.store_name,
                 'collect_tracking_number': item.collect_tracking_number,
@@ -422,7 +421,6 @@ def upload_returns_excel(request):
 
         logger.debug(f"업로드 완료: 성공={len(success_items)}개, 실패={len(error_items)}개")
 
-        # 업로드한 데이터 '미처리' 상태로 업데이트
         uploaded_order_numbers = [item['order_number'] for item in success_items]
         ReturnItem.objects.filter(order_number__in=uploaded_order_numbers).update(processing_status='미처리')
 
@@ -440,7 +438,14 @@ def upload_courier_excel(request):
         if not excel_file:
             logger.warning("엑셀 파일이 선택되지 않았습니다.")
             return JsonResponse({'success': False, 'message': '엑셀 파일을 선택해주세요.'})
+        import unicodedata
 
+        # 파일명 정규화 후 "운송장리스트" 포함 여부 확인
+        file_name_normalized = unicodedata.normalize('NFC', excel_file.name)
+        if "운송장리스트" not in file_name_normalized:
+            logger.warning("잘못된 엑셀 파일명: %s", file_name_normalized)
+            return JsonResponse({'success': False, 'message': '파일명을 확인하세요, 운송장리스트라는 파일명이 포함되어야 합니다.'})
+        
         try:
             wb = openpyxl.load_workbook(excel_file, data_only=True)
             logger.debug("택배사 엑셀 파일 로드 성공")
@@ -476,17 +481,14 @@ def upload_courier_excel(request):
         error_items = []
 
         def parse_date(val):
-            # val이 datetime.datetime 인스턴스인지 체크
             if isinstance(val, datetime.datetime):
                 logger.debug(f"parse_date: {val}는 datetime 객체입니다.")
-                parsed = val.replace(hour=10, minute=0)  # 예: 10:00으로 설정
+                parsed = val.replace(hour=10, minute=0)
                 logger.debug(f"parse_date: 시간 설정 후 {parsed}")
                 return parsed
-            # 문자열인 경우
             if isinstance(val, str) and val.strip():
                 logger.debug(f"parse_date: '{val}' 문자열 파싱 시도")
                 try:
-                    # "YYYY-MM-DD" 형식 가정
                     parsed = datetime.datetime.strptime(val.strip(), "%Y-%m-%d")
                     parsed = parsed.replace(hour=10, minute=0)
                     logger.debug(f"parse_date: {val} -> {parsed}")
@@ -512,19 +514,16 @@ def upload_courier_excel(request):
 
             logger.debug(f"[Row {row_idx}] raw_related={raw_related}, raw_collect_tracking={raw_collect_tracking}, raw_delivered_date={raw_delivered_date}")
 
-            # 관련운송장 변환
             if isinstance(raw_related, datetime.datetime):
                 related_waybill = raw_related.strftime("%Y%m%d%H%M%S")
             else:
                 related_waybill = str(raw_related).strip() if raw_related else None
 
-            # 수거송장번호 변환
             if isinstance(raw_collect_tracking, datetime.datetime):
                 new_collect_tracking = raw_collect_tracking.strftime("%Y%m%d%H%M%S")
             else:
                 new_collect_tracking = str(raw_collect_tracking).strip() if raw_collect_tracking else None
 
-            # "-" 문자 제거
             if related_waybill:
                 related_waybill = related_waybill.replace("-", "")
             if new_collect_tracking:
@@ -565,7 +564,6 @@ def upload_courier_excel(request):
                 logger.debug(f"[Row {row_idx}] 주문번호={item.order_number}, CollectTracking: {original_collect} -> {item.collect_tracking_number}, DeliveredDate: {original_delivered} -> {item.delivered_date}")
 
                 formatted_delivered = format_korean_datetime(item.delivered_date)
-
                 logger.debug(f"[Row {row_idx}] formatted_delivered={formatted_delivered}")
 
                 success_items.append({

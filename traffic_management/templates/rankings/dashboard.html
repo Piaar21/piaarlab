@@ -137,12 +137,15 @@
                             {% endif %}
                         </td>
                         <td class="px-4 py-2 text-center">
-                            {% if task.current_rank %}
-                                {{ task.current_rank }}
-                                <span class="material-icons text-blue-500 cursor-pointer ml-2" onclick="openRankingModal({{ task.id }})" style="vertical-align: middle;">bar_chart</span>
-                            {% else %}
-                                1000위 이상
-                            {% endif %}
+                        {% if task.current_rank %}
+                            {{ task.current_rank }}
+                            <!-- 모달 열기 (차트 & 순위변동) -->
+                            <span class="material-icons text-blue-500 cursor-pointer ml-2" 
+                                onclick="openCombinedModal({{ task.id }}, '{{ task.keyword.name }}')" 
+                                style="vertical-align: middle;">bar_chart</span>
+                        {% else %}
+                            1000위 이상
+                        {% endif %}
                         </td>
                         <td class="px-4 py-2 text-center">
                             {% if task.traffic %}
@@ -210,40 +213,180 @@
             </nav>
         </div>
     </form>
-    <!-- 모달 창 구조 -->
-    <div id="rankingModal" class="fixed inset-0 hidden" style="z-index: 1000;">
-        <!-- 배경 -->
-        <div id="modalBackground" class="absolute inset-0 bg-black opacity-50"></div>
-    
-        <!-- 모달 내용 -->
-        <div class="fixed inset-0 flex items-center justify-center p-4" style="z-index: 1100;">
-            <div class="bg-white rounded-lg shadow-xl transform transition-all sm:max-w-2xl w-full modal-content">
-                <!-- 모달 헤더 -->
-                <div class="px-4 py-5 sm:px-6 flex justify-between items-center border-b">
-                    <h2 class="text-lg leading-6 font-medium text-gray-900">순위 변동 정보</h2>
-                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-500">
-                        <span class="material-icons">close</span>
-                    </button>
-                </div>
-                <div class="px-4 py-5 sm:p-6">
-                    <table class="min-w-full divide-y divide-gray-200" id="rankingTable">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-center">일자</th>
-                                <th class="px-6 py-3 text-center">키워드</th>
-                                <th class="px-6 py-3 text-center">순위</th>
-                                <th class="px-6 py-3 text-center">등락폭</th>
-                                <th class="px-6 py-3 text-center">시작대비</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            <!-- 순위 데이터가 여기에 추가됩니다 -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div id="combinedModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+  <!-- 모달 내용 -->
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 relative max-h-[90vh] overflow-y-auto">
+    <!-- 모달 헤더 -->
+    <div class="flex justify-between items-center px-6 py-4 border-b">
+      <h2 class="text-xl font-semibold">순위 및 매출 정보</h2>
+      <button onclick="closeCombinedModal()" class="text-gray-400 hover:text-gray-600">
+        <span class="material-icons">close</span>
+      </button>
     </div>
+
+    <!-- 탭 버튼들 -->
+    <div class="flex border-b px-6">
+      <button 
+        class="py-2 px-4 text-gray-600 border-b-2 border-transparent hover:text-gray-800 hover:border-gray-300 focus:outline-none"
+        data-tab="chartTab"
+        onclick="switchTab('chartTab')">
+        차트
+      </button>
+      <button 
+        class="py-2 px-4 text-gray-600 border-b-2 border-transparent hover:text-gray-800 hover:border-gray-300 focus:outline-none"
+        data-tab="rankingTab"
+        onclick="switchTab('rankingTab')">
+        순위 변동 테이블
+      </button>
+      <button 
+        class="py-2 px-4 text-gray-600 border-b-2 border-transparent hover:text-gray-800 hover:border-gray-300 focus:outline-none"
+        data-tab="statusManualTab"
+        onclick="switchTab('statusManualTab')">
+        상태 메뉴얼
+      </button>
+    </div>
+
+    <!-- 탭 컨텐츠 영역 -->
+    <div class="p-6 max-h-[80vh] overflow-auto">
+      <!-- 차트 탭 -->
+      <div id="chartTab" class="tab-content">
+        <!-- KPI 카드들 -->
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-4">
+          <!-- 1) 1달간 검색량 -->
+          <div class="bg-gray-50 border rounded shadow p-4">
+            <div class="flex flex-row items-center justify-between pb-2 mb-2 border-b">
+              <h2 class="text-sm font-medium">1달간 검색량</h2>
+            </div>
+            <div>
+              <div class="text-2xl font-bold" id="kpiVolume30d">-</div>
+              <p class="text-xs text-gray-500" id="kpiVolumeGrowth">+0% from last 2 weeks</p>
+            </div>
+          </div>
+
+          <!-- 2) 최근 7일 매출액 -->
+          <div class="bg-gray-50 border rounded shadow p-4">
+            <div class="flex flex-row items-center justify-between pb-2 mb-2 border-b">
+              <h2 class="text-sm font-medium">최근 7일 매출액</h2>
+            </div>
+            <div>
+              <div class="text-2xl font-bold" id="kpiRecentSales">0</div>
+              <p class="text-xs text-gray-500" id="kpiSalesGrowth">+0% from start</p>
+            </div>
+          </div>
+
+          <!-- 3) 현재 상태 -->
+          <div class="bg-gray-50 border rounded shadow p-4">
+            <div class="flex flex-row items-center justify-between pb-2 mb-2 border-b">
+              <h2 class="text-sm font-medium">현재 상태</h2>
+            </div>
+            <div>
+              <div class="text-2xl font-bold" id="kpiCurrentStatus">효과없음</div>
+              <p class="text-xs text-gray-500" id="kpiStatusDescription">-</p>
+            </div>
+          </div>
+
+          <!-- 4) 현재 순위 -->
+          <div class="bg-gray-50 border rounded shadow p-4">
+            <div class="flex flex-row items-center justify-between pb-2 mb-2 border-b">
+              <h2 class="text-sm font-medium">현재 순위</h2>
+            </div>
+            <div>
+              <div class="text-2xl font-bold" id="kpiCurrentRank">N/A</div>
+              <p class="text-xs text-gray-500" id="kpiRankDiff">시작 대비 +0위</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 차트 영역 -->
+        <div class="relative w-full h-96">
+          <canvas id="combinedChart" class="w-full h-full"></canvas>
+        </div>
+      </div>
+
+      <!-- 순위 변동 테이블 탭 -->
+      <div id="rankingTab" class="tab-content hidden">
+        <table class="min-w-full divide-y divide-gray-200" id="rankingTable">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-center">일자</th>
+              <th class="px-6 py-3 text-center">키워드</th>
+              <th class="px-6 py-3 text-center">순위</th>
+              <th class="px-6 py-3 text-center">등락폭</th>
+              <th class="px-6 py-3 text-center">시작대비</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <!-- 순위 데이터가 여기에 동적으로 삽입됩니다 -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 상태 메뉴얼 탭 -->
+      <div id="statusManualTab" class="tab-content hidden">
+        <h3 class="text-xl font-semibold mb-4">상태 메뉴얼</h3>
+        <div class="space-y-4">
+          <!-- 로딩중 -->
+          <div>
+            <h4 class="font-bold">로딩중</h4>
+            <p>아직 충분한 데이터가 축적되지 않아 순위 분석을 하기 이른 상태입니다. 기준 시작일(available_start_date)로부터 3일 미만이 경과한 경우입니다.</p>
+          </div>
+          <!-- 굿굿 -->
+          <div>
+            <h4 class="font-bold">굿굿</h4>
+            <p>순위 개선 효과가 뚜렷하게 나타나는 상태입니다. 시작 구간이 TOP6, TOP40, 또는 40위 밖에서 시작했더라도 현재 6위 이내라면 해당됩니다.</p>
+          </div>
+          <!-- 살짝오름 -->
+          <div>
+            <h4 class="font-bold">살짝오름</h4>
+            <p>시작할 때보다 순위가 올랐지만, TOP6까지 진입하지 못한 상태입니다. 주로 TOP40 내에서 소폭 상승한 경우에 해당합니다.</p>
+          </div>
+          <!-- 효과없음 -->
+          <div>
+            <h4 class="font-bold">효과없음</h4>
+            <p>순위가 개선되지 않거나, 최근 7일 매출이 음수 성장률(감소)로 나타난 경우, 또는 3일 전 대비 순위가 개선되지 않은 경우입니다.</p>
+          </div>
+          <!-- 환불권장 -->
+          <div>
+            <h4 class="font-bold">환불권장</h4>
+            <p>시작일로부터 6일 이상이 지난 후에도 6일 전 순위와 비교하여 개선이 없거나 오히려 악화된 경우, 환불을 고려하도록 권장하는 상태입니다.</p>
+          </div>
+          <!-- 키워드변경 -->
+          <div>
+            <h4 class="font-bold">키워드변경</h4>
+            <p>최근 30일 검색량이 2만 미만인데 현재 순위가 TOP6인 경우로, 키워드 자체의 시장 규모가 작아 효과가 제한적일 때 해당됩니다.</p>
+          </div>
+          <!-- 주의 필요(Needs Attention) -->
+          <div>
+            <h4 class="font-bold">주의 필요(Needs Attention)</h4>
+            <p>상태가 '굿굿'이나 '환불권장'이 아닌 경우에, 순위가 TOP6를 벗어나 7위에서 40위 사이에 있고, 3일 전 대비 개선폭이 5 미만이면 추가적인 조치(트래픽 보강, 광고 증액 등)가 필요하다는 신호입니다.</p>
+          </div>
+          <!-- 요약 흐름도 -->
+          <div>
+            <h4 class="font-bold">요약 흐름도</h4>
+            <ul class="list-disc ml-5">
+              <li>3일 미만: <span class="font-bold">로딩중</span></li>
+              <li>6일 이상 & 6일 전 대비 개선 없음: <span class="font-bold">환불권장</span></li>
+              <li>검색량 2만 미만 & 현재 TOP6: <span class="font-bold">키워드변경</span></li>
+              <li>매출 감소(음수 성장률): <span class="font-bold">효과없음</span></li>
+              <li>시작 구간과 현재 구간 비교에 따른: <span class="font-bold">굿굿</span>, <span class="font-bold">살짝오름</span>, <span class="font-bold">효과없음</span></li>
+              <li>추가: 순위 주의 필요 여부 확인</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* 모달 오픈 시 body 스크롤 방지 */
+  body.modal-open {
+    overflow: hidden;
+  }
+</style>
 
 <!-- Tailwind CSS 및 Material Icons 추가 -->
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
@@ -261,117 +404,314 @@
             checkbox.checked = !checkbox.checked;
         }
     }
-    // 순위 변동 표시 로직 수정
-    function openRankingModal(taskId) {
-        fetch(`/api/get_ranking_data/?task_id=${taskId}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                    return;
-                }
-                var tbody = document.querySelector('#rankingTable tbody');
-                tbody.innerHTML = '';
-                data.rankings.forEach(function(ranking) {
-                    let differenceSymbol = '';
-                    let differenceColor = '';
-                    let startDifferenceSymbol = '';
-                    let startDifferenceColor = '';
-
-                    // 등락폭 처리
-                    if (ranking.difference > 0) {
-                        differenceSymbol = '▼';
-                        differenceColor = 'text-blue-500';
-                    } else if (ranking.difference < 0) {
-                        differenceSymbol = '▲';
-                        differenceColor = 'text-red-500';
-                    } else {
-                        differenceSymbol = '-';
-                        differenceColor = '';
-                    }
-
-                    // 시작대비 처리
-                    if (ranking.start_difference > 0) {
-                        startDifferenceSymbol = '▼';
-                        startDifferenceColor = 'text-blue-500';
-                    } else if (ranking.start_difference < 0) {
-                        startDifferenceSymbol = '▲';
-                        startDifferenceColor = 'text-red-500';
-                    } else {
-                        startDifferenceSymbol = '-';
-                        startDifferenceColor = '';
-                    }
-
-                    let differenceValue = Math.abs(parseInt(ranking.difference));
-                    let startDifferenceValue = Math.abs(parseInt(ranking.start_difference));
-                    
-                    differenceValue = isNaN(differenceValue) ? '' : differenceValue;
-                    startDifferenceValue = isNaN(startDifferenceValue) ? '' : startDifferenceValue;
-
-                    let differenceDisplay = differenceSymbol !== '-' ? `${differenceSymbol}${differenceValue}` : '-';
-                    let startDifferenceDisplay = startDifferenceSymbol !== '-' ? `${startDifferenceSymbol}${startDifferenceValue}` : '-';
-
-                    var tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td class="px-4 py-2 text-center">${ranking.date_time}</td>
-                        <td class="px-4 py-2 text-center">${ranking.keyword}</td>
-                        <td class="px-4 py-2 text-center">${ranking.rank}</td>
-                        <td class="px-4 py-2 text-center ${differenceColor}">${differenceDisplay}</td>
-                        <td class="px-4 py-2 text-center ${startDifferenceColor}">${startDifferenceDisplay}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-                document.getElementById('rankingModal').classList.remove('hidden');
-                document.body.classList.add('modal-open'); // 배경 스크롤 방지
-            })
-            .catch(error => {
-                console.error('Error fetching ranking data:', error);
-            });
-    }
-
-    function closeModal() {
-        document.getElementById('rankingModal').classList.add('hidden');
-        document.body.classList.remove('modal-open'); // 배경 스크롤 허용
-    }
-    // 모달 배경 클릭 시 모달 닫기
-    document.getElementById('modalBackground').addEventListener('click', function(event) {
-        closeModal();
-    });
-
-    // ESC 키로 모달 닫기
-    document.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape') {
-            closeModal();
-        }
-    });
+</script>
+<script>
+    let combinedChartInstance = null;
+    const todayStr = new Date().toISOString().slice(0, 10);
     
-    // 페이지 당 항목 수 변경 시 처리
-    function changePerPage(value) {
-        const urlParams = new URLSearchParams(window.location.search);
-        urlParams.set('per_page', value);
-        urlParams.set('page', 1); // 페이지 번호를 1로 초기화
-        window.location.search = urlParams.toString();
-    }
-
-    var clickedButtonType = '';
-
-    function setClickedButton(buttonType) {
-        clickedButtonType = buttonType;
-    }
-
-    document.getElementById('taskForm').addEventListener('submit', function(event) {
-        // 'bulk-update' 버튼이 클릭되지 않은 경우에만 체크박스 검사를 수행합니다.
-        if (clickedButtonType !== 'bulk-update') {
-            var selectedTasks = document.querySelectorAll('input[name="selected_tasks"]:checked');
-            if (selectedTasks.length === 0) {
-                alert('작업을 선택해주세요.');
-                event.preventDefault(); // 폼 제출 중단
+    function openCombinedModal(taskId, keyword) {
+      Promise.all([
+        fetch(`/traffic/api/get_ranking_data/?task_id=${taskId}`).then(response => response.json()),
+        fetch(`/traffic/api/dashborad_get_sales_data/?task_id=${taskId}`).then(response => response.json()),
+        fetch(`/traffic/api/get_keyword_volume_recent_month/?keyword=${encodeURIComponent(keyword)}&task_id=${taskId}`)
+          .then(response => response.json()),
+        fetch(`/traffic/api/get_kpi_data/?task_id=${taskId}`).then(response => response.json())
+      ])
+      .then(([rankingData, salesData, volumeData, kpiData]) => {
+        if (rankingData.error) {
+          alert("랭킹 데이터 에러: " + rankingData.error);
+          return;
+        }
+        if (salesData.error) {
+          alert("매출 데이터 에러: " + salesData.error);
+          return;
+        }
+        if (volumeData.error) {
+          alert("검색량 데이터 에러: " + volumeData.error);
+          return;
+        }
+        if (kpiData.error) {
+          alert("KPI 데이터 에러: " + kpiData.error);
+          return;
+        }
+        
+        // KPI 카드 값 설정
+        document.getElementById("kpiVolume30d").textContent = kpiData.data.monthVolume.toLocaleString();
+        document.getElementById("kpiVolumeGrowth").textContent = `${kpiData.data.monthVolumeGrowth}`;
+        
+        document.getElementById("kpiRecentSales").textContent = kpiData.data.recent7daySales.toLocaleString();
+        document.getElementById("kpiSalesGrowth").textContent = `${kpiData.data.recent7daySalesGrowth} from start`;
+        
+        document.getElementById("kpiCurrentStatus").textContent = kpiData.data.status;
+        document.getElementById("kpiStatusDescription").textContent = kpiData.data.statusDescription;
+        
+        document.getElementById("kpiCurrentRank").textContent = kpiData.data.currentRank ? `${kpiData.data.currentRank}위` : 'N/A';
+        document.getElementById("kpiRankDiff").textContent = `시작 대비 ${kpiData.data.rankDiff}위`;
+        
+        // (A) 매출 데이터: salesData.sales에서 날짜와 매출액 추출 (오늘 포함)
+        const salesMap = {};
+        salesData.sales.forEach(sale => {
+          salesMap[sale.date] = sale.sales_revenue;
+        });
+        
+        // (B) 순위 데이터: rankingData.rankings (오늘 포함)
+        const rankingMap = {};
+        rankingData.rankings.forEach(item => {
+          const date = item.date_time.substring(0, 10);
+          rankingMap[date] = item.rank;
+        });
+        
+        // (C) 검색량 데이터: volumeData.data.results에서 날짜별 추정 검색량 추출 (오늘 포함)
+        const volumeMap = {};
+        volumeData.data.results.forEach(item => {
+          volumeMap[item.period] = item.estimatedVolume;
+        });
+        
+        // (D) unionLabels: salesMap, rankingMap, volumeMap의 모든 날짜를 포함
+        const labelSet = new Set([
+          ...Object.keys(rankingMap),
+          ...Object.keys(salesMap),
+          ...Object.keys(volumeMap)
+        ]);
+        // 필터: 오늘을 포함하고, 2주 전(14일치 데이터)만 사용
+        const twoWeeksAgoStr = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const unionLabels = Array.from(labelSet).filter(date => date >= twoWeeksAgoStr && date <= todayStr).sort();
+        console.log("Union labels (last 14 days):", unionLabels);
+        
+        // (E) 데이터셋 생성
+        const salesRevenues = unionLabels.map(date => (salesMap.hasOwnProperty(date) ? salesMap[date] : null));
+        const ranks = unionLabels.map(date => (rankingMap.hasOwnProperty(date) ? rankingMap[date] : null));
+        const estimatedVolumes = unionLabels.map(date => (volumeMap.hasOwnProperty(date) ? volumeMap[date] : null));
+        
+        // (F) 평균 매출액 계산 (7일 이동평균) - 오늘 날짜는 평균 계산에서 제외
+        const avgSales = [];
+        for (let i = 0; i < unionLabels.length; i++) {
+        if (unionLabels[i] === todayStr) {
+            avgSales.push(null);
+        } else {
+            let windowData = [];
+            // i부터 0까지 역순으로 반복하면서, 오늘이 아닌 날의 매출액을 모읍니다.
+            for (let j = i; j >= 0 && windowData.length < 7; j--) {
+            if (unionLabels[j] !== todayStr && salesRevenues[j] !== null) {
+                windowData.unshift(salesRevenues[j]);
+            }
+            }
+            // 만약 7일치 데이터가 없으면 null, 있으면 평균 계산
+            if (windowData.length < 7) {
+            avgSales.push(null);
+            } else {
+            let sum = windowData.reduce((acc, val) => acc + val, 0);
+            avgSales.push(Math.round(sum / 7));
             }
         }
-
-        // 폼 제출 후 변수 초기화
-        clickedButtonType = '';
-    });
-</script>
-
+        }
+        console.log("Average Sales:", avgSales);
+        
+        // (G) 차트 생성: 매출액은 막대그래프, 평균 매출액, 순위, 추정 검색량은 선 그래프로 표시
+        if (combinedChartInstance) {
+          combinedChartInstance.destroy();
+          combinedChartInstance = null;
+        }
+        const ctx = document.getElementById('combinedChart').getContext('2d');
+        combinedChartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: unionLabels,
+            datasets: [
+              {
+                label: '매출액',
+                type: 'bar',
+                data: salesRevenues,
+                backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                yAxisID: 'y-sales'
+              },
+              {
+                label: '평균 매출액',
+                type: 'line',
+                data: avgSales,
+                borderColor: 'rgba(255, 159, 64, 1)',
+                backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                fill: false,
+                tension: 0.1,
+                yAxisID: 'y-sales'
+              },
+              {
+                label: '순위',
+                type: 'line',
+                data: ranks,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                fill: false,
+                tension: 0.1,
+                yAxisID: 'y-rank'
+              },
+              {
+                label: '추정 검색량',
+                type: 'line',
+                data: estimatedVolumes,
+                borderColor: 'rgba(153, 102, 255, 1)',
+                backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                fill: false,
+                tension: 0.1,
+                yAxisID: 'y-volume'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              mode: 'index',
+              intersect: false
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    let label = context.dataset.label || '';
+                    if (label) {
+                      label += ': ';
+                    }
+                    if (context.dataset.label === '순위') {
+                      label += Math.round(context.parsed.y);
+                    } else {
+                      label += context.parsed.y;
+                    }
+                    return label;
+                  }
+                }
+              }
+            },
+            scales: {
+              'y-sales': {
+                type: 'linear',
+                position: 'left',
+                title: {
+                  display: true,
+                  text: '매출액'
+                }
+              },
+              'y-rank': {
+                type: 'linear',
+                position: 'right',
+                reverse: true,
+                title: {
+                  display: true,
+                  text: '순위'
+                },
+                grid: {
+                  drawOnChartArea: false
+                },
+                ticks: {
+                  callback: function(value) {
+                    return Math.round(value);
+                  },
+                  suggestedMin: 0,
+                  suggestedMax: 10,
+                  stepSize: 1
+                }
+              },
+              'y-volume': {
+                type: 'linear',
+                position: 'right',
+                title: {
+                  display: true,
+                  text: '추정 검색량'
+                },
+                grid: {
+                  drawOnChartArea: false
+                }
+              }
+            }
+          }
+        });
+        
+        // (H) 순위 변동 테이블 렌더링 (기존 코드 유지)
+        const rankingTbody = document.querySelector('#rankingTable tbody');
+        rankingTbody.innerHTML = '';
+        rankingData.rankings.forEach(function(ranking) {
+          let differenceSymbol = '';
+          let differenceColor = '';
+          let startDifferenceSymbol = '';
+          let startDifferenceColor = '';
+          
+          if (ranking.difference > 0) {
+            differenceSymbol = '▼';
+            differenceColor = 'text-blue-500';
+          } else if (ranking.difference < 0) {
+            differenceSymbol = '▲';
+            differenceColor = 'text-red-500';
+          } else {
+            differenceSymbol = '-';
+          }
+          
+          if (ranking.start_difference > 0) {
+            startDifferenceSymbol = '▼';
+            startDifferenceColor = 'text-blue-500';
+          } else if (ranking.start_difference < 0) {
+            startDifferenceSymbol = '▲';
+            startDifferenceColor = 'text-red-500';
+          } else {
+            startDifferenceSymbol = '-';
+          }
+          
+          let differenceValue = Math.abs(parseInt(ranking.difference));
+          let startDifferenceValue = Math.abs(parseInt(ranking.start_difference));
+          differenceValue = isNaN(differenceValue) ? '' : differenceValue;
+          startDifferenceValue = isNaN(startDifferenceValue) ? '' : startDifferenceValue;
+          
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="px-6 py-2 text-center">${ranking.date_time}</td>
+            <td class="px-6 py-2 text-center">${ranking.keyword}</td>
+            <td class="px-6 py-2 text-center">${ranking.rank}</td>
+            <td class="px-6 py-2 text-center ${differenceColor}">
+              ${differenceSymbol !== '-' ? differenceSymbol + differenceValue : '-'}
+            </td>
+            <td class="px-6 py-2 text-center ${startDifferenceColor}">
+              ${startDifferenceSymbol !== '-' ? startDifferenceSymbol + startDifferenceValue : '-'}
+            </td>
+          `;
+          rankingTbody.appendChild(tr);
+        });
+        
+        // (I) 모달 표시 및 기본 탭(차트) 활성화
+        switchTab('chartTab');
+        document.getElementById('combinedModal').classList.remove('hidden');
+        document.body.classList.add('modal-open');
+      })
+      .catch(err => {
+        console.error('에러 발생:', err);
+        alert('데이터를 가져오는 중 오류가 발생했습니다.');
+      });
+    }
+    
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(function(el) {
+        el.classList.add('hidden');
+      });
+      var selectedTab = document.getElementById(tabId);
+      if (selectedTab) {
+        selectedTab.classList.remove('hidden');
+      }
+      document.querySelectorAll('[data-tab]').forEach(function(btn) {
+        if (btn.getAttribute('data-tab') === tabId) {
+          btn.classList.add('border-b-2', 'border-blue-500', 'text-blue-500');
+        } else {
+          btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-500');
+        }
+      });
+    }
+    
+    function closeCombinedModal() {
+      document.getElementById('combinedModal').classList.add('hidden');
+      document.body.classList.remove('modal-open');
+      if (combinedChartInstance) {
+        combinedChartInstance.destroy();
+        combinedChartInstance = null;
+      }
+    }
+  </script>
 {% endblock %}
+
+

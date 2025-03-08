@@ -77,7 +77,7 @@ class Task(models.Model):
     yesterday_rank = models.IntegerField(null=True, blank=True)
     current_rank = models.IntegerField(null=True, blank=True)
     difference_rank = models.IntegerField(null=True, blank=True)
-    status = models.CharField(max_length=20, default='효과없음')  # 상태 필드 추가
+    status = models.CharField(max_length=20, default='로딩중')  # 상태 필드 추가
     last_checked_date = models.DateTimeField(auto_now=True)
     available_start_date = models.DateField()
     available_end_date = models.DateField()
@@ -94,6 +94,9 @@ class Task(models.Model):
     is_extended = models.BooleanField(default=False)  # 연장된 작업인지 표시
     original_task = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='extended_tasks')  # 원본 작업 참조
     needs_attention = models.BooleanField(default=False)  # 추가된 부분
+    single_product_link = models.URLField(blank=True, null=True,verbose_name='단일상품링크')  # 단일상품링크
+    single_product_mid = models.CharField(max_length=100, blank=True, null=True,verbose_name='단일상품 MID값')  # 단일상품 MID값
+    
 
     def save(self, *args, **kwargs):
         # difference_rank 계산

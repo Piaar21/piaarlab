@@ -30,7 +30,7 @@ from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
 from django.utils.encoding import smart_str
 from openpyxl import load_workbook  # 엑셀 파일 파싱을 위해
-
+from sales_management.models import NaverDailySales
 
 
 logger = logging.getLogger(__name__)
@@ -185,6 +185,81 @@ def product_list(request):
     context = {'products': products}
     return render(request, 'rankings/product_list.html', context)
 
+from collections import defaultdict
+
+
+@login_required
+def dashborad_get_sales_data(request):
+    task_id = request.GET.get('task_id')
+    if not task_id:
+        logger.error("task_id is missing in request")
+        return JsonResponse({'error': 'task_id is required'}, status=400)
+    
+    try:
+        task = Task.objects.get(id=task_id)
+    except Task.DoesNotExist:
+        logger.error("Task with id %s not found", task_id)
+        return JsonResponse({'error': 'Task not found'}, status=404)
+    
+    if not task.single_product_mid:
+        logger.error("Task id %s does not have single_product_mid", task_id)
+        return JsonResponse({'error': 'Task does not have single_product_mid value'}, status=400)
+    
+    # 시작 날짜: task.available_start_date가 있다면 해당 날짜의 10일 전, 없으면 오늘 기준 10일 전
+    if task.available_start_date:
+        start_date = task.available_start_date - timedelta(days=10)
+    else:
+        start_date = timezone.now().date() - timedelta(days=10)
+    # 종료 날짜: 어제
+    end_date = timezone.now().date() - timedelta(days=0)
+    
+    logger.debug("Task id: %s, single_product_mid: %s", task_id, task.single_product_mid)
+    logger.debug("Fetching sales records where product_id=%s between %s and %s",
+                 task.single_product_mid, start_date, end_date)
+    
+    try:
+        # 날짜 필드는 문자열 형태('YYYY-MM-DD')로 저장되어 있다고 가정하고 비교
+        sales_records = NaverDailySales.objects.filter(
+            product_id=task.single_product_mid,
+            date__gte=start_date.strftime("%Y-%m-%d"),
+            date__lte=end_date.strftime("%Y-%m-%d")
+        ).order_by('date')
+        record_count = sales_records.count()
+        logger.debug("Found %s sales records", record_count)
+    except Exception as e:
+        logger.error("Error fetching sales records: %s", e)
+        return JsonResponse({'error': 'Error fetching sales records'}, status=500)
+    
+    # 날짜별로 매출액과 판매수량을 합산하여 그룹화
+    aggregated = defaultdict(lambda: {'sales_revenue': 0, 'sales_qty': 0})
+    for record in sales_records:
+        if not record.date:
+            logger.warning("Sales record id %s has no date", record.id)
+            continue
+        try:
+            # record.date는 'YYYY-MM-DD' 형태의 문자열라고 가정
+            date_str = record.date.strip()
+            aggregated[date_str]['sales_revenue'] += record.sales_revenue
+            aggregated[date_str]['sales_qty'] += record.sales_qty
+        except Exception as e:
+            logger.error("Error processing sales record id %s: %s", record.id, e)
+            continue
+    
+    # 지정한 기간의 모든 날짜를 생성하고, 해당 날짜의 집계 데이터가 있으면 사용하고 없으면 0으로 채움
+    result = []
+    current_date = start_date
+    while current_date <= end_date:
+        date_str = current_date.strftime("%Y-%m-%d")
+        data = aggregated.get(date_str, {'sales_revenue': 0, 'sales_qty': 0})
+        result.append({
+            'date': date_str,
+            'sales_revenue': data['sales_revenue'],
+            'sales_qty': data['sales_qty'],
+        })
+        current_date += timedelta(days=1)
+    
+    return JsonResponse({'sales': result})
+
 @login_required
 def task_register(request):
     # 이제 사용자 프로필에서 API 정보를 받지 않고, api_clients에 정의된 naver_client_id, naver_client_secret 사용
@@ -309,6 +384,8 @@ def task_register(request):
                         available_start_date=available_start_date,
                         available_end_date=available_end_date,
                         traffic=traffic,
+                        single_product_link=product.single_product_link,  # 추가
+                        single_product_mid=product.single_product_mid,    # 추가
                     )
                     # Ranking 객체 생성
                     Ranking.objects.create(
@@ -427,7 +504,10 @@ def task_upload_excel_data(request):
                     'available_start_date': available_start_date,
                     'available_end_date': available_end_date,
                     'traffic': selected_traffic,  # 모달에서 선택한 트래픽 할당
+                    'single_product_link': product.single_product_link,  # 추가
+                    'single_product_mid': product.single_product_mid,    # 추가
                 }
+                logger.debug(f"Product {product.id} - single_product_link: {product.single_product_link}, single_product_mid: {product.single_product_mid}")
                 tasks_to_create.append(task_data)
 
             # 3) 실제 DB에 Task 및 Ranking 생성
@@ -585,18 +665,21 @@ def get_products_with_latest_task(request, selected_product_ids):
 
 @login_required
 def dashboard(request):
+    from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+    from django.utils import timezone
+    from .models import Task
+    import logging
+
+    logger = logging.getLogger(__name__)
     today = timezone.now().date()
     tasks_list = Task.objects.filter(
-        
         available_end_date__gte=today
-    ).order_by('created_at').select_related('traffic', 'product')  # product를 select_related에 추가
+    ).order_by('created_at').select_related('traffic', 'product')
 
-    # 페이지네이션 설정
     page = request.GET.get('page', 1)
     per_page = request.GET.get('per_page', 50)
     per_page_options = [50, 100, 150, 300]
 
-    # per_page 값 검증
     try:
         per_page = int(per_page)
         if per_page not in per_page_options:
@@ -605,7 +688,6 @@ def dashboard(request):
         per_page = 50
 
     paginator = Paginator(tasks_list, per_page)
-
     try:
         tasks = paginator.page(page)
     except PageNotAnInteger:
@@ -619,6 +701,296 @@ def dashboard(request):
         'selected_per_page': per_page,
     }
     return render(request, 'rankings/dashboard.html', context)
+
+def compute_month_volume_and_growth(est_data):
+    """
+    est_data: 
+      - {"results": [ {'period': 'YYYY-MM-DD', 'ratio': <float>, 'estimatedVolume': <int>}, ... ]}
+      또는 
+      - { "방석": [ {'period': 'YYYY-MM-DD', 'ratio': <float>, 'estimatedVolume': <int>}, ... ] }
+      
+    오늘을 기준으로:
+      - recent period: today - 15일 ~ today - 1일
+      - previous period: today - 29일 ~ today - 15일
+    두 기간의 estimatedVolume 합계를 비교하여 성장률을 산출하고,
+    최근 기간의 총 합계와 성장률을 반환합니다.
+    """
+    import datetime
+    from django.utils import timezone
+
+    today = timezone.now().date()
+    recent_start = today - datetime.timedelta(days=15)
+    recent_end = today - datetime.timedelta(days=1)
+    previous_start = today - datetime.timedelta(days=29)
+    previous_end = today - datetime.timedelta(days=15)
+    
+    # est_data의 구조에 따라 results 리스트를 가져옴
+    if "results" in est_data:
+        results = est_data["results"]
+    else:
+        # 키워드가 키로 되어 있는 경우, 첫 번째 키의 값을 사용
+        key = list(est_data.keys())[0]
+        results = est_data[key]
+    
+    recent_sum = 0
+    previous_sum = 0
+    for r in results:
+        period_str = r.get("period")
+        try:
+            period_date = datetime.datetime.strptime(period_str, "%Y-%m-%d").date()
+        except Exception:
+            continue
+        volume = r.get("estimatedVolume", 0)
+        if recent_start <= period_date <= recent_end:
+            recent_sum += volume
+        if previous_start <= period_date < recent_start:
+            previous_sum += volume
+
+    if previous_sum == 0:
+        growth_rate = "+0%"
+    else:
+        rate = ((recent_sum - previous_sum) / previous_sum) * 100.0
+        sign = "+" if rate >= 0 else ""
+        growth_rate = f"{sign}{rate:.1f}%"
+    
+    return (recent_sum, growth_rate)
+
+def compute_recent_7day_sales_and_growth(product_mid, baseline_date):
+    """
+    product_mid를 사용해 NaverDailySales 테이블에서 매출 데이터를 조회하여,
+    현재 창과 기준 창의 매출액을 비교해 성장률을 계산합니다.
+    
+    - 현재 창: 오늘 기준 7일 전부터 (오늘 - 1)일까지
+    - 기준 창: Task.available_start_date 기준 7일 전부터 (available_start_date - 1)일까지
+    
+    만약 오늘이 baseline_date와 동일하면, 두 창이 같으므로 성장률은 0%로 반환합니다.
+    
+    반환:
+      (current_window_total, growth_rate_str)
+    """
+    import datetime
+    from django.utils import timezone
+
+    if not product_mid:
+        return (0, "0%")
+    
+    today = timezone.now().date()
+    # 현재 창: 오늘 기준 7일 전 ~ (오늘 - 1일)
+    current_start = today - datetime.timedelta(days=7)
+    current_end = today - datetime.timedelta(days=1)
+    
+    # 기준 창: available_start_date 기준 7일 전 ~ (available_start_date - 1일)
+    baseline_start = baseline_date - datetime.timedelta(days=8)
+    baseline_end = baseline_date - datetime.timedelta(days=2)
+    
+    # 조회: 날짜는 "YYYY-MM-DD" 문자열 비교 (DB에 저장된 형식과 일치해야 함)
+    current_records = NaverDailySales.objects.filter(
+        product_id=product_mid,
+        date__gte=current_start.strftime("%Y-%m-%d"),
+        date__lte=current_end.strftime("%Y-%m-%d")
+    ).order_by('date')
+    baseline_records = NaverDailySales.objects.filter(
+        product_id=product_mid,
+        date__gte=baseline_start.strftime("%Y-%m-%d"),
+        date__lte=baseline_end.strftime("%Y-%m-%d")
+    ).order_by('date')
+    
+    # 각 창의 매출액 합산
+    current_sum = sum(rec.sales_revenue for rec in current_records)
+    baseline_sum = sum(rec.sales_revenue for rec in baseline_records)
+    
+    # 만약 오늘이 기준 날짜와 같다면, 두 창은 동일하므로 성장률은 0%
+    if today == baseline_date:
+        return (current_sum, "0%")
+    
+    # 기준 창 매출이 0이면 성장률은 0%로 처리
+    if baseline_sum == 0:
+        return (current_sum, "0%")
+    
+    rate = ((current_sum - baseline_sum) / baseline_sum) * 100.0
+    sign = "+" if rate >= 0 else ""
+    growth_rate = f"{sign}{rate:.1f}%"
+    return (current_sum, growth_rate)
+
+def compute_month_volume_and_growth_daily(daily_data):
+    """
+    daily_data: 일별 검색량 데이터 리스트.
+      예: [
+            {'period': '2023-01-01', 'searchVolume': 1050},
+            {'period': '2023-01-02', 'searchVolume': 1050},
+            ...
+          ]
+    
+    오늘을 기준으로:
+      - Recent period: today - 15일 ~ today - 1일
+      - Previous period: today - 29일 ~ today - 15일
+    각 기간의 searchVolume 합계를 계산하여 성장률 = ((recent_sum - previous_sum) / previous_sum) * 100을 산출합니다.
+    (이전 기간 매출이 0이면 성장률은 "0%")
+    
+    반환:
+        (recent_sum, growth_rate_str)
+    """
+    import datetime
+    from django.utils import timezone
+
+    today = timezone.now().date()
+    recent_start = today - datetime.timedelta(days=15)
+    recent_end = today - datetime.timedelta(days=1)
+    previous_start = today - datetime.timedelta(days=29)
+    previous_end = today - datetime.timedelta(days=15)
+    
+    recent_sum = 0
+    previous_sum = 0
+    for record in daily_data:
+        try:
+            period_date = datetime.datetime.strptime(record.get("period"), "%Y-%m-%d").date()
+        except Exception:
+            continue
+        volume = record.get("searchVolume", 0)
+        if recent_start <= period_date <= recent_end:
+            recent_sum += volume
+        elif previous_start <= period_date < recent_start:
+            previous_sum += volume
+
+    if previous_sum == 0:
+        growth_rate = "0%"
+    else:
+        rate = ((recent_sum - previous_sum) / previous_sum) * 100.0
+        sign = "+" if rate >= 0 else ""
+        growth_rate = f"{sign}{rate:.1f}%"
+    
+    return recent_sum, growth_rate
+
+def get_daily_search_volume_from_rel_keywords(keywords, start_date, end_date):
+    """
+    주어진 기간(start_date ~ end_date) 동안의 일별 검색량을, 
+    get_rel_keywords 함수로부터 얻은 월간 총 검색수(totalSearchCount)를 균등 분배하여 반환합니다.
+    
+    계산식:
+      daily_search_volume = totalSearchCount / (number of days in period)
+    
+    반환 예시:
+      {
+         '방석': [
+              { 'period': '2023-01-01', 'searchVolume': 1050 },
+              { 'period': '2023-01-02', 'searchVolume': 1050 },
+              ...
+         ]
+      }
+    """
+    import datetime
+    from datetime import timedelta
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # 광고 API를 통해 월간 총 검색수를 추출
+    ad_df = get_rel_keywords(keywords)
+    if ad_df is None or ad_df.empty:
+        logger.error("광고 API 결과가 없거나 잘못되었습니다.")
+        return None
+    desired_keyword = keywords[0]
+    filtered_df = ad_df[ad_df['relKeyword'] == desired_keyword]
+    if filtered_df.empty:
+        logger.error("광고 API 결과에서 해당 키워드 (%s)가 존재하지 않습니다.", desired_keyword)
+        return None
+    total_search = int(filtered_df.iloc[0]['totalSearchCount'])
+    logger.debug("Desired keyword: %s, total monthly search count: %s", desired_keyword, total_search)
+    
+    # 기간 계산 (inclusive)
+    start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
+    end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d").date()
+    num_days = (end_dt - start_dt).days + 1
+    if num_days <= 0:
+        logger.error("Invalid date range: start_date=%s, end_date=%s", start_date, end_date)
+        return None
+    
+    daily_volume = int(round(total_search / num_days))
+    
+    daily_results = []
+    current_date = start_dt
+    while current_date <= end_dt:
+        period_str = current_date.strftime("%Y-%m-%d")
+        daily_results.append({
+            "period": period_str,
+            "searchVolume": daily_volume
+        })
+        current_date += timedelta(days=1)
+    
+    return { desired_keyword: daily_results }
+
+@login_required
+def get_kpi_data(request):
+    """
+    GET 파라미터로 전달된 task_id를 기반으로,
+    해당 Task의 KPI(1달간 검색량, 최근 7일 매출액, status, 현재 순위 및 차이)를 계산하여 JSON으로 반환.
+    이 뷰는 모달창이 열릴 때 AJAX 호출로 KPI 데이터를 가져오는 데 사용됩니다.
+    """
+    from django.http import JsonResponse
+    from .models import Task
+    from .api_clients import get_rel_keywords  # get_rel_keywords 함수 사용
+    from django.utils import timezone
+    import datetime
+    import logging
+
+    logger = logging.getLogger(__name__)
+    
+    task_id = request.GET.get('task_id')
+    if not task_id:
+        return JsonResponse({'error': 'Task ID is required.'}, status=400)
+    
+    try:
+        task = Task.objects.get(id=task_id)
+    except Task.DoesNotExist:
+        return JsonResponse({'error': 'Task not found.'}, status=404)
+
+    kpi = {}
+
+    # KPI 3) 현재 상태
+    kpi['status'] = task.status
+
+    # KPI 4) 현재 순위 및 시작 순위 차이
+    current_r = task.current_rank if task.current_rank else 1000
+    start_r = task.start_rank if task.start_rank else 1000
+    diff = current_r - start_r
+    sign = "+" if diff < 0 else ""
+    kpi['currentRank'] = current_r
+    kpi['rankDiff'] = f"{sign}{diff}"
+
+    # KPI 1) 1달간 검색량 및 키워드 규모 분류
+    if task.keyword:
+        today_date = timezone.now().date()
+        # 최근 30일 데이터: 오늘 기준 지난 29일부터 오늘까지
+        start_date = (today_date - datetime.timedelta(days=29)).strftime("%Y-%m-%d")
+        end_date = today_date.strftime("%Y-%m-%d")
+        daily_data_dict = get_daily_search_volume_from_rel_keywords([task.keyword.name], start_date, end_date)
+        if daily_data_dict and task.keyword.name in daily_data_dict:
+            daily_data = daily_data_dict[task.keyword.name]
+            total_volume = sum(item.get("searchVolume", 0) for item in daily_data)
+        else:
+            total_volume = 0
+        kpi['monthVolume'] = total_volume
+        # 월간 검색량을 기준으로 키워드 규모 분류
+        if total_volume < 2000:
+            kpi['monthVolumeGrowth'] = "소형 키워드"
+        elif total_volume < 30000:
+            kpi['monthVolumeGrowth'] = "중형 키워드"
+        else:
+            kpi['monthVolumeGrowth'] = "대형 키워드"
+    else:
+        kpi['monthVolume'] = 0
+        kpi['monthVolumeGrowth'] = "0%"
+
+    # KPI 2) 최근 7일 매출액 및 성장률 (기존 함수 사용)
+    if task.single_product_mid and task.available_start_date:
+        recent_sales, sales_growth = compute_recent_7day_sales_and_growth(task.single_product_mid, task.available_start_date)
+        kpi['recent7daySales'] = recent_sales
+        kpi['recent7daySalesGrowth'] = sales_growth
+    else:
+        kpi['recent7daySales'] = 0
+        kpi['recent7daySalesGrowth'] = "0%"
+
+    return JsonResponse({'success': True, 'data': kpi})
+
 
 @login_required
 def completed_tasks_list(request):
@@ -1025,6 +1397,8 @@ def task_update(request):
                         url=new_url,
                         memo=new_memo,
                         product_name=new_product.name,
+                        single_product_link=new_product.single_product_link,  # 추가
+                        single_product_mid=new_product.single_product_mid,    # 추가
                         ticket_count=task.ticket_count,
                         available_start_date=timezone.localdate() + timedelta(days=1),
                         available_end_date=new_available_end_date or task.available_end_date,
@@ -1040,6 +1414,11 @@ def task_update(request):
                     task.keyword = keyword_obj
                     task.url = new_url
                     task.memo = new_memo
+
+                    if task.product:
+                        task.product_name = task.product.name
+                        task.single_product_link = task.product.single_product_link
+                        task.single_product_mid = task.product.single_product_mid
 
                     # **available_start_date를 폼에서 제출된 값으로 업데이트**
                     if new_available_start_date:
@@ -1347,14 +1726,23 @@ def update_rankings():
         try:
             # 순위 업데이트 로직
             current_rank = get_naver_rank(task.keyword.name, task.url)
+            # 추가: current_rank가 -1이거나 1000보다 크면 None으로 설정
+            if current_rank == -1 or current_rank > 1000:
+                current_rank = None
+
             task.yesterday_rank = task.current_rank
             task.current_rank = current_rank
-            task.difference_rank = (task.yesterday_rank - task.current_rank) if task.yesterday_rank else 0
+            task.difference_rank = (
+                (task.yesterday_rank - task.current_rank)
+                if task.yesterday_rank is not None and task.current_rank is not None
+                else 0
+            )
         except Exception as e:
             print(f"Error updating task {task.id}: {e}")
-            continue
+            # 예외 발생 시에도 계속 진행하여 날짜 조건을 확인하도록 함
+            pass
 
-        # 완료된 작업 업데이트
+        # 오늘 날짜가 available_end_date보다 지난 경우 is_completed를 True로 업데이트
         if today > task.available_end_date:
             if not task.is_completed:  # 이미 완료된 작업은 재처리하지 않음
                 task.is_completed = True
@@ -1367,34 +1755,43 @@ def update_rankings():
 @login_required
 def update_all_rankings(request):
     if request.method == 'POST':
-        tasks = Task.objects.filter( available_end_date__gte=timezone.now().date())
+        # 모든 미완료 작업을 대상으로 업데이트 (필요에 따라 필터 조건을 조정)
+        tasks = Task.objects.filter(is_completed=False)
+        today = timezone.now().date()
         for task in tasks:
             try:
                 current_rank = get_naver_rank(task.keyword.name, task.url)
                 if current_rank == -1 or current_rank > 1000:
                     current_rank = None
-                difference_rank = (
-                    (task.current_rank - current_rank)
-                    if task.current_rank is not None and current_rank is not None
-                    else None
-                )
-                task.yesterday_rank = task.current_rank
-                task.current_rank = current_rank
-                task.difference_rank = difference_rank
-                task.last_checked_date = timezone.now()
-                task.save()
-                # Ranking 모델에 저장
-                Ranking.objects.create(
-                    product=task.product,
-                    keyword=task.keyword,
-                    rank=current_rank,
-                    date_time=timezone.now(),
-                    task=task,  # task 필드 추가
-
-                )
             except Exception as e:
                 logger.error(f"작업 ID {task.id}의 순위 업데이트 중 오류 발생: {e}")
-                messages.error(request, f"작업 ID {task.id}의 순위 조회 중 오류가 발생했습니다.")
+                # 예외 발생 시에도 기존 current_rank 값을 유지하도록 함
+                current_rank = task.current_rank
+
+            difference_rank = (
+                (task.current_rank - current_rank)
+                if task.current_rank is not None and current_rank is not None
+                else None
+            )
+            task.yesterday_rank = task.current_rank
+            task.current_rank = current_rank
+            task.difference_rank = difference_rank
+            task.last_checked_date = timezone.now()
+            
+            # 오늘 날짜가 available_end_date보다 지난 경우, 예외 발생 여부와 상관없이 is_completed 업데이트
+            if today > task.available_end_date:
+                if not task.is_completed:
+                    task.is_completed = True
+                    task.ending_rank = task.current_rank
+            task.save()
+            
+            Ranking.objects.create(
+                product=task.product,
+                keyword=task.keyword,
+                rank=current_rank,
+                date_time=timezone.now(),
+                task=task,
+            )
         messages.success(request, "모든 작업의 순위가 업데이트되었습니다.")
         return redirect('rankings:dashboard')
     else:
@@ -2209,7 +2606,98 @@ def get_ranking_data(request):
 
     return JsonResponse({'rankings': rankings_list})
 
+from .api_clients import get_rel_keywords,get_data_lab_trend
 
+def get_estimated_search_volume(keyword):
+    import datetime
+    """
+    1) 최근 한 달(30일) 범위를 계산.
+    2) DataLab API: time_unit='date'로 일별 ratio 조회.
+    3) 광고 API: 해당 키워드의 monthlyPcQcCnt(월간 검색수).
+    4) ratio * (monthlyPcQcCnt / 100) => 일별 추정 검색량.
+    
+    반환 예시:
+    {
+      'keyword': '방석',
+      'startDate': '2023-02-08',
+      'endDate': '2023-03-10',
+      'results': [
+          {'period': '2023-02-08', 'ratio': 40.5, 'estimatedVolume': 16200},
+          {'period': '2023-02-09', 'ratio': 100.0, 'estimatedVolume': 40000},
+          ...
+      ]
+    }
+    """
+    # 1) 최근 한 달 범위
+    today = datetime.date.today()
+    start_date = (today - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+    end_date = today.strftime("%Y-%m-%d")
+    
+    # 2) DataLab API (일별 ratio)
+    datalab_data = get_data_lab_trend([keyword], start_date, end_date, time_unit='date', device='pc')
+    if not datalab_data or 'results' not in datalab_data:
+        logger.error("DataLab API 실패 또는 결과 없음.")
+        return None
+    
+    # 3) 광고 API
+    ad_data = get_rel_keywords([keyword])
+    if ad_data is None or ad_data.empty:
+        logger.error("광고 API 실패 또는 결과 없음.")
+        return None
+    
+    # 해당 키워드 row만 필터링
+    df_filtered = ad_data[ad_data['relKeyword'] == keyword]
+    if df_filtered.empty:
+        logger.error("광고 API 결과 중 '%s' 키워드가 없음.", keyword)
+        monthly_pc_cnt = 0
+    else:
+        monthly_pc_cnt = int(df_filtered.iloc[0]['monthlyPcQcCnt'])
+    
+    # 4) ratio * (monthly_pc_cnt / 100)
+    result_list = []
+    for result_item in datalab_data['results']:
+        # 보통 results에 1개의 item만 들어있음 (키워드 1개 호출)
+        data_arr = result_item.get('data', [])
+        for row in data_arr:
+            period_str = row.get('period')
+            try:
+                ratio_val = float(row.get('ratio'))
+            except (ValueError, TypeError):
+                ratio_val = 0.0
+            estimated = int(ratio_val * (monthly_pc_cnt / 100.0))
+            result_list.append({
+                'period': period_str,
+                'ratio': ratio_val,
+                'estimatedVolume': estimated
+            })
+    
+    return {
+        'keyword': keyword,
+        'startDate': start_date,
+        'endDate': end_date,
+        'results': result_list
+    }
+    
+@login_required
+def get_keyword_volume_recent_month(request):
+    """
+    모달창 등에서 GET 파라미터로 'keyword'를 받아,
+    최근 한 달 기준으로 일별 검색량을 추정하여 반환.
+    
+    호출 예:
+    GET /traffic/api/get_keyword_volume_recent_month/?keyword=방석
+    """
+    keyword = request.GET.get('keyword')
+    if not keyword:
+        return JsonResponse({'error': 'No keyword provided.'}, status=400)
+    
+    result = get_estimated_search_volume(keyword)
+    if not result:
+        return JsonResponse({'error': 'Failed to compute search volume.'}, status=500)
+    
+    return JsonResponse({'success': True, 'data': result})
+
+    
 @login_required
 def download_selected_products_excel(request):
     product_ids = request.GET.get('product_ids')
