@@ -16,6 +16,10 @@ class TaskAdmin(admin.ModelAdmin):
         'created_at',
         'available_start_date',
         'available_end_date',
+        'original_link',
+        'original_mid',
+        'single_product_link',
+        'single_product_mid',
     )
     list_filter = (
         'category', 
@@ -33,3 +37,18 @@ class TaskAdmin(admin.ModelAdmin):
         'memo'
     )
     ordering = ('-created_at',)
+
+
+from django.contrib import admin
+from .models import Product
+
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ('name', 'category', 'store_name', 'manager',
+                    'single_product_link',
+'single_product_mid',
+'original_link',
+
+'original_mid')
+    search_fields = ('name', 'search_keyword', 'store_name', 'manager')
+    list_filter = ('category', 'store_name')
