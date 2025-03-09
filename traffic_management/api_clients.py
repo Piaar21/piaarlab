@@ -250,34 +250,49 @@ def get_rel_keywords(keywords):
     
     headers = _get_header(method, uri, NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID)
     
-    try:
-        r = requests.get(BASE_URL + uri, params=params, headers=headers)
-        if r.status_code == 200:
-            data = r.json()
-            df = pd.DataFrame(data['keywordList'])
-            # monthlyPcQcCnt 컬럼을 숫자형으로 변환 ("< 10"인 경우는 0으로 처리)
-            if 'monthlyPcQcCnt' in df.columns:
-                df['monthlyPcQcCnt'] = pd.to_numeric(df['monthlyPcQcCnt'], errors='coerce').fillna(0).astype(int)
-            # monthlyMobileQcCnt 컬럼도 숫자형으로 변환
-            if 'monthlyMobileQcCnt' in df.columns:
-                df['monthlyMobileQcCnt'] = pd.to_numeric(df['monthlyMobileQcCnt'], errors='coerce').fillna(0).astype(int)
-            # PC와 모바일 검색수를 합산한 새로운 컬럼 생성
-            df['totalSearchCount'] = df['monthlyPcQcCnt'] + df['monthlyMobileQcCnt']
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(BASE_URL + uri, params=params, headers=headers, timeout=30)
+            if r.status_code == 200:
+                data = r.json()
+                df = pd.DataFrame(data['keywordList'])
+                # monthlyPcQcCnt 컬럼을 숫자형으로 변환 ("< 10"인 경우는 0으로 처리)
+                if 'monthlyPcQcCnt' in df.columns:
+                    df['monthlyPcQcCnt'] = pd.to_numeric(df['monthlyPcQcCnt'], errors='coerce').fillna(0).astype(int)
+                # monthlyMobileQcCnt 컬럼도 숫자형으로 변환
+                if 'monthlyMobileQcCnt' in df.columns:
+                    df['monthlyMobileQcCnt'] = pd.to_numeric(df['monthlyMobileQcCnt'], errors='coerce').fillna(0).astype(int)
+                # PC와 모바일 검색수를 합산한 새로운 컬럼 생성
+                df['totalSearchCount'] = df['monthlyPcQcCnt'] + df['monthlyMobileQcCnt']
+                
+                # 전달받은 키워드와 동일한 relKeyword만 필터링 (예: '방석')
+                searched_keyword = keywords[0]
+                df = df[df['relKeyword'] == searched_keyword]
+                
+                for index, row in df.iterrows():
+                    logger.debug("Keyword: %s, monthlyPcQcCnt: %s, monthlyMobileQcCnt: %s, totalSearchCount: %s", 
+                                 row.get('relKeyword'), row.get('monthlyPcQcCnt'), row.get('monthlyMobileQcCnt'), row.get('totalSearchCount'))
+                return df
             
-            # 전달받은 키워드와 동일한 relKeyword만 필터링 (예: '방석')
-            searched_keyword = keywords[0]
-            df = df[df['relKeyword'] == searched_keyword]
+            # -- 429 Too Many Requests --
+            elif r.status_code == 429:
+                logger.warning("429 Too Many Requests (Rate Limit). 재시도 대기...")
+                time.sleep(3)
+                continue
             
-            for index, row in df.iterrows():
-                logger.debug("Keyword: %s, monthlyPcQcCnt: %s, monthlyMobileQcCnt: %s, totalSearchCount: %s", 
-                             row.get('relKeyword'), row.get('monthlyPcQcCnt'), row.get('monthlyMobileQcCnt'), row.get('totalSearchCount'))
-            return df
-        else:
-            logger.error("광고 API Error: %s, 응답: %s", r.status_code, r.text)
+            else:
+                logger.error("광고 API Error: %s, 응답: %s", r.status_code, r.text)
+                return None
+        
+        except Exception as e:
+            logger.error("광고 API 호출 중 오류: %s", e)
             return None
-    except Exception as e:
-        logger.error("광고 API 호출 중 오류: %s", e)
-        return None
+
+    return None
+
+
+
 
 def get_estimated_search_volume(keywords, start_date, end_date):
     """

@@ -52,3 +52,31 @@ class ProductAdmin(admin.ModelAdmin):
 'original_mid')
     search_fields = ('name', 'search_keyword', 'store_name', 'manager')
     list_filter = ('category', 'store_name')
+    
+    
+from .models import Traffic
+
+@admin.register(Traffic)
+class TrafficAdmin(admin.ModelAdmin):
+    list_display = ('name', 'price', 'method', 'inflow_count', 'days', 'vendor', 'type', 'created_at', 'updated_at')
+    list_filter = ('method', 'type', 'vendor')
+    search_fields = ('name', 'vendor')
+    
+    
+from .models import RankingMonitoring, KeywordRanking
+
+class KeywordRankingInline(admin.TabularInline):
+    model = KeywordRanking
+    extra = 1  # 새 항목 추가 시 기본적으로 보여줄 인라인 폼 수
+
+@admin.register(RankingMonitoring)
+class RankingMonitoringAdmin(admin.ModelAdmin):
+    list_display = ('product_id', 'product_name', 'product_url')
+    search_fields = ('product_id', 'product_name')
+    inlines = [KeywordRankingInline]
+
+@admin.register(KeywordRanking)
+class KeywordRankingAdmin(admin.ModelAdmin):
+    list_display = ('keyword', 'rank', 'ranking','update_at')
+    search_fields = ('keyword',)
+    list_filter = ('ranking',)

@@ -1,0 +1,393 @@
+{% extends "traffic_management_base.html" %}
+{% load humanize %}
+{% load rankings_filters %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+  <h2 class="mb-4 text-primary">모니터링 리포트</h2>
+  
+  <!-- 검색량 / 순위 업데이트 버튼 -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-start align-items-center gap-3 flex-wrap">
+        <form method="POST" action="{% url 'rankings:update_monitoring_search' %}" class="d-flex align-items-center gap-2">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-primary">검색량 업데이트</button>
+        </form>
+        <form method="POST" action="{% url 'rankings:update_monitoring_rank' %}" class="d-flex align-items-center gap-2">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-info">순위 업데이트</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 확장형 메인 테이블 (상위행) -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="expandable-table-container">
+        <table class="expandable-table">
+          <thead>
+            <tr>
+              <th style="width: 100px;">상품ID</th>
+              <th style="width: 150px;">상품명</th>
+              <th style="width: 150px;">메인키워드1</th>
+              <th style="width: 100px;">메인1 순위</th>
+              <th style="width: 150px;">메인키워드2</th>
+              <th style="width: 100px;">메인2 순위</th>
+              <th style="width: 150px;">메인키워드3</th>
+              <th style="width: 100px;">메인3 순위</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rankings %}
+            <tr id="row-{{ r.product_id }}" class="product-row" style="cursor: pointer;" onclick="toggleRow('{{ r.product_id }}');">
+              <td>
+                <span class="toggle-arrow">▶</span> {{ r.product_id }}
+              </td>
+              <td>{{ r.product_name }}</td>
+              <!-- DB 저장된 메인키워드 및 순위 -->
+              <td class="mainKeyword1">{% if r.main_keyword1 %}{{ r.main_keyword1 }}{% endif %}</td>
+              <td class="mainKeyword1Rank">{% if r.main_keyword1_rank %}{{ r.main_keyword1_rank }}{% endif %}</td>
+              <td class="mainKeyword2">{% if r.main_keyword2 %}{{ r.main_keyword2 }}{% endif %}</td>
+              <td class="mainKeyword2Rank">{% if r.main_keyword2_rank %}{{ r.main_keyword2_rank }}{% endif %}</td>
+              <td class="mainKeyword3">{% if r.main_keyword3 %}{{ r.main_keyword3 }}{% endif %}</td>
+              <td class="mainKeyword3Rank">{% if r.main_keyword3_rank %}{{ r.main_keyword3_rank }}{% endif %}</td>
+            </tr>
+            <!-- 하위행 (키워드 목록) -->
+            <tr id="sub-{{ r.product_id }}" class="sub-row" style="display: none;">
+              <td colspan="8">
+                <div class="sub-table-wrapper">
+                  <table class="sub-table">
+                    <thead>
+                      <tr>
+                        <th class="star-col">★</th>  <!-- 별표 열 -->
+                        <th class="keyword-col">키워드</th>
+                        <th class="volume-col">검색량</th>
+                        {% for dt in date_columns %}
+                          <th class="date-cell-head">{{ dt }}</th>
+                        {% endfor %}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for keyword, info in r.sorted_pivot_data %}
+                      <tr>
+                        <!-- 별표 (최대 3개 선택) -->
+                        <td class="star-col">
+                          <span class="star-icon"
+                                data-product="{{ r.product_id }}"
+                                data-keyword="{{ keyword }}"
+                                onclick="toggleStar(event, '{{ r.product_id }}', '{{ keyword }}', '{{ info.latest_rank|default:0 }}')">
+                            ☆
+                          </span>
+                        </td>
+                        <td class="keyword-col">{{ keyword }}</td>
+                        <td class="volume-col">{{ info.search_volume }}</td>
+                        {% for dt in date_columns %}
+                          <td class="date-cell">
+                            {% if dt in info.ranks %}
+                              {{ info.ranks|get_item:dt }}
+                            {% endif %}
+                          </td>
+                        {% endfor %}
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JavaScript -->
+<script>
+  // CSRF 토큰 가져오기
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== "") {
+      const cookies = document.cookie.split(";");
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + "=")) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+
+  // 상품별 선택된 키워드 목록
+  const selectedKeywordsMap = {};
+
+  // 별표 클릭 시 메인키워드 선택 및 AJAX 저장
+  function toggleStar(event, productId, keyword, rank) {
+    event.stopPropagation();
+    if (!selectedKeywordsMap[productId]) {
+      selectedKeywordsMap[productId] = [];
+    }
+    let selectedList = selectedKeywordsMap[productId];
+    const idx = selectedList.findIndex(k => k.keyword === keyword);
+    if (idx >= 0) {
+      selectedList.splice(idx, 1);
+      event.target.classList.remove("active-star");
+    } else {
+      if (selectedList.length >= 3) {
+        alert("메인키워드는 최대 3개까지 가능합니다.");
+        return;
+      }
+      selectedList.push({ keyword: keyword, rank: rank });
+      event.target.classList.add("active-star");
+    }
+    selectedKeywordsMap[productId] = selectedList;
+    updateMainKeywords(productId);
+    updateMainKeywordsAjax(productId, selectedList);
+  }
+
+  // 상위행에 선택된 메인키워드 표시
+  function updateMainKeywords(productId) {
+    const row = document.getElementById('row-' + productId);
+    if (!row) return;
+    const mk1 = row.querySelector(".mainKeyword1");
+    const mk1r = row.querySelector(".mainKeyword1Rank");
+    const mk2 = row.querySelector(".mainKeyword2");
+    const mk2r = row.querySelector(".mainKeyword2Rank");
+    const mk3 = row.querySelector(".mainKeyword3");
+    const mk3r = row.querySelector(".mainKeyword3Rank");
+    [mk1, mk1r, mk2, mk2r, mk3, mk3r].forEach(e => e.textContent = "");
+    const list = selectedKeywordsMap[productId] || [];
+    if (list[0]) {
+      mk1.textContent = list[0].keyword;
+      mk1r.textContent = list[0].rank;
+    }
+    if (list[1]) {
+      mk2.textContent = list[1].keyword;
+      mk2r.textContent = list[1].rank;
+    }
+    if (list[2]) {
+      mk3.textContent = list[2].keyword;
+      mk3r.textContent = list[2].rank;
+    }
+  }
+
+  // AJAX를 통해 메인키워드 DB 업데이트
+  function updateMainKeywordsAjax(productId, selectedList) {
+    const csrfToken = getCookie("csrftoken");
+    fetch("{% url 'rankings:update_main_keywords' %}", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken
+      },
+      body: JSON.stringify({
+        product_id: productId,
+        main_keywords: selectedList
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status !== "success") {
+        console.error("메인키워드 업데이트 오류:", data.message);
+      }
+    })
+    .catch(error => console.error("메인키워드 업데이트 AJAX 오류:", error));
+  }
+
+  // 행 펼치기/접기
+  function toggleRow(productId) {
+    const subRow = document.getElementById('sub-' + productId);
+    const productRow = document.getElementById('row-' + productId);
+    if (!subRow) return;
+    if (subRow.style.display === "none" || subRow.style.display === "") {
+      subRow.style.display = "table-row";
+      const arrow = productRow.querySelector(".toggle-arrow");
+      if (arrow) arrow.textContent = "▼";
+    } else {
+      subRow.style.display = "none";
+      const arrow = productRow.querySelector(".toggle-arrow");
+      if (arrow) arrow.textContent = "▶";
+    }
+  }
+
+  // 날짜 열에서 이전 열과 비교하여 등락폭 표시
+  document.addEventListener("DOMContentLoaded", function() {
+    const rows = document.querySelectorAll(".sub-table tbody tr");
+    rows.forEach(row => {
+      const dateCells = row.querySelectorAll(".date-cell");
+      let prevValue = null;
+      dateCells.forEach(cell => {
+        const cellText = cell.textContent.trim();
+        const currentValue = parseInt(cellText, 10);
+        if (!isNaN(currentValue)) {
+          if (prevValue !== null) {
+            const diff = prevValue - currentValue;
+            if (diff > 0) {
+              cell.innerHTML = currentValue + ' <span class="arrow-up">▲ ' + diff + '</span>';
+            } else if (diff < 0) {
+              cell.innerHTML = currentValue + ' <span class="arrow-down">▼ ' + Math.abs(diff) + '</span>';
+            }
+          }
+          prevValue = currentValue;
+        }
+      });
+    });
+  });
+
+  // 페이지 로드 시 DB 저장된 메인키워드들을 복원하여, 해당 별표에 active-star 클래스 추가
+  document.addEventListener("DOMContentLoaded", function() {
+    const productRows = document.querySelectorAll(".product-row");
+    productRows.forEach(row => {
+      const productId = row.id.replace("row-", "");
+      if (!selectedKeywordsMap[productId]) {
+        selectedKeywordsMap[productId] = [];
+      }
+      const mk1 = row.querySelector(".mainKeyword1")?.textContent.trim();
+      const mk1Rank = row.querySelector(".mainKeyword1Rank")?.textContent.trim();
+      const mk2 = row.querySelector(".mainKeyword2")?.textContent.trim();
+      const mk2Rank = row.querySelector(".mainKeyword2Rank")?.textContent.trim();
+      const mk3 = row.querySelector(".mainKeyword3")?.textContent.trim();
+      const mk3Rank = row.querySelector(".mainKeyword3Rank")?.textContent.trim();
+
+      if (mk1) {
+        selectedKeywordsMap[productId].push({ keyword: mk1, rank: mk1Rank || 0 });
+      }
+      if (mk2) {
+        selectedKeywordsMap[productId].push({ keyword: mk2, rank: mk2Rank || 0 });
+      }
+      if (mk3) {
+        selectedKeywordsMap[productId].push({ keyword: mk3, rank: mk3Rank || 0 });
+      }
+    });
+    const allStars = document.querySelectorAll(".star-icon");
+    allStars.forEach(star => {
+      const pId = star.getAttribute("data-product");
+      const kw = star.getAttribute("data-keyword");
+      const selectedList = selectedKeywordsMap[pId] || [];
+      const found = selectedList.find(item => item.keyword === kw);
+      if (found) {
+        star.classList.add("active-star");
+      }
+    });
+  });
+</script>
+
+<style>
+  .container-fluid {
+    margin-left: 16rem;
+    width: calc(100% - 16rem);
+  }
+  .card {
+    border: none;
+    border-radius: 15px;
+    background-color: #fff;
+    padding: 20px;
+  }
+  .expandable-table-container {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 1rem;
+  }
+  .expandable-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 900px;
+    font-size: 0.9rem;
+  }
+  .expandable-table thead th {
+    background-color: #f1f3f5;
+    border: 1px solid #dee2e6;
+    padding: 10px;
+    white-space: nowrap;
+    text-align: center;
+  }
+  .expandable-table tbody td {
+    border: 1px solid #dee2e6;
+    padding: 8px;
+    white-space: nowrap;
+    text-align: center;
+  }
+  .toggle-arrow {
+    font-weight: bold;
+    margin-right: 5px;
+  }
+  /* 하위 테이블 */
+  .sub-table-wrapper {
+    overflow-x: auto;
+    background-color: #f8f9fa;
+    padding: 10px;
+    margin: 4px 0;
+    border-radius: 4px;
+  }
+  .sub-table {
+    width: auto;
+    border-collapse: collapse;
+    table-layout: fixed;
+    min-width: 600px;
+    font-size: 0.85rem;
+  }
+  .sub-table th,
+  .sub-table td {
+    border: 1px solid #dee2e6;
+    padding: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sub-table thead th {
+    background-color: #e9ecef;
+    text-align: center;
+  }
+  /* 고정 열 */
+  .star-col {
+    width: 40px;
+    text-align: center;
+    position: sticky;
+    left: 0;
+    background-color: #fff;
+    z-index: 2;
+  }
+  .keyword-col {
+    width: 120px;
+    position: sticky;
+    left: 40px;
+    background-color: #fff;
+    z-index: 2;
+    text-align: center;
+  }
+  .volume-col {
+    width: 80px;
+    position: sticky;
+    left: 160px;
+    background-color: #fff;
+    z-index: 2;
+    text-align: right;
+  }
+  .date-cell-head,
+  .date-cell {
+    width: 60px;
+    text-align: center;
+  }
+  .star-icon {
+    cursor: pointer;
+    color: gray;
+    font-size: 1.2rem;
+  }
+  .star-icon.active-star {
+    color: yellow;
+  }
+  .arrow-up {
+    color: green;
+    font-size: 0.8rem;
+  }
+  .arrow-down {
+    color: red;
+    font-size: 0.8rem;
+  }
+</style>
+{% endblock %}

@@ -110,7 +110,7 @@ class Ranking(models.Model):
         on_delete=models.CASCADE,
         related_name='rankings',
     )
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, null=True, blank=True)    
     keyword = models.ForeignKey(Keyword, on_delete=models.CASCADE)
     rank = models.IntegerField(null=True, blank=True)  # null과 blank 허용
     date_time = models.DateTimeField(auto_now_add=True)
@@ -251,3 +251,32 @@ class AdForm(forms.ModelForm):
 
 class ExcelUploadForm(forms.Form):
     file = forms.FileField(label='엑셀 파일 업로드')
+    
+    
+from django.db import models
+
+class RankingMonitoring(models.Model):
+    product_id = models.CharField(max_length=100, unique=True)
+    product_url = models.URLField()
+    product_name = models.CharField(max_length=255)
+    # 메인키워드 저장 필드 (최대 3개)
+    main_keyword1 = models.CharField(max_length=255, blank=True, null=True)
+    main_keyword1_rank = models.PositiveIntegerField(blank=True, null=True)
+    main_keyword2 = models.CharField(max_length=255, blank=True, null=True)
+    main_keyword2_rank = models.PositiveIntegerField(blank=True, null=True)
+    main_keyword3 = models.CharField(max_length=255, blank=True, null=True)
+    main_keyword3_rank = models.PositiveIntegerField(blank=True, null=True)
+
+    def __str__(self):
+        return self.product_name
+
+class KeywordRanking(models.Model):
+    ranking = models.ForeignKey(RankingMonitoring, on_delete=models.CASCADE, related_name='keywords')
+    keyword = models.CharField(max_length=255)
+    rank = models.PositiveIntegerField()
+    update_at = models.DateField(auto_now_add=True)  # 순위 업데이트 날짜
+    search_volume = models.PositiveIntegerField(default=0)  # 검색량
+
+    def __str__(self):
+        return f"{self.keyword}: {self.rank}"
+
