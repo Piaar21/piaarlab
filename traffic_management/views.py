@@ -536,14 +536,19 @@ def download_bulk_traffic_sample_excel(request):
     start_date = today + timedelta(days=1)
     end_date = today + timedelta(days=10)
 
-    # 모달에서 선택한 트래픽 ID(GET 파라미터)로 Traffic 객체 조회
+    # GET 파라미터로 traffic_id 확인 및 Traffic 객체 조회
     traffic_id = request.GET.get('traffic_id')
+    logger.debug(f"Received traffic_id: {traffic_id}")
     traffic = None
     if traffic_id:
         try:
             traffic = Traffic.objects.get(id=traffic_id)
+            logger.debug(f"Loaded Traffic: ID {traffic.id}, type: {traffic.type}")
         except Traffic.DoesNotExist:
+            logger.error(f"Traffic with id {traffic_id} does not exist.")
             traffic = None
+    else:
+        logger.info("No traffic_id provided in request.")
 
     # 워크북 생성
     wb = openpyxl.Workbook()
@@ -567,17 +572,19 @@ def download_bulk_traffic_sample_excel(request):
     products = Product.objects.all()
 
     for product in products:
-        # 모달에서 선택한 트래픽의 type에 따라 URL 결정
         if traffic:
+            logger.debug(f"Processing Product ID {product.id} with Traffic type: {traffic.type}")
             if traffic.type == '단일':
                 url = product.single_product_link or ''
             elif traffic.type == '원부':
                 url = product.original_link or ''
             else:
                 url = ''
+            logger.info(f"Product ID {product.id} - URL: {url} (Traffic type: {traffic.type})")
         else:
-            # 모달에서 트래픽이 선택되지 않은 경우 기본 단일 링크 사용
+            # Traffic 정보가 없는 경우 기본 단일 링크 사용
             url = product.single_product_link or ''
+            logger.info(f"Product ID {product.id} - Traffic 정보가 없습니다. 기본 URL 사용: {url}")
 
         row = [
             product.id,                          # 상품ID
@@ -608,7 +615,6 @@ def download_bulk_traffic_sample_excel(request):
     response['Content-Disposition'] = 'attachment; filename=bulk_task_sample.xlsx'
     wb.save(response)
     return response
-
 
 def build_initial_data_from_post(request, product_ids):
     initial_data = {}
@@ -2876,3 +2882,214 @@ def task_register_from_excel(request):
             'initial_data': initial_data,
         }
         return render(request, 'rankings/task_register.html', context)
+
+#모니터링 시작 
+from .models import RankingMonitoring, KeywordRanking
+
+
+@login_required
+def ranking_monitoring_list(request):
+    # 1) 모니터링 상품들 전부 불러옴 (키워드도 미리 prefetch)
+    rankings = RankingMonitoring.objects.all().prefetch_related('keywords')
+
+    # 2) 모든 키워드의 update_at 값(YYYY-MM-DD 형식)을 집합으로 모은 후, 내림차순 정렬
+    all_dates = set()
+    for r in rankings:
+        for kw in r.keywords.all():
+            all_dates.add(kw.update_at.strftime("%Y-%m-%d"))
+    date_columns = sorted(all_dates, reverse=True)
+
+    # 3) 각 상품별로 pivot_data 구성 (중복 키워드 제거)
+    #    pivot_data = { keyword: { 'search_volume': 값, 'ranks': { 'YYYY-MM-DD': rank, ... },
+    #                                'latest_rank': (date_columns[0]에 해당하는 rank) } }
+    for r in rankings:
+        pivot_data = {}
+        seen = set()  # (keyword, date_str) 중복 방지
+        for kwobj in r.keywords.all():
+            date_str = kwobj.update_at.strftime("%Y-%m-%d")
+            if (kwobj.keyword, date_str) in seen:
+                continue
+            seen.add((kwobj.keyword, date_str))
+            if kwobj.keyword not in pivot_data:
+                pivot_data[kwobj.keyword] = {
+                    'search_volume': kwobj.search_volume,
+                    'ranks': {}
+                }
+            pivot_data[kwobj.keyword]['ranks'][date_str] = kwobj.rank
+
+        # 최신 날짜(가장 첫번째 date_columns 값)를 기준으로 latest_rank 설정
+        for keyword, info in pivot_data.items():
+            if date_columns:
+                info['latest_rank'] = info['ranks'].get(date_columns[0], 0)
+            else:
+                info['latest_rank'] = 0
+
+        # pivot_data를 검색량(search_volume) 내림차순으로 정렬하여 리스트 형태로 저장
+        sorted_pivot = sorted(pivot_data.items(), key=lambda item: item[1]['search_volume'], reverse=True)
+        r.sorted_pivot_data = sorted_pivot
+
+    context = {
+        'rankings': rankings,
+        'date_columns': date_columns,
+    }
+    return render(request, 'rankings/ranking_monitoring.html', context)
+
+
+
+
+
+@login_required
+def add_monitoring(request):
+    if request.method == 'POST':
+        # 모달에서 넘어온 선택된 상품 IDs (쉼표 구분)
+        selected_products_str = request.POST.get('selected_products', '')
+        # 쉼표로 구분된 키워드들
+        monitoring_keywords = request.POST.get('monitoring_keywords', '')
+
+        # 문자열을 리스트로 변환
+        selected_product_ids = [x for x in selected_products_str.split(',') if x.strip()]
+        keyword_list = [kw.strip() for kw in monitoring_keywords.split(',') if kw.strip()]
+
+        for product_pk in selected_product_ids:
+            try:
+                # 실제 Product 모델과 연결 (상품 PK 사용)
+                product = Product.objects.get(pk=product_pk)
+            except Product.DoesNotExist:
+                continue
+
+            # 기존 RankingMonitoring 인스턴스가 있으면 가져오고, 없으면 새로 생성
+            ranking_obj, created = RankingMonitoring.objects.get_or_create(
+                product_id=product.single_product_mid,
+                defaults={
+                    'product_url': product.single_product_link,
+                    'product_name': product.name,
+                }
+            )
+            if not created:
+                ranking_obj.product_url = product.single_product_link
+                ranking_obj.product_name = product.name
+                ranking_obj.save()
+
+            # KeywordRanking 레코드 생성 (중복 키워드는 건너뛰기)
+            for kw in keyword_list:
+                if not ranking_obj.keywords.filter(keyword=kw).exists():
+                    KeywordRanking.objects.create(
+                        ranking=ranking_obj,
+                        keyword=kw,
+                        rank=0  # 초기 rank 값
+                    )
+
+            # 중복 없는 유일한 키워드 목록 (입력 순서를 유지)
+            unique_keywords = list(dict.fromkeys(keyword_list))
+            if unique_keywords:
+                ranking_obj.main_keyword1 = unique_keywords[0] if len(unique_keywords) >= 1 else ''
+                ranking_obj.main_keyword2 = unique_keywords[1] if len(unique_keywords) >= 2 else ''
+                ranking_obj.main_keyword3 = unique_keywords[2] if len(unique_keywords) >= 3 else ''
+                # 초기 순위는 0 (추후 업데이트 시 변경)
+                ranking_obj.main_keyword1_rank = 0 if ranking_obj.main_keyword1 else None
+                ranking_obj.main_keyword2_rank = 0 if ranking_obj.main_keyword2 else None
+                ranking_obj.main_keyword3_rank = 0 if ranking_obj.main_keyword3 else None
+                ranking_obj.save()
+
+        messages.success(request, "모니터링 등록이 완료되었습니다.")
+        return redirect('rankings:product_list')  # 상품 리스트로 이동
+
+    return redirect('rankings:product_list')
+
+
+@login_required
+def update_monitoring_search(request):
+    """
+    등록된 KeywordRanking의 각 keyword에 대해 
+    get_rel_keywords() 함수를 이용하여 한 달 검색량을 업데이트.
+    """
+    # 모든 키워드를 불러온다고 가정 (필요에 따라 filter(...) 사용 가능)
+    keyword_qs = KeywordRanking.objects.all()
+
+    updated_count = 0
+    for kwobj in keyword_qs:
+        # API를 통해 키워드 검색량 조회
+        df = get_rel_keywords([kwobj.keyword])  # ['키워드'] 형태로 전달
+        if df is not None and not df.empty:
+            row = df.iloc[0]
+            total_search = int(row.get('totalSearchCount', 0))
+            # 예: KeywordRanking 모델에 search_volume 필드가 있다고 가정
+            kwobj.search_volume = total_search  
+            kwobj.save()
+            updated_count += 1
+
+    messages.success(request, f"검색량 업데이트 완료! ({updated_count}건 반영)")
+    return redirect('rankings:ranking_monitoring_list')  # 업데이트 후 모니터링 목록 페이지로 이동
+
+
+@login_required
+def update_monitoring_rank(request):
+    """
+    등록된 KeywordRanking의 keyword와 product_url(=ranking.product_url)을 사용하여
+    get_naver_rank() 함수를 통해 오늘 순위를 조회, DB에 갱신.
+    """
+    keyword_qs = KeywordRanking.objects.select_related('ranking').all()
+
+    updated_count = 0
+    for kwobj in keyword_qs:
+        product_url = kwobj.ranking.product_url  # 상위 모델(RankingMonitoring)에 저장된 URL
+        # 비동기 rank 조회 (본문 예시 코드 참고)
+        new_rank = get_naver_rank(kwobj.keyword, product_url)
+
+        # 조회 성공 시 (-1 반환 시 실패 가정)
+        if new_rank != -1:
+            kwobj.rank = new_rank
+            # 만약 update_at을 매번 갱신하고 싶다면 (auto_now_add가 아니라면 수동 변경)
+            kwobj.update_at = timezone.now().date()  # DateField 기준
+            kwobj.save()
+            updated_count += 1
+
+    messages.success(request, f"순위 업데이트 완료! ({updated_count}건 반영)")
+    return redirect('rankings:ranking_monitoring_list')
+
+# views.py
+import json
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+from .models import RankingMonitoring
+
+@login_required
+@require_POST
+def update_main_keywords(request):
+    """
+    AJAX POST로 전달된 상품의 메인키워드 목록을 DB에 저장합니다.
+    요청 JSON 예시:
+    {
+       "product_id": "P001",
+       "main_keywords": [
+           {"keyword": "키워드1", "rank": 3},
+           {"keyword": "키워드2", "rank": 5},
+           {"keyword": "키워드3", "rank": 1}
+       ]
+    }
+    """
+    try:
+        data = json.loads(request.body)
+        product_id = data.get("product_id")
+        main_keywords = data.get("main_keywords", [])  # 최대 3개
+
+        # RankingMonitoring 레코드 찾기
+        ranking_obj = RankingMonitoring.objects.get(product_id=product_id)
+
+        # 최대 3개까지 업데이트
+        # (없으면 "", rank=None)
+        ranking_obj.main_keyword1 = main_keywords[0]["keyword"] if len(main_keywords) >= 1 else ""
+        ranking_obj.main_keyword1_rank = main_keywords[0]["rank"] if len(main_keywords) >= 1 else None
+
+        ranking_obj.main_keyword2 = main_keywords[1]["keyword"] if len(main_keywords) >= 2 else ""
+        ranking_obj.main_keyword2_rank = main_keywords[1]["rank"] if len(main_keywords) >= 2 else None
+
+        ranking_obj.main_keyword3 = main_keywords[2]["keyword"] if len(main_keywords) >= 3 else ""
+        ranking_obj.main_keyword3_rank = main_keywords[2]["rank"] if len(main_keywords) >= 3 else None
+
+        ranking_obj.save()
+
+        return JsonResponse({"status": "success"})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)})

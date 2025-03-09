@@ -38,3 +38,13 @@ def add_class(field, css_class):
 @register.filter
 def get_item(dictionary, key):
     return dictionary.get(key)
+
+
+register = template.Library()
+
+@register.filter
+def get_item(dictionary, key):
+    """사전에서 key에 해당하는 값을 반환합니다."""
+    if isinstance(dictionary, dict):
+        return dictionary.get(key)
+    return ''
