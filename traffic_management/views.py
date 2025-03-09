@@ -1786,13 +1786,16 @@ def update_all_rankings(request):
                     task.ending_rank = task.current_rank
             task.save()
             
-            Ranking.objects.create(
-                product=task.product,
-                keyword=task.keyword,
-                rank=current_rank,
-                date_time=timezone.now(),
-                task=task,
-            )
+            if task.product:
+                Ranking.objects.create(
+                    product=task.product,
+                    keyword=task.keyword,
+                    rank=current_rank,
+                    date_time=timezone.now(),
+                    task=task,
+                )
+            else:
+                logger.error(f"Task ID {task.id} has no associated product; skipping Ranking creation.")
         messages.success(request, "모든 작업의 순위가 업데이트되었습니다.")
         return redirect('rankings:dashboard')
     else:
