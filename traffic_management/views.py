@@ -262,6 +262,7 @@ def dashborad_get_sales_data(request):
 
 @login_required
 def task_register(request):
+    from datetime import datetime
     # 이제 사용자 프로필에서 API 정보를 받지 않고, api_clients에 정의된 naver_client_id, naver_client_secret 사용
     if request.method == 'POST':
         if 'register' in request.POST:
@@ -317,7 +318,7 @@ def task_register(request):
                 # 날짜 필드를 datetime.date로 변환
                 available_start_date_str = request.POST.get(f'available_start_date_{product_id}')
                 available_end_date_str = request.POST.get(f'available_end_date_{product_id}')
-
+                
                 try:
                     available_start_date = datetime.strptime(available_start_date_str, '%Y-%m-%d').date()
                 except (ValueError, TypeError):
@@ -2678,77 +2679,24 @@ def get_estimated_search_volume(keyword):
         'results': result_list
     }
     
-from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
-import logging
-import datetime
-from traffic_management.models import Task
-from traffic_management.api_clients import get_estimated_search_volume
-
-logger = logging.getLogger(__name__)
-
 @login_required
 def get_keyword_volume_recent_month(request):
     """
-    GET 파라미터로 전달된 keyword와 task_id를 사용하여,
-    해당 Task의 available_start_date와 available_end_date를 기간으로 하여
-    DataLab API와 광고 API 결과를 결합, 월간 추정 검색량(estimatedVolume)을 산출한 결과를 반환합니다.
+    모달창 등에서 GET 파라미터로 'keyword'를 받아,
+    최근 한 달 기준으로 일별 검색량을 추정하여 반환.
     
-    반환 예시:
-    {
-      "success": true,
-      "keyword": "방석",
-      "startDate": "2023-01-01",
-      "endDate": "2023-03-01",
-      "result": {
-          "방석": [
-              { "period": "2023-01-01", "ratio": 40.5, "estimatedVolume": 16200 },
-              { "period": "2023-02-01", "ratio": 100.0, "estimatedVolume": 40000 }
-          ]
-      }
-    }
+    호출 예:
+    GET /traffic/api/get_keyword_volume_recent_month/?keyword=방석
     """
     keyword = request.GET.get('keyword')
-    task_id = request.GET.get('task_id')
-    
     if not keyword:
-        logger.debug("[get_keyword_volume_recent_month] No keyword provided.")
         return JsonResponse({'error': 'No keyword provided.'}, status=400)
-    if not task_id:
-        logger.debug("[get_keyword_volume_recent_month] No task_id provided.")
-        return JsonResponse({'error': 'No task_id provided.'}, status=400)
     
-    logger.debug("[get_keyword_volume_recent_month] Received keyword=%s, task_id=%s", keyword, task_id)
+    result = get_estimated_search_volume(keyword)
+    if not result:
+        return JsonResponse({'error': 'Failed to compute search volume.'}, status=500)
     
-    # Task 객체 조회
-    try:
-        task = Task.objects.get(id=task_id)
-    except Task.DoesNotExist:
-        logger.error("[get_keyword_volume_recent_month] Task not found for id=%s", task_id)
-        return JsonResponse({'error': 'Task not found.'}, status=404)
-    
-    # Task의 available_start_date와 available_end_date를 기간으로 사용
-    start_date = task.available_start_date.strftime("%Y-%m-%d")
-    end_date = task.available_end_date.strftime("%Y-%m-%d")
-    
-    logger.debug("[get_keyword_volume_recent_month] Using date range: %s to %s", start_date, end_date)
-    
-    # 광고 API와 DataLab API의 결과를 결합하여 추정 검색량 계산
-    estimated_result = get_estimated_search_volume([keyword], start_date, end_date)
-    if not estimated_result:
-        logger.error("[get_keyword_volume_recent_month] Failed to compute estimated search volume.")
-        return JsonResponse({'error': 'Failed to compute estimated search volume.'}, status=500)
-    
-    logger.info("[get_keyword_volume_recent_month] Estimated search volume for keyword=%s: %s", keyword, estimated_result)
-    
-    return JsonResponse({
-        'success': True,
-        'keyword': keyword,
-        'startDate': start_date,
-        'endDate': end_date,
-        'result': estimated_result
-    })
-
+    return JsonResponse({'success': True, 'data': result})
 
     
 @login_required
