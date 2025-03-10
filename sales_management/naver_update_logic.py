@@ -4,15 +4,16 @@ import json
 import time
 import datetime
 import logging
+from decouple import config
 from django.conf import settings
 from .views import fetch_naver_sales, update_naver_daily_sales, create_stat_report, get_stat_report, download_report, save_naver_ads_report
 
 logger = logging.getLogger(__name__)
 
-NAVER_ACCOUNTS = getattr(settings, "NAVER_ACCOUNTS", [])
-NAVER_AD_ACCESS = getattr(settings, "NAVER_AD_ACCESS", None)
-NAVER_AD_SECRET = getattr(settings, "NAVER_AD_SECRET", None)
-CUSTOMER_ID = getattr(settings, "CUSTOMER_ID", None)
+NAVER_ACCOUNTS = config(settings, "NAVER_ACCOUNTS", [])
+NAVER_AD_ACCESS = config(settings, "NAVER_AD_ACCESS", None)
+NAVER_AD_SECRET = config(settings, "NAVER_AD_SECRET", None)
+CUSTOMER_ID = config(settings, "CUSTOMER_ID", None)
 
 def update_naver_sales_logic(start_str, end_str):
     """
