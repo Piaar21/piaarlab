@@ -10,7 +10,7 @@ from .views import fetch_naver_sales, update_naver_daily_sales, create_stat_repo
 
 logger = logging.getLogger(__name__)
 
-NAVER_ACCOUNTS = config(settings, "NAVER_ACCOUNTS", [])
+NAVER_ACCOUNTS = config("NAVER_ACCOUNTS", default="[]", cast=json.loads)
 NAVER_AD_ACCESS = config(settings, "NAVER_AD_ACCESS", None)
 NAVER_AD_SECRET = config(settings, "NAVER_AD_SECRET", None)
 CUSTOMER_ID = config(settings, "CUSTOMER_ID", None)
