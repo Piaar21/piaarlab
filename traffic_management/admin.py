@@ -20,6 +20,7 @@ class TaskAdmin(admin.ModelAdmin):
         'original_mid',
         'single_product_link',
         'single_product_mid',
+        'store_name',
     )
     list_filter = (
         'category', 
@@ -80,3 +81,12 @@ class KeywordRankingAdmin(admin.ModelAdmin):
     list_display = ('keyword', 'rank', 'ranking','update_at')
     search_fields = ('keyword',)
     list_filter = ('ranking',)
+
+from .models import NaverMarketingCost
+
+@admin.register(NaverMarketingCost)
+class NaverMarketingCostAdmin(admin.ModelAdmin):
+    list_display = ('task', 'date', 'cost', 'created_at')
+    list_filter = ('task', 'date')
+    search_fields = ('product__name',)  # product의 name 필드를 검색
+    ordering = ('-date',)               # 최신 날짜가 상단에 오도록

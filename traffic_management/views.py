@@ -287,6 +287,7 @@ def task_register(request):
                 url = request.POST.get(f'url_{product_id}')
                 memo = request.POST.get(f'memo_{product_id}')
                 product_name = request.POST.get(f'product_name_{product_id}')
+                store_name = request.POST.get(f'store_name_{product_id}', '').strip()
                 traffic_id = request.POST.get(f'traffic_{product_id}')
                 traffic = Traffic.objects.get(id=traffic_id) if traffic_id else None
 
@@ -387,6 +388,7 @@ def task_register(request):
                         traffic=traffic,
                         single_product_link=product.single_product_link,  # 추가
                         single_product_mid=product.single_product_mid,    # 추가
+                        store_name=product.store_name,  # 추가
                     )
                     # Ranking 객체 생성
                     Ranking.objects.create(
@@ -426,6 +428,7 @@ def task_register(request):
                 'url': '',
                 'memo': '',
                 'product_name': product.name,
+                'store_name': '',
                 'traffic_id': '',
                 'ticket_count': '',
                 'available_start_date': '',
@@ -475,6 +478,7 @@ def task_upload_excel_data(request):
                 ticket_count = row[6]
                 available_start_date = row[7]
                 available_end_date = row[8]
+                store_name = row[9] if len(row) > 9 else ''  # 엑셀에 스토어명 컬럼이 있으면 가져오고, 없으면 빈 문자열로 처리
 
                 # product_id에 맞는 Product 객체 가져오기
                 try:
@@ -507,6 +511,7 @@ def task_upload_excel_data(request):
                     'traffic': selected_traffic,  # 모달에서 선택한 트래픽 할당
                     'single_product_link': product.single_product_link,  # 추가
                     'single_product_mid': product.single_product_mid,    # 추가
+                    'store_name': store_name,  # 추가된 store_name 필드
                 }
                 logger.debug(f"Product {product.id} - single_product_link: {product.single_product_link}, single_product_mid: {product.single_product_mid}")
                 tasks_to_create.append(task_data)
@@ -564,7 +569,8 @@ def download_bulk_traffic_sample_excel(request):
         '메모', 
         '이용권수', 
         '이용가능 시작일자', 
-        '이용가능 종료일자'
+        '이용가능 종료일자',
+        '스토어명',
     ]
     ws.append(headers)
 
@@ -596,6 +602,8 @@ def download_bulk_traffic_sample_excel(request):
             1,                                   # 이용권수 (항상 1)
             start_date.strftime('%Y-%m-%d'),      # 이용가능 시작일자 (내일)
             end_date.strftime('%Y-%m-%d'),        # 이용가능 종료일자 (10일 뒤)
+            product.store_name or '',                                    # 스토어명 (빈 값)
+            
         ]
         ws.append(row)
 
