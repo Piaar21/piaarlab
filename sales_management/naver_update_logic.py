@@ -75,6 +75,7 @@ def update_naver_sales_logic(start_str, end_str):
 def update_naver_ads_report_logic(raw_start, raw_end):
     from datetime import datetime, timedelta
     
+    logger.debug("update_naver_sales_logic 호출됨: start=%s, end=%s", NAVER_AD_ACCESS, NAVER_AD_SECRET)
 
     if not all([NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID]):
         logger.error("네이버 광고 API 설정이 누락되었습니다.")
