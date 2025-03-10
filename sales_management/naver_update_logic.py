@@ -35,7 +35,7 @@ NAVER_ACCOUNTS = [
 ]
 NAVER_AD_ACCESS = config("NAVER_AD_ACCESS", default=None)
 NAVER_AD_SECRET = config("NAVER_AD_SECRET", default=None)
-CUSTOMER_ID = config("CUSTOMER_ID", default=None)
+CUSTOMER_ID = config("NAVER_AD_CUSTOMER_ID", default=None)
 
 
 def update_naver_sales_logic(start_str, end_str):
