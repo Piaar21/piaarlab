@@ -2889,22 +2889,21 @@ from .models import RankingMonitoring, KeywordRanking
 
 @login_required
 def ranking_monitoring_list(request):
-    # 1) 모니터링 상품들 전부 불러옴 (키워드도 미리 prefetch)
     rankings = RankingMonitoring.objects.all().prefetch_related('keywords')
 
-    # 2) 모든 키워드의 update_at 값(YYYY-MM-DD 형식)을 집합으로 모은 후, 내림차순 정렬
+    # 모든 날짜 수집 후 내림차순 정렬 (예: ['2025-03-10', '2025-03-09'])
     all_dates = set()
     for r in rankings:
         for kw in r.keywords.all():
             all_dates.add(kw.update_at.strftime("%Y-%m-%d"))
     date_columns = sorted(all_dates, reverse=True)
+    
+    # 첫 번째 날짜를 별도 변수로 저장 (없으면 None)
+    first_date = date_columns[0] if date_columns else None
 
-    # 3) 각 상품별로 pivot_data 구성 (중복 키워드 제거)
-    #    pivot_data = { keyword: { 'search_volume': 값, 'ranks': { 'YYYY-MM-DD': rank, ... },
-    #                                'latest_rank': (date_columns[0]에 해당하는 rank) } }
     for r in rankings:
         pivot_data = {}
-        seen = set()  # (keyword, date_str) 중복 방지
+        seen = set()
         for kwobj in r.keywords.all():
             date_str = kwobj.update_at.strftime("%Y-%m-%d")
             if (kwobj.keyword, date_str) in seen:
@@ -2917,22 +2916,40 @@ def ranking_monitoring_list(request):
                 }
             pivot_data[kwobj.keyword]['ranks'][date_str] = kwobj.rank
 
-        # 최신 날짜(가장 첫번째 date_columns 값)를 기준으로 latest_rank 설정
+        # 최신 날짜(첫 번째 date_columns)와 전날(두 번째 date_columns)의 순위를 가져와서 변동 계산
         for keyword, info in pivot_data.items():
             if date_columns:
-                info['latest_rank'] = info['ranks'].get(date_columns[0], 0)
+                latest_date = date_columns[0]
+                latest_rank = info['ranks'].get(latest_date, 0)
+                info['latest_rank'] = latest_rank
+
+                if len(date_columns) > 1:
+                    prev_date = date_columns[1]
+                    prev_rank = info['ranks'].get(prev_date, 0)
+                    info['previous_rank'] = prev_rank
+                    info['rank_change'] = prev_rank - latest_rank
+                    info['abs_rank_change'] = abs(info['rank_change'])
+                else:
+                    info['previous_rank'] = 0
+                    info['rank_change'] = 0
+                    info['abs_rank_change'] = 0
             else:
                 info['latest_rank'] = 0
+                info['previous_rank'] = 0
+                info['rank_change'] = 0
+                info['abs_rank_change'] = 0
 
-        # pivot_data를 검색량(search_volume) 내림차순으로 정렬하여 리스트 형태로 저장
         sorted_pivot = sorted(pivot_data.items(), key=lambda item: item[1]['search_volume'], reverse=True)
         r.sorted_pivot_data = sorted_pivot
 
     context = {
         'rankings': rankings,
         'date_columns': date_columns,
+        'first_date': first_date,
     }
     return render(request, 'rankings/ranking_monitoring.html', context)
+
+
 
 
 
@@ -2941,23 +2958,18 @@ def ranking_monitoring_list(request):
 @login_required
 def add_monitoring(request):
     if request.method == 'POST':
-        # 모달에서 넘어온 선택된 상품 IDs (쉼표 구분)
         selected_products_str = request.POST.get('selected_products', '')
-        # 쉼표로 구분된 키워드들
         monitoring_keywords = request.POST.get('monitoring_keywords', '')
 
-        # 문자열을 리스트로 변환
-        selected_product_ids = [x for x in selected_products_str.split(',') if x.strip()]
+        selected_product_ids = [x.strip() for x in selected_products_str.split(',') if x.strip()]
         keyword_list = [kw.strip() for kw in monitoring_keywords.split(',') if kw.strip()]
 
         for product_pk in selected_product_ids:
             try:
-                # 실제 Product 모델과 연결 (상품 PK 사용)
                 product = Product.objects.get(pk=product_pk)
             except Product.DoesNotExist:
                 continue
 
-            # 기존 RankingMonitoring 인스턴스가 있으면 가져오고, 없으면 새로 생성
             ranking_obj, created = RankingMonitoring.objects.get_or_create(
                 product_id=product.single_product_mid,
                 defaults={
@@ -2970,31 +2982,73 @@ def add_monitoring(request):
                 ranking_obj.product_name = product.name
                 ranking_obj.save()
 
-            # KeywordRanking 레코드 생성 (중복 키워드는 건너뛰기)
-            for kw in keyword_list:
-                if not ranking_obj.keywords.filter(keyword=kw).exists():
-                    KeywordRanking.objects.create(
-                        ranking=ranking_obj,
-                        keyword=kw,
-                        rank=0  # 초기 rank 값
-                    )
-
-            # 중복 없는 유일한 키워드 목록 (입력 순서를 유지)
+            # 중복 없이 유일한 키워드 목록
             unique_keywords = list(dict.fromkeys(keyword_list))
+            
+            # 각 제품에 대해 가장 좋은(낮은 숫자의) 순위를 저장할 변수 설정
+            best_rank = 1001  # 초기값(1000위 밖)
+            best_link = product.single_product_link  # 기본값은 단일 제품 링크
+
+            # 키워드별로 KeywordRanking 생성
+            for kw in unique_keywords:
+                # 이미 존재하는 키워드는 스킵
+                if ranking_obj.keywords.filter(keyword=kw).exists():
+                    continue
+
+                # 1) single_link 순위
+                rank_single = get_naver_rank(kw, product.single_product_link)
+                # 2) original_link 순위
+                rank_original = get_naver_rank(kw, product.original_link)
+
+                # 두 값 중 더 좋은(숫자가 작은) 순위를 사용
+                if rank_single == -1 and rank_original == -1:
+                    final_rank = 1001  # 둘 다 검색 실패 -> 1001(1000위 밖) 가정
+                    is_original_better = False
+                elif rank_single == -1:
+                    final_rank = rank_original
+                    is_original_better = True
+                elif rank_original == -1:
+                    final_rank = rank_single
+                    is_original_better = False
+                else:
+                    if rank_original < rank_single:
+                        final_rank = rank_original
+                        is_original_better = True
+                    else:
+                        final_rank = rank_single
+                        is_original_better = False
+
+                # 현재 키워드의 순위가 기존의 best_rank보다 우수하면 업데이트
+                if final_rank < best_rank:
+                    best_rank = final_rank
+                    best_link = product.original_link if is_original_better else product.single_product_link
+
+                KeywordRanking.objects.create(
+                    ranking=ranking_obj,
+                    keyword=kw,
+                    rank=final_rank,
+                    is_original_better=is_original_better
+                )
+
+            # 전체 키워드 중 가장 우수한 순위를 준 링크로 product_url 업데이트
+            ranking_obj.product_url = best_link
+            ranking_obj.save()
+
+            # 메인키워드(최대3) 등록
             if unique_keywords:
                 ranking_obj.main_keyword1 = unique_keywords[0] if len(unique_keywords) >= 1 else ''
                 ranking_obj.main_keyword2 = unique_keywords[1] if len(unique_keywords) >= 2 else ''
                 ranking_obj.main_keyword3 = unique_keywords[2] if len(unique_keywords) >= 3 else ''
-                # 초기 순위는 0 (추후 업데이트 시 변경)
                 ranking_obj.main_keyword1_rank = 0 if ranking_obj.main_keyword1 else None
                 ranking_obj.main_keyword2_rank = 0 if ranking_obj.main_keyword2 else None
                 ranking_obj.main_keyword3_rank = 0 if ranking_obj.main_keyword3 else None
                 ranking_obj.save()
 
         messages.success(request, "모니터링 등록이 완료되었습니다.")
-        return redirect('rankings:product_list')  # 상품 리스트로 이동
+        return redirect('rankings:product_list')
 
     return redirect('rankings:product_list')
+
 
 
 @login_required
@@ -3025,27 +3079,49 @@ def update_monitoring_search(request):
 @login_required
 def update_monitoring_rank(request):
     """
-    등록된 KeywordRanking의 keyword와 product_url(=ranking.product_url)을 사용하여
-    get_naver_rank() 함수를 통해 오늘 순위를 조회, DB에 갱신.
+    오늘 날짜에 대한 순위만 갱신.
+    (이전 날짜의 레코드는 건드리지 않음)
     """
-    keyword_qs = KeywordRanking.objects.select_related('ranking').all()
+    from django.utils import timezone
+    today = timezone.now().date()
 
     updated_count = 0
-    for kwobj in keyword_qs:
-        product_url = kwobj.ranking.product_url  # 상위 모델(RankingMonitoring)에 저장된 URL
-        # 비동기 rank 조회 (본문 예시 코드 참고)
-        new_rank = get_naver_rank(kwobj.keyword, product_url)
+    # 모든 RankingMonitoring + 해당 키워드
+    # (또는 필요 시 특정 조건 필터)
+    rankings = RankingMonitoring.objects.all().prefetch_related('keywords')
 
-        # 조회 성공 시 (-1 반환 시 실패 가정)
-        if new_rank != -1:
-            kwobj.rank = new_rank
-            # 만약 update_at을 매번 갱신하고 싶다면 (auto_now_add가 아니라면 수동 변경)
-            kwobj.update_at = timezone.now().date()  # DateField 기준
-            kwobj.save()
-            updated_count += 1
+    for r in rankings:
+        for kwobj in r.keywords.all():
+            product_url = r.product_url
+            new_rank = get_naver_rank(kwobj.keyword, product_url)
+            if new_rank == -1:
+                continue  # 조회 실패 시 스킵
+
+            # "오늘" 날짜 레코드만 찾음
+            existing_today = KeywordRanking.objects.filter(
+                ranking=r, 
+                keyword=kwobj.keyword,
+                update_at=today
+            ).first()
+
+            if existing_today:
+                # 오늘 날짜 레코드가 있으면 rank 업데이트
+                existing_today.rank = new_rank
+                existing_today.save()
+                updated_count += 1
+            else:
+                # 오늘 날짜 레코드가 없으면 새로 생성
+                KeywordRanking.objects.create(
+                    ranking=r,
+                    keyword=kwobj.keyword,
+                    rank=new_rank,
+                    update_at=today
+                )
+                updated_count += 1
 
     messages.success(request, f"순위 업데이트 완료! ({updated_count}건 반영)")
     return redirect('rankings:ranking_monitoring_list')
+
 
 # views.py
 import json

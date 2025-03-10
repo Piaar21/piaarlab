@@ -276,6 +276,7 @@ class KeywordRanking(models.Model):
     rank = models.PositiveIntegerField()
     update_at = models.DateField(auto_now_add=True)  # 순위 업데이트 날짜
     search_volume = models.PositiveIntegerField(default=0)  # 검색량
+    is_original_better = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.keyword}: {self.rank}"

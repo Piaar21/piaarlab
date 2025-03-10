@@ -21,7 +21,7 @@
       </div>
     </div>
   </div>
-
+  
   <!-- 확장형 메인 테이블 (상위행) -->
   <div class="card mb-4">
     <div class="card-body">
@@ -46,14 +46,14 @@
                 <span class="toggle-arrow">▶</span> {{ r.product_id }}
               </td>
               <td>{{ r.product_name }}</td>
-              <!-- DB 저장된 메인키워드 및 순위 -->
-              <td class="mainKeyword1">{% if r.main_keyword1 %}{{ r.main_keyword1 }}{% endif %}</td>
-              <td class="mainKeyword1Rank">{% if r.main_keyword1_rank %}{{ r.main_keyword1_rank }}{% endif %}</td>
-              <td class="mainKeyword2">{% if r.main_keyword2 %}{{ r.main_keyword2 }}{% endif %}</td>
-              <td class="mainKeyword2Rank">{% if r.main_keyword2_rank %}{{ r.main_keyword2_rank }}{% endif %}</td>
-              <td class="mainKeyword3">{% if r.main_keyword3 %}{{ r.main_keyword3 }}{% endif %}</td>
-              <td class="mainKeyword3Rank">{% if r.main_keyword3_rank %}{{ r.main_keyword3_rank }}{% endif %}</td>
+              <td class="mainKeyword1">{{ r.main_keyword1 }}</td>
+              <td class="mainKeyword1Rank">{{ r.main_keyword1_rank|default:"0" }}</td>
+              <td class="mainKeyword2">{{ r.main_keyword2 }}</td>
+              <td class="mainKeyword2Rank">{{ r.main_keyword2_rank|default:"0" }}</td>
+              <td class="mainKeyword3">{{ r.main_keyword3 }}</td>
+              <td class="mainKeyword3Rank">{{ r.main_keyword3_rank|default:"0" }}</td>
             </tr>
+            
             <!-- 하위행 (키워드 목록) -->
             <tr id="sub-{{ r.product_id }}" class="sub-row" style="display: none;">
               <td colspan="8">
@@ -61,7 +61,7 @@
                   <table class="sub-table">
                     <thead>
                       <tr>
-                        <th class="star-col">★</th>  <!-- 별표 열 -->
+                        <th class="star-col">★</th>
                         <th class="keyword-col">키워드</th>
                         <th class="volume-col">검색량</th>
                         {% for dt in date_columns %}
@@ -72,7 +72,6 @@
                     <tbody>
                       {% for keyword, info in r.sorted_pivot_data %}
                       <tr>
-                        <!-- 별표 (최대 3개 선택) -->
                         <td class="star-col">
                           <span class="star-icon"
                                 data-product="{{ r.product_id }}"
@@ -86,7 +85,14 @@
                         {% for dt in date_columns %}
                           <td class="date-cell">
                             {% if dt in info.ranks %}
-                              {{ info.ranks|get_item:dt }}
+                              {% with current_rank=info.ranks|get_item:dt diff=info.rank_diffs|get_item:dt %}
+                                {{ current_rank }}
+                                {% if diff > 0 %}
+                                  <span class="arrow-up">▲ {{ diff }}</span>
+                                {% elif diff < 0 %}
+                                  <span class="arrow-down">▼ {{ diff|get_abs }}</span>
+                                {% endif %}
+                              {% endwith %}
                             {% endif %}
                           </td>
                         {% endfor %}
@@ -105,7 +111,6 @@
   </div>
 </div>
 
-<!-- JavaScript -->
 <script>
   // CSRF 토큰 가져오기
   function getCookie(name) {
@@ -123,7 +128,7 @@
     return cookieValue;
   }
 
-  // 상품별 선택된 키워드 목록
+  // 상품별 선택된 메인키워드 목록
   const selectedKeywordsMap = {};
 
   // 별표 클릭 시 메인키워드 선택 및 AJAX 저장
@@ -215,31 +220,8 @@
     }
   }
 
-  // 날짜 열에서 이전 열과 비교하여 등락폭 표시
-  document.addEventListener("DOMContentLoaded", function() {
-    const rows = document.querySelectorAll(".sub-table tbody tr");
-    rows.forEach(row => {
-      const dateCells = row.querySelectorAll(".date-cell");
-      let prevValue = null;
-      dateCells.forEach(cell => {
-        const cellText = cell.textContent.trim();
-        const currentValue = parseInt(cellText, 10);
-        if (!isNaN(currentValue)) {
-          if (prevValue !== null) {
-            const diff = prevValue - currentValue;
-            if (diff > 0) {
-              cell.innerHTML = currentValue + ' <span class="arrow-up">▲ ' + diff + '</span>';
-            } else if (diff < 0) {
-              cell.innerHTML = currentValue + ' <span class="arrow-down">▼ ' + Math.abs(diff) + '</span>';
-            }
-          }
-          prevValue = currentValue;
-        }
-      });
-    });
-  });
 
-  // 페이지 로드 시 DB 저장된 메인키워드들을 복원하여, 해당 별표에 active-star 클래스 추가
+  // 페이지 로드 시, DB에 저장된 메인키워드 복원하여 별 아이콘 활성화
   document.addEventListener("DOMContentLoaded", function() {
     const productRows = document.querySelectorAll(".product-row");
     productRows.forEach(row => {

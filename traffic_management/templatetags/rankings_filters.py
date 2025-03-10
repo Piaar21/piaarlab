@@ -48,3 +48,11 @@ def get_item(dictionary, key):
     if isinstance(dictionary, dict):
         return dictionary.get(key)
     return ''
+
+
+@register.filter
+def get_abs(value):
+    try:
+        return abs(int(value))
+    except:
+        return value
