@@ -10,10 +10,33 @@ from .views import fetch_naver_sales, update_naver_daily_sales, create_stat_repo
 
 logger = logging.getLogger(__name__)
 
-NAVER_ACCOUNTS = config("NAVER_ACCOUNTS", default="[]", cast=json.loads)
-NAVER_AD_ACCESS = config(settings, "NAVER_AD_ACCESS", None)
-NAVER_AD_SECRET = config(settings, "NAVER_AD_SECRET", None)
-CUSTOMER_ID = config(settings, "CUSTOMER_ID", None)
+NAVER_ACCOUNTS = [
+    {
+        'names': ['니뜰리히'],  # 예: 동일 계정에 여러 변형된 이름
+        'client_id': config('NAVER_CLIENT_ID_01', default=None),
+        'client_secret': config('NAVER_CLIENT_SECRET_01', default=None),
+    },
+    {
+        'names': ['수비다', '수비다 SUBIDA'],  # 예: 여러 스토어명 변형
+        'client_id': config('NAVER_CLIENT_ID_02', default=None),
+        'client_secret': config('NAVER_CLIENT_SECRET_02', default=None),
+    },
+    {
+        'names': ['노는개최고양', '노는 개 최고양'],  # 예: 스페이스나 변형된 이름
+        'client_id': config('NAVER_CLIENT_ID_03', default=None),
+        'client_secret': config('NAVER_CLIENT_SECRET_03', default=None),
+    },
+    {
+        'names': ['아르빙'],  # 예: 공백 추가 변형
+        'client_id': config('NAVER_CLIENT_ID_04', default=None),
+        'client_secret': config('NAVER_CLIENT_SECRET_04', default=None),
+    },
+    # 필요에 따라 추가
+]
+NAVER_AD_ACCESS = config("NAVER_AD_ACCESS", default=None)
+NAVER_AD_SECRET = config("NAVER_AD_SECRET", default=None)
+CUSTOMER_ID = config("CUSTOMER_ID", default=None)
+
 
 def update_naver_sales_logic(start_str, end_str):
     """
