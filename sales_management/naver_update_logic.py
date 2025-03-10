@@ -5,7 +5,7 @@ import time
 import datetime
 import logging
 from django.conf import settings
-from views import fetch_naver_sales, update_naver_daily_sales, create_stat_report, get_stat_report, download_report, save_naver_ads_report
+from .views import fetch_naver_sales, update_naver_daily_sales, create_stat_report, get_stat_report, download_report, save_naver_ads_report
 
 logger = logging.getLogger(__name__)
 
