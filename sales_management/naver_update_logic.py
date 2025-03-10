@@ -22,6 +22,8 @@ def update_naver_sales_logic(start_str, end_str):
     start_dt = datetime.strptime(start_str, '%Y-%m-%d')
     end_dt   = datetime.strptime(end_str, '%Y-%m-%d')
 
+    print("update_naver_sales_logic 호출됨: start=%s, end=%s" % (start_dt, end_dt))
+    logger.debug("update_naver_sales_logic 호출됨: start=%s, end=%s", start_dt, end_dt)
     for account_info in NAVER_ACCOUNTS:
         try:
             logger.info("[DEBUG] 호출: fetch_naver_sales for account [%s] with start=%s end=%s",
@@ -48,8 +50,7 @@ def update_naver_sales_logic(start_str, end_str):
 
 def update_naver_ads_report_logic(raw_start, raw_end):
     from datetime import datetime, timedelta
-    print("update_naver_sales_logic 호출됨: start=%s, end=%s" % (start_date, end_date))
-    logger.debug("update_naver_sales_logic 호출됨: start=%s, end=%s", start_date, end_date)
+    
 
     if not all([NAVER_AD_ACCESS, NAVER_AD_SECRET, CUSTOMER_ID]):
         logger.error("네이버 광고 API 설정이 누락되었습니다.")
