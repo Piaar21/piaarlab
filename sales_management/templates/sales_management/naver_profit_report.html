@@ -206,6 +206,7 @@
           <button type="submit" class="btn btn-sm btn-primary">매입가 업데이트</button>
         </form>
         <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#checkCostModal">매입가 확인</button>
+
       </div>
     </div>
   </div>
@@ -247,7 +248,7 @@
               <td class="text-end">{{ period_summary.total_ad_qty|intcomma }}</td>
               <td class="text-end">{{ period_summary.net_sales_amount|intcomma }} 원</td>
               <td class="text-end">{{ period_summary.commission|floatformat:0|intcomma }} 원</td>
-              <td class="text-end">{{ period_summary.ad_spend|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.ad_spend|floatformat:0|intcomma }} 원</td>
               <td class="text-end">{{ period_summary.purchase_cost|intcomma }} 원</td>
               <td class="text-end">{{ period_summary.etc_cost|intcomma }} 원</td>
               <td class="text-end">{{ period_summary.profit|floatformat:0|intcomma }} 원</td>

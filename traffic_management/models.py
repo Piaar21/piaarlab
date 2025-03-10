@@ -96,7 +96,7 @@ class Task(models.Model):
     needs_attention = models.BooleanField(default=False)  # 추가된 부분
     single_product_link = models.URLField(blank=True, null=True,verbose_name='단일상품링크')  # 단일상품링크
     single_product_mid = models.CharField(max_length=100, blank=True, null=True,verbose_name='단일상품 MID값')  # 단일상품 MID값
-    
+    store_name = models.CharField(max_length=255,default='',verbose_name='스토어명')  # 스토어명 (필수)
 
     def save(self, *args, **kwargs):
         # difference_rank 계산
@@ -280,4 +280,27 @@ class KeywordRanking(models.Model):
 
     def __str__(self):
         return f"{self.keyword}: {self.rank}"
+
+
+class NaverMarketingCost(models.Model):
+    task = models.ForeignKey(
+        'traffic_management.Task',  # Task 모델을 참조
+        on_delete=models.CASCADE,
+        related_name='naver_costs',
+        verbose_name='작업'
+    )
+    date = models.DateField(verbose_name='날짜')
+    cost = models.DecimalField(max_digits=10, decimal_places=0, verbose_name='비용')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='등록일자')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일자')
+
+    class Meta:
+        unique_together = ('task', 'date')
+        verbose_name = '네이버 마케팅 비용'
+        verbose_name_plural = '네이버 마케팅 비용'
+
+    def __str__(self):
+        return f"{self.task.product_name} - {self.date}: {self.cost}"
+
+
 

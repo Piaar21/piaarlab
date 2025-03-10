@@ -4583,6 +4583,7 @@ def parse_int_safely(num_str):
         return 0
     
 
+from traffic_management.models import Task, NaverMarketingCost,Traffic
 
 
 def naver_profit_report_view(request):
@@ -4748,9 +4749,14 @@ def naver_profit_report_view(request):
         ad_map[(d_str, brand_label)]["ad_rev"]   += (ad.sales_by_conversion or Decimal("0.00"))
 
     # ---------------------------------------------------------
-    # (F) 날짜+브랜드별 결합
+    # ---------------------------------------------------------
+    # (F) 날짜+브랜드별 결합 + 네이버 마케팅 비용(NaverMarketingCost) 추가
+    from decimal import Decimal
+    from datetime import datetime
+
     date_brand_map = defaultdict(dict)
     all_keys = set(daily_map.keys()) | set(ad_map.keys())
+
     for (d_str, brand_label) in all_keys:
         sold_part = daily_map[(d_str, brand_label)]
         ad_part   = ad_map[(d_str, brand_label)]
@@ -4763,6 +4769,39 @@ def naver_profit_report_view(request):
         ad_sold = ad_part["ad_sold"]
         ad_sp = ad_part["ad_spend"]
         ad_rev = ad_part["ad_rev"]
+
+        # ------------------------------------------
+        # [추가] Task 기반 네이버 마케팅 비용(NaverMarketingCost) 연결
+        # 브랜드라벨은 Task.store_name과 비교합니다.
+        try:
+            day_date = datetime.strptime(str(d_str), "%Y-%m-%d").date()
+        except ValueError:
+            continue  # 날짜 파싱 실패 시 건너뜀
+
+        # Task 객체 중 store_name이 brand_label과 일치하는 첫 번째 Task를 가져옴
+        task_obj = Task.objects.filter(store_name__iexact=brand_label).first()
+        extra_cost = Decimal("0")
+        if task_obj:
+            # 해당 Task를 기준으로, 같은 날짜에 NaverMarketingCost 레코드가 있는지 확인
+            nmc = NaverMarketingCost.objects.filter(task=task_obj, date=day_date).first()
+            if nmc:
+                extra_cost = Decimal(nmc.cost)
+            else:
+                # 없다면, task_obj.traffic를 통해 일일 비용 계산
+                traffic_obj = task_obj.traffic
+                if traffic_obj and traffic_obj.days:
+                    extra_cost = traffic_obj.price / traffic_obj.days
+                else:
+                    extra_cost = Decimal("0")
+                # 새 레코드 생성 (이 경우, update_at은 auto_now_add=True로 처리되어 오늘 날짜 기록)
+                nmc = NaverMarketingCost.objects.create(
+                    task=task_obj,
+                    date=day_date,
+                    cost=extra_cost
+                )
+        etc_c += extra_cost
+        # ------------------------------------------
+        
 
         commission = net_s * Decimal("0.06")
         profit_val = net_s - commission - ad_sp - purchase_c - etc_c
@@ -4838,6 +4877,7 @@ def naver_profit_report_view(request):
 
     # ---------------------------------------------------------
     # (G) 전체 기간 브랜드별 상세
+    from collections import defaultdict
     brand_summary = defaultdict(lambda: {
         "qty": 0,
         "ad_qty": 0,
@@ -4845,21 +4885,22 @@ def naver_profit_report_view(request):
         "commission": Decimal("0.00"),
         "ad_spend": Decimal("0.00"),
         "purchase_cost": Decimal("0.00"),
-        "etc_cost": Decimal("0.00"),
+        "etc_cost": Decimal("0.00"),  # (F)단계에서 이미 포함된 값도 합산됨
         "profit": Decimal("0.00"),
     })
 
     for day in daily_reports:
         for det in day["details"]:
-            brand = det["kind"]
-            brand_summary[brand]["qty"] += det["qty"]
-            brand_summary[brand]["ad_qty"] += det["ad_qty"]
-            brand_summary[brand]["net_sales_amount"] += det["net_sales_amount"]
-            brand_summary[brand]["commission"] += det["commission"]
-            brand_summary[brand]["ad_spend"] += det["ad_spend"]
-            brand_summary[brand]["purchase_cost"] += det["purchase_cost"]
-            brand_summary[brand]["etc_cost"] += det["etc_cost"]
-            brand_summary[brand]["profit"] += det["profit"]
+            brand = det["kind"]  # (F)에서 brand_label
+
+            brand_summary[brand]["qty"]               += det["qty"]
+            brand_summary[brand]["ad_qty"]            += det["ad_qty"]
+            brand_summary[brand]["net_sales_amount"]  += det["net_sales_amount"]
+            brand_summary[brand]["commission"]        += det["commission"]
+            brand_summary[brand]["ad_spend"]          += det["ad_spend"]
+            brand_summary[brand]["purchase_cost"]     += det["purchase_cost"]
+            brand_summary[brand]["etc_cost"]          += det["etc_cost"]       # <-- 트래픽 비용도 누적
+            brand_summary[brand]["profit"]            += det["profit"]
 
     brand_details = {}
     for b, data in brand_summary.items():
@@ -4875,7 +4916,9 @@ def naver_profit_report_view(request):
             "profit": data["profit"],
             "margin_rate": m_rate,
         }
+
     period_summary["brand_details"] = brand_details
+
 
     # ---------------------------------------------------------
     # (H) 모달용: 일자별 상품별 상세 데이터
@@ -4924,6 +4967,38 @@ def naver_profit_report_view(request):
         day_p_o_map[key]["ad_revenue"] += (ad.sales_by_conversion or Decimal("0.00"))
         day_p_o_map[key]["click"] += (ad.click or 0)
 
+    for (day_str, pid) in list(day_p_o_map.keys()):
+        if not pid:
+            continue
+        # Task 모델에서, single_product_mid가 pid인 작업(Task)을 찾음
+        task_obj = Task.objects.filter(single_product_mid=pid).first()
+        if task_obj:
+            try:
+                day_date = datetime.strptime(day_str, "%Y-%m-%d").date()
+            except ValueError:
+                continue  # 날짜 파싱 실패 시 건너뜀
+
+            # 오늘(또는 해당 날짜)에 해당하는 NaverMarketingCost 레코드를 Task 기준으로 찾음
+            nmc = NaverMarketingCost.objects.filter(task=task_obj, date=day_date).first()
+            if nmc:
+                # 이미 존재하는 경우, 해당 레코드의 cost를 누적 (업데이트하지 않고 그대로 사용)
+                day_p_o_map[(day_str, pid)]["etc_cost"] += Decimal(nmc.cost)
+            else:
+                # 존재하지 않으면, Task의 traffic 정보를 이용하여 일일 비용 계산
+                traffic_obj = task_obj.traffic  # Traffic FK
+                if traffic_obj and traffic_obj.days:
+                    daily_price = traffic_obj.price / traffic_obj.days
+                else:
+                    daily_price = Decimal("0")
+                # 새 NaverMarketingCost 레코드 생성 (FK는 Task, 날짜는 day_date, cost는 daily_price)
+                nmc = NaverMarketingCost.objects.create(
+                    task=task_obj,
+                    date=day_date,
+                    cost=daily_price
+                )
+                day_p_o_map[(day_str, pid)]["etc_cost"] += Decimal(nmc.cost)
+    
+                
     day_products_map = defaultdict(lambda: OrderedDict())
     for (day_str, pid), vals in day_p_o_map.items():
         sold_qty = vals["sold_qty"]
@@ -5008,6 +5083,9 @@ def naver_profit_report_view(request):
 
     # ---------------------------------------------------------
     # (9) 전체 기간 상품별 상세 데이터 (overall_products_map)
+
+    from django.db.models import Sum
+
     overall_products_map = defaultdict(lambda: {
         "sold_qty": 0,
         "sales_amt": Decimal("0.00"),
@@ -5019,6 +5097,7 @@ def naver_profit_report_view(request):
         "store": "N/A"  # store 기본값 추가
     })
 
+    # 1. Daily Sales 데이터로 누적 (판매, 구매비용 등)
     for ds in daily_sales_qs:
         pid = (ds.product_id or "").strip()
         final_qty = ds.sales_qty - ds.refunded_qty
@@ -5030,13 +5109,15 @@ def naver_profit_report_view(request):
         except NaverPurchaseCost.DoesNotExist:
             unit_price = Decimal("0.00")
         purchase_val = unit_price * final_qty
+
         overall_products_map[pid]["sold_qty"] += final_qty
         overall_products_map[pid]["sales_amt"] += Decimal(final_rev)
         overall_products_map[pid]["purchase_cost"] += purchase_val
-        overall_products_map[pid]["etc_cost"] += Decimal("0.00")
+
         if overall_products_map[pid]["store"] == "N/A":
-            overall_products_map[pid]["store"] = ds.store
-            
+            overall_products_map[pid]["store"] = ds.store or "N/A"
+
+    # 2. 광고 데이터 누적
     for ad in ad_report_qs:
         key_sp = (ad.ad_group_id, ad.ad_id)
         sp_info = sp_map.get(key_sp)
@@ -5047,22 +5128,61 @@ def naver_profit_report_view(request):
         overall_products_map[pid]["ad_spend"] += (ad.cost or Decimal("0.00"))
         overall_products_map[pid]["ad_revenue"] += (ad.sales_by_conversion or Decimal("0.00"))
 
+    # 3. 기존 overall_products_map에는 DailySales나 AdReport가 있는 상품만 들어있음.
+    #    이제, NaverMarketingCost (트래픽 비용) 데이터에서, 해당 기간에 기록된
+    #    Task 기반 비용 정보를 별도로 가져와, 미매칭 상품(즉, overall_products_map에 없는 상품)을 추가합니다.
+
+    # 전체 기간 동안의 NaverMarketingCost를 Task 기준으로 그룹화하여 합산
+    nmc_agg = NaverMarketingCost.objects.filter(
+        date__range=(start_d, end_d)
+    ).values('task__single_product_mid').annotate(total_cost=Sum('cost'))
+
+    for rec in nmc_agg:
+        pid = rec.get("task__single_product_mid", "").strip()
+        if not pid:
+            continue
+        total_cost = rec.get("total_cost") or Decimal("0")
+        # 만약 이미 overall_products_map에 해당 pid가 있으면, etc_cost를 덧셈
+        if pid in overall_products_map:
+            overall_products_map[pid]["etc_cost"] += Decimal(total_cost)
+        else:
+            # 미매칭 상품: DailySales/AdReport에 기록되지 않았지만, Task로부터 NaverMarketingCost가 존재하는 경우.
+            # Task 정보를 가져와서 store_name 등 기본값 채워 넣습니다.
+            task_obj = Task.objects.filter(single_product_mid=pid).first()
+            store = task_obj.store_name if task_obj and task_obj.store_name else "미매칭"
+            overall_products_map[pid] = {
+                "sold_qty": 0,
+                "sales_amt": Decimal("0.00"),
+                "ad_qty": 0,
+                "ad_spend": Decimal("0.00"),
+                "ad_revenue": Decimal("0.00"),
+                "purchase_cost": Decimal("0.00"),
+                "etc_cost": Decimal(total_cost),
+                "store": store,
+            }
+
+    # 4. 전체 기간 소계 및 상세 데이터 생성
     overall_details = []
     for pid, data in overall_products_map.items():
         commission_val = data["sales_amt"] * Decimal("0.06")
-        profit_val = data["sales_amt"] - commission_val - data["ad_spend"] - data["purchase_cost"] - data["etc_cost"]
+        profit_val = (data["sales_amt"]
+                    - commission_val
+                    - data["ad_spend"]
+                    - data["purchase_cost"]
+                    - data["etc_cost"])
         margin_rate_val = (profit_val / data["sales_amt"] * 100) if data["sales_amt"] else 0
         roas_val = (data["ad_revenue"] / data["ad_spend"] * 100) if data["ad_spend"] else 0
         ad_sales_rate_val = (data["ad_qty"] / data["sold_qty"] * 100) if data["sold_qty"] else 0
+
         product_name = naver_item_map.get(pid, f"(상품:{pid})")
         overall_details.append({
             "product_id": pid,
             "product_name": product_name,
-            "store": data.get("store", "N/A"),  # store 추가
+            "store": data.get("store", "N/A"),
             "sold_qty": data["sold_qty"],
             "sales_amt": data["sales_amt"],
             "ad_qty": data["ad_qty"],
-            "commission": commission_val,  # 수정된 부분: data["commission_val"] → commission_val
+            "commission": commission_val,
             "ad_spend": data["ad_spend"],
             "ad_revenue": data["ad_revenue"],
             "purchase_cost": data["purchase_cost"],
@@ -5079,6 +5199,7 @@ def naver_profit_report_view(request):
                 od["ad_spend"] == 0 and od["ad_revenue"] == 0 and od["profit"] == 0 and
                 od["purchase_cost"] == 0)
     ]
+
     overall_products_map_json = json.dumps(convert_keys(overall_details), ensure_ascii=False)
 
 
