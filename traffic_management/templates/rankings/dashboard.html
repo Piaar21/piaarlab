@@ -406,312 +406,323 @@
     }
 </script>
 <script>
-    let combinedChartInstance = null;
-    const todayStr = new Date().toISOString().slice(0, 10);
-    
-    function openCombinedModal(taskId, keyword) {
-      Promise.all([
-        fetch(`/traffic/api/get_ranking_data/?task_id=${taskId}`).then(response => response.json()),
-        fetch(`/traffic/api/dashborad_get_sales_data/?task_id=${taskId}`).then(response => response.json()),
-        fetch(`/traffic/api/get_keyword_volume_recent_month/?keyword=${encodeURIComponent(keyword)}&task_id=${taskId}`)
-          .then(response => response.json()),
-        fetch(`/traffic/api/get_kpi_data/?task_id=${taskId}`).then(response => response.json())
-      ])
-      .then(([rankingData, salesData, volumeData, kpiData]) => {
-        if (rankingData.error) {
-          alert("랭킹 데이터 에러: " + rankingData.error);
-          return;
-        }
-        if (salesData.error) {
-          alert("매출 데이터 에러: " + salesData.error);
-          return;
-        }
-        if (volumeData.error) {
-          alert("검색량 데이터 에러: " + volumeData.error);
-          return;
-        }
-        if (kpiData.error) {
-          alert("KPI 데이터 에러: " + kpiData.error);
-          return;
-        }
-        
-        // KPI 카드 값 설정
-        document.getElementById("kpiVolume30d").textContent = kpiData.data.monthVolume.toLocaleString();
-        document.getElementById("kpiVolumeGrowth").textContent = `${kpiData.data.monthVolumeGrowth}`;
-        
-        document.getElementById("kpiRecentSales").textContent = kpiData.data.recent7daySales.toLocaleString();
-        document.getElementById("kpiSalesGrowth").textContent = `${kpiData.data.recent7daySalesGrowth} from start`;
-        
-        document.getElementById("kpiCurrentStatus").textContent = kpiData.data.status;
-        document.getElementById("kpiStatusDescription").textContent = kpiData.data.statusDescription;
-        
-        document.getElementById("kpiCurrentRank").textContent = kpiData.data.currentRank ? `${kpiData.data.currentRank}위` : 'N/A';
-        document.getElementById("kpiRankDiff").textContent = `시작 대비 ${kpiData.data.rankDiff}위`;
-        
-        // (A) 매출 데이터: salesData.sales에서 날짜와 매출액 추출 (오늘 포함)
-        const salesMap = {};
-        salesData.sales.forEach(sale => {
-          salesMap[sale.date] = sale.sales_revenue;
-        });
-        
-        // (B) 순위 데이터: rankingData.rankings (오늘 포함)
-        const rankingMap = {};
-        rankingData.rankings.forEach(item => {
-          const date = item.date_time.substring(0, 10);
-          rankingMap[date] = item.rank;
-        });
-        
-        // (C) 검색량 데이터: volumeData.data.results에서 날짜별 추정 검색량 추출 (오늘 포함)
-        const volumeMap = {};
-        volumeData.data.results.forEach(item => {
-          volumeMap[item.period] = item.estimatedVolume;
-        });
-        
-        // (D) unionLabels: salesMap, rankingMap, volumeMap의 모든 날짜를 포함
-        const labelSet = new Set([
-          ...Object.keys(rankingMap),
-          ...Object.keys(salesMap),
-          ...Object.keys(volumeMap)
-        ]);
-        // 필터: 오늘을 포함하고, 2주 전(14일치 데이터)만 사용
-        const twoWeeksAgoStr = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        const unionLabels = Array.from(labelSet).filter(date => date >= twoWeeksAgoStr && date <= todayStr).sort();
-        console.log("Union labels (last 14 days):", unionLabels);
-        
-        // (E) 데이터셋 생성
-        const salesRevenues = unionLabels.map(date => (salesMap.hasOwnProperty(date) ? salesMap[date] : null));
-        const ranks = unionLabels.map(date => (rankingMap.hasOwnProperty(date) ? rankingMap[date] : null));
-        const estimatedVolumes = unionLabels.map(date => (volumeMap.hasOwnProperty(date) ? volumeMap[date] : null));
-        
-        // (F) 평균 매출액 계산 (7일 이동평균) - 오늘 날짜는 평균 계산에서 제외
-        const avgSales = [];
-        for (let i = 0; i < unionLabels.length; i++) {
+  let combinedChartInstance = null;
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  function openCombinedModal(taskId, keyword) {
+    Promise.all([
+      fetch(`/traffic/api/get_ranking_data/?task_id=${taskId}`).then(response => response.json()),
+      fetch(`/traffic/api/dashborad_get_sales_data/?task_id=${taskId}`).then(response => response.json()),
+      fetch(`/traffic/api/get_keyword_volume_recent_month/?keyword=${encodeURIComponent(keyword)}&task_id=${taskId}`)
+        .then(response => response.json()),
+      fetch(`/traffic/api/get_kpi_data/?task_id=${taskId}`).then(response => response.json())
+    ])
+    .then(([rankingData, salesData, volumeData, kpiData]) => {
+      if (rankingData.error) {
+        alert("랭킹 데이터 에러: " + rankingData.error);
+        return;
+      }
+      if (salesData.error) {
+        alert("매출 데이터 에러: " + salesData.error);
+        return;
+      }
+      if (volumeData.error) {
+        alert("검색량 데이터 에러: " + volumeData.error);
+        return;
+      }
+      if (kpiData.error) {
+        alert("KPI 데이터 에러: " + kpiData.error);
+        return;
+      }
+
+      // KPI 카드 값 설정
+      document.getElementById("kpiVolume30d").textContent = kpiData.data.monthVolume.toLocaleString();
+      document.getElementById("kpiVolumeGrowth").textContent = `${kpiData.data.monthVolumeGrowth}`;
+
+      document.getElementById("kpiRecentSales").textContent = kpiData.data.recent7daySales.toLocaleString();
+      document.getElementById("kpiSalesGrowth").textContent = `${kpiData.data.recent7daySalesGrowth} from start`;
+
+      document.getElementById("kpiCurrentStatus").textContent = kpiData.data.status;
+      document.getElementById("kpiStatusDescription").textContent = kpiData.data.statusDescription;
+
+      document.getElementById("kpiCurrentRank").textContent = kpiData.data.currentRank ? `${kpiData.data.currentRank}위` : 'N/A';
+      document.getElementById("kpiRankDiff").textContent = `시작 대비 ${kpiData.data.rankDiff}위`;
+
+      // (A) 매출 데이터: salesData.sales에서 날짜와 매출액 추출 (오늘 포함)
+      const salesMap = {};
+      salesData.sales.forEach(sale => {
+        salesMap[sale.date] = sale.sales_revenue;
+      });
+
+      // (B) 순위 데이터: rankingData.rankings (오늘 포함)
+      const rankingMap = {};
+      rankingData.rankings.forEach(item => {
+        const date = item.date_time.substring(0, 10);
+        rankingMap[date] = item.rank;
+      });
+
+      // (C) 검색량 데이터: volumeData.data.results에서 날짜별 추정 검색량 추출 (오늘 포함)
+      const volumeMap = {};
+      volumeData.data.results.forEach(item => {
+        volumeMap[item.period] = item.estimatedVolume;
+      });
+
+      // (D) unionLabels: salesMap, rankingMap, volumeMap의 모든 날짜를 포함
+      const labelSet = new Set([
+        ...Object.keys(rankingMap),
+        ...Object.keys(salesMap),
+        ...Object.keys(volumeMap)
+      ]);
+      // 필터: 오늘을 포함하고, 2주 전(14일치 데이터)만 사용
+      const twoWeeksAgoStr = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const unionLabels = Array.from(labelSet).filter(date => date >= twoWeeksAgoStr && date <= todayStr).sort();
+      console.log("Union labels (last 14 days):", unionLabels);
+
+      // (E) 데이터셋 생성
+      const salesRevenues = unionLabels.map(date => (salesMap.hasOwnProperty(date) ? salesMap[date] : null));
+      const ranks = unionLabels.map(date => (rankingMap.hasOwnProperty(date) ? rankingMap[date] : null));
+      const estimatedVolumes = unionLabels.map(date => (volumeMap.hasOwnProperty(date) ? volumeMap[date] : null));
+
+      // (F) 평균 매출액 계산 (7일 이동평균) - 오늘 날짜는 평균 계산에서 제외
+      const avgSales = [];
+      for (let i = 0; i < unionLabels.length; i++) {
         if (unionLabels[i] === todayStr) {
-            avgSales.push(null);
+          avgSales.push(null);
         } else {
-            let windowData = [];
-            // i부터 0까지 역순으로 반복하면서, 오늘이 아닌 날의 매출액을 모읍니다.
-            for (let j = i; j >= 0 && windowData.length < 7; j--) {
+          let windowData = [];
+          // i부터 0까지 역순으로 반복하면서, 오늘이 아닌 날의 매출액을 모읍니다.
+          for (let j = i; j >= 0 && windowData.length < 7; j--) {
             if (unionLabels[j] !== todayStr && salesRevenues[j] !== null) {
-                windowData.unshift(salesRevenues[j]);
+              windowData.unshift(salesRevenues[j]);
             }
-            }
-            // 만약 7일치 데이터가 없으면 null, 있으면 평균 계산
-            if (windowData.length < 7) {
+          }
+          // 만약 7일치 데이터가 없으면 null, 있으면 평균 계산
+          if (windowData.length < 7) {
             avgSales.push(null);
-            } else {
+          } else {
             let sum = windowData.reduce((acc, val) => acc + val, 0);
             avgSales.push(Math.round(sum / 7));
-            }
-        }
-        }
-        console.log("Average Sales:", avgSales);
-        
-        // (G) 차트 생성: 매출액은 막대그래프, 평균 매출액, 순위, 추정 검색량은 선 그래프로 표시
-        if (combinedChartInstance) {
-          combinedChartInstance.destroy();
-          combinedChartInstance = null;
-        }
-        const ctx = document.getElementById('combinedChart').getContext('2d');
-        combinedChartInstance = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: unionLabels,
-            datasets: [
-              {
-                label: '매출액',
-                type: 'bar',
-                data: salesRevenues,
-                backgroundColor: 'rgba(75, 192, 192, 0.5)',
-                yAxisID: 'y-sales'
-              },
-              {
-                label: '평균 매출액',
-                type: 'line',
-                data: avgSales,
-                borderColor: 'rgba(255, 159, 64, 1)',
-                backgroundColor: 'rgba(255, 159, 64, 0.2)',
-                fill: false,
-                tension: 0.1,
-                yAxisID: 'y-sales'
-              },
-              {
-                label: '순위',
-                type: 'line',
-                data: ranks,
-                borderColor: 'rgba(255, 99, 132, 1)',
-                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                fill: false,
-                tension: 0.1,
-                yAxisID: 'y-rank'
-              },
-              {
-                label: '추정 검색량',
-                type: 'line',
-                data: estimatedVolumes,
-                borderColor: 'rgba(153, 102, 255, 1)',
-                backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                fill: false,
-                tension: 0.1,
-                yAxisID: 'y-volume'
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-              mode: 'index',
-              intersect: false
-            },
-            plugins: {
-              tooltip: {
-                callbacks: {
-                  label: function(context) {
-                    let label = context.dataset.label || '';
-                    if (label) {
-                      label += ': ';
-                    }
-                    if (context.dataset.label === '순위') {
-                      label += Math.round(context.parsed.y);
-                    } else {
-                      label += context.parsed.y;
-                    }
-                    return label;
-                  }
-                }
-              }
-            },
-            scales: {
-              'y-sales': {
-                type: 'linear',
-                position: 'left',
-                title: {
-                  display: true,
-                  text: '매출액'
-                }
-              },
-              'y-rank': {
-                type: 'linear',
-                position: 'right',
-                reverse: true,
-                title: {
-                  display: true,
-                  text: '순위'
-                },
-                grid: {
-                  drawOnChartArea: false
-                },
-                ticks: {
-                  callback: function(value) {
-                    return Math.round(value);
-                  },
-                  suggestedMin: 0,
-                  suggestedMax: 10,
-                  stepSize: 1
-                }
-              },
-              'y-volume': {
-                type: 'linear',
-                position: 'right',
-                title: {
-                  display: true,
-                  text: '추정 검색량'
-                },
-                grid: {
-                  drawOnChartArea: false
-                }
-              }
-            }
           }
-        });
-        
-        // (H) 순위 변동 테이블 렌더링 (기존 코드 유지)
-        const rankingTbody = document.querySelector('#rankingTable tbody');
-        rankingTbody.innerHTML = '';
-        rankingData.rankings.forEach(function(ranking) {
-          let differenceSymbol = '';
-          let differenceColor = '';
-          let startDifferenceSymbol = '';
-          let startDifferenceColor = '';
-          
-          if (ranking.difference > 0) {
-            differenceSymbol = '▼';
-            differenceColor = 'text-blue-500';
-          } else if (ranking.difference < 0) {
-            differenceSymbol = '▲';
-            differenceColor = 'text-red-500';
-          } else {
-            differenceSymbol = '-';
-          }
-          
-          if (ranking.start_difference > 0) {
-            startDifferenceSymbol = '▼';
-            startDifferenceColor = 'text-blue-500';
-          } else if (ranking.start_difference < 0) {
-            startDifferenceSymbol = '▲';
-            startDifferenceColor = 'text-red-500';
-          } else {
-            startDifferenceSymbol = '-';
-          }
-          
-          let differenceValue = Math.abs(parseInt(ranking.difference));
-          let startDifferenceValue = Math.abs(parseInt(ranking.start_difference));
-          differenceValue = isNaN(differenceValue) ? '' : differenceValue;
-          startDifferenceValue = isNaN(startDifferenceValue) ? '' : startDifferenceValue;
-          
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td class="px-6 py-2 text-center">${ranking.date_time}</td>
-            <td class="px-6 py-2 text-center">${ranking.keyword}</td>
-            <td class="px-6 py-2 text-center">${ranking.rank}</td>
-            <td class="px-6 py-2 text-center ${differenceColor}">
-              ${differenceSymbol !== '-' ? differenceSymbol + differenceValue : '-'}
-            </td>
-            <td class="px-6 py-2 text-center ${startDifferenceColor}">
-              ${startDifferenceSymbol !== '-' ? startDifferenceSymbol + startDifferenceValue : '-'}
-            </td>
-          `;
-          rankingTbody.appendChild(tr);
-        });
-        
-        // (I) 모달 표시 및 기본 탭(차트) 활성화
-        switchTab('chartTab');
-        document.getElementById('combinedModal').classList.remove('hidden');
-        document.body.classList.add('modal-open');
-      })
-      .catch(err => {
-        console.error('에러 발생:', err);
-        alert('데이터를 가져오는 중 오류가 발생했습니다.');
-      });
-    }
-    
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-content').forEach(function(el) {
-        el.classList.add('hidden');
-      });
-      var selectedTab = document.getElementById(tabId);
-      if (selectedTab) {
-        selectedTab.classList.remove('hidden');
+        }
       }
-      document.querySelectorAll('[data-tab]').forEach(function(btn) {
-        if (btn.getAttribute('data-tab') === tabId) {
-          btn.classList.add('border-b-2', 'border-blue-500', 'text-blue-500');
-        } else {
-          btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-500');
-        }
-      });
-    }
-    
-    function closeCombinedModal() {
-      document.getElementById('combinedModal').classList.add('hidden');
-      document.body.classList.remove('modal-open');
+      console.log("Average Sales:", avgSales);
+
+      // (G) 차트 생성: 매출액은 막대그래프, 평균 매출액, 순위, 추정 검색량은 선 그래프로 표시
       if (combinedChartInstance) {
         combinedChartInstance.destroy();
         combinedChartInstance = null;
       }
+      const ctx = document.getElementById('combinedChart').getContext('2d');
+      combinedChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: unionLabels,
+          datasets: [
+            {
+              label: '매출액',
+              type: 'bar',
+              data: salesRevenues,
+              backgroundColor: 'rgba(75, 192, 192, 0.5)',
+              yAxisID: 'y-sales'
+            },
+            {
+              label: '평균 매출액',
+              type: 'line',
+              data: avgSales,
+              borderColor: 'rgba(255, 159, 64, 1)',
+              backgroundColor: 'rgba(255, 159, 64, 0.2)',
+              fill: false,
+              tension: 0.1,
+              yAxisID: 'y-sales'
+            },
+            {
+              label: '순위',
+              type: 'line',
+              data: ranks,
+              borderColor: 'rgba(255, 99, 132, 1)',
+              backgroundColor: 'rgba(255, 99, 132, 0.2)',
+              fill: false,
+              tension: 0.1,
+              yAxisID: 'y-rank'
+            },
+            {
+              label: '추정 검색량',
+              type: 'line',
+              data: estimatedVolumes,
+              borderColor: 'rgba(153, 102, 255, 1)',
+              backgroundColor: 'rgba(153, 102, 255, 0.2)',
+              fill: false,
+              tension: 0.1,
+              yAxisID: 'y-volume'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  let label = context.dataset.label || '';
+                  if (label) {
+                    label += ': ';
+                  }
+                  if (context.dataset.label === '순위') {
+                    label += Math.round(context.parsed.y);
+                  } else {
+                    label += context.parsed.y;
+                  }
+                  return label;
+                }
+              }
+            }
+          },
+          scales: {
+            'y-sales': {
+              type: 'linear',
+              position: 'left',
+              title: {
+                display: true,
+                text: '매출액'
+              }
+            },
+            'y-rank': {
+              type: 'linear',
+              position: 'right',
+              reverse: true,
+              title: {
+                display: true,
+                text: '순위'
+              },
+              grid: {
+                drawOnChartArea: false
+              },
+              ticks: {
+                callback: function(value) {
+                  return Math.round(value);
+                },
+                suggestedMin: 0,
+                suggestedMax: 10,
+                stepSize: 1
+              }
+            },
+            'y-volume': {
+              type: 'linear',
+              position: 'right',
+              title: {
+                display: true,
+                text: '추정 검색량'
+              },
+              grid: {
+                drawOnChartArea: false
+              }
+            }
+          }
+        }
+      });
+
+      // (H) 순위 변동 테이블 렌더링
+      // 차트나 다른 작업 다 끝난 후, 테이블을 만들기 직전에 difference 계산
+      rankingData.rankings.sort((a, b) => new Date(b.date_time) - new Date(a.date_time));
+      for (let i = 0; i < rankingData.rankings.length; i++) {
+        if (i === rankingData.rankings.length - 1) {
+          rankingData.rankings[i].difference = 0;
+        } else {
+          rankingData.rankings[i].difference =
+            rankingData.rankings[i].rank - rankingData.rankings[i + 1].rank;
+        }
+      }
+
+      // 이제 테이블 생성 (예시)
+      const rankingTbody = document.querySelector('#rankingTable tbody');
+      rankingTbody.innerHTML = '';
+
+      rankingData.rankings.forEach(function(ranking) {
+        // 전일 대비 기호 및 색상 처리
+        let differenceSymbol = '-';
+        let differenceColor = '';
+        if (ranking.difference > 0) {
+          differenceSymbol = '▼';
+          differenceColor = 'text-blue-500';
+        } else if (ranking.difference < 0) {
+          differenceSymbol = '▲';
+          differenceColor = 'text-red-500';
+        }
+        const differenceValue = Math.abs(ranking.difference);
+
+        // 시작 대비 기호 및 색상 처리
+        let startDifferenceSymbol = '-';
+        let startDifferenceColor = '';
+        if (ranking.start_difference > 0) {
+          startDifferenceSymbol = '▼';
+          startDifferenceColor = 'text-blue-500';
+        } else if (ranking.start_difference < 0) {
+          startDifferenceSymbol = '▲';
+          startDifferenceColor = 'text-red-500';
+        }
+        const startDifferenceValue = Math.abs(ranking.start_difference);
+
+        // 원래 UI 스타일(class="px-6 py-2 text-center")을 복원하여 행 구성
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-6 py-2 text-center">${ranking.date_time}</td>
+          <td class="px-6 py-2 text-center">${ranking.keyword}</td>
+          <td class="px-6 py-2 text-center">${ranking.rank}</td>
+          <td class="px-6 py-2 text-center ${differenceColor}">
+            ${differenceSymbol !== '-' ? differenceSymbol + differenceValue : '-'}
+          </td>
+          <td class="px-6 py-2 text-center ${startDifferenceColor}">
+            ${startDifferenceSymbol !== '-' ? startDifferenceSymbol + startDifferenceValue : '-'}
+          </td>
+        `;
+        rankingTbody.appendChild(tr);
+      });
+
+      // (I) 모달 표시 및 기본 탭(차트) 활성화
+      switchTab('chartTab');
+      document.getElementById('combinedModal').classList.remove('hidden');
+      document.body.classList.add('modal-open');
+    })
+    .catch(err => {
+      console.error('에러 발생:', err);
+      alert('데이터를 가져오는 중 오류가 발생했습니다.');
+    });
+  }
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(function(el) {
+      el.classList.add('hidden');
+    });
+    var selectedTab = document.getElementById(tabId);
+    if (selectedTab) {
+      selectedTab.classList.remove('hidden');
     }
-  </script>
+    document.querySelectorAll('[data-tab]').forEach(function(btn) {
+      if (btn.getAttribute('data-tab') === tabId) {
+        btn.classList.add('border-b-2', 'border-blue-500', 'text-blue-500');
+      } else {
+        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-500');
+      }
+    });
+  }
+
+  function closeCombinedModal() {
+    document.getElementById('combinedModal').classList.add('hidden');
+    document.body.classList.remove('modal-open');
+    if (combinedChartInstance) {
+      combinedChartInstance.destroy();
+      combinedChartInstance = null;
+    }
+  }
+
+  // 전역(window) 스코프에 함수 등록하여 HTML onclick 등에서 접근 가능하도록 함
+  window.openCombinedModal = openCombinedModal;
+  window.closeCombinedModal = closeCombinedModal;
+  window.switchTab = switchTab;
+</script>
 {% endblock %}
-
-
