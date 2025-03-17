@@ -1765,7 +1765,7 @@ def update_rankings():
 
         task.save()
 
-
+from .tasks import update_task_status
 
 @login_required
 def update_all_rankings(request):
@@ -1810,6 +1810,10 @@ def update_all_rankings(request):
                 )
             else:
                 logger.error(f"Task ID {task.id} has no associated product; skipping Ranking creation.")
+            
+            # Ranking 업데이트 후 각 작업의 상태를 업데이트
+            update_task_status(task)
+            
         messages.success(request, "모든 작업의 순위가 업데이트되었습니다.")
         return redirect('rankings:dashboard')
     else:
