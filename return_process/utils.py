@@ -177,6 +177,10 @@ def update_returns_logic():
     # 쿠팡 반품 및 교환 데이터 업데이트
     for account in COUPANG_ACCOUNTS:
         logger.info(f"Processing Coupang account: {account['names'][0]}")
+        
+        # -----------------------------
+        # (1) 쿠팡 반품
+        # -----------------------------
         coupang_returns = fetch_coupang_returns(account)
         logger.info(f"{account['names'][0]}에서 가져온 쿠팡 반품 데이터 수: {len(coupang_returns)}")
 
@@ -184,10 +188,8 @@ def update_returns_logic():
             order_id = return_data.get('orderId')
             store_name = account['names'][0]
             recipient_name = return_data.get('requesterName')
-            product_name = return_data.get('returnItems', [{}])[0].get('vendorItemName')
-            option_name = product_name
-            quantity = return_data.get('returnItems', [{}])[0].get('purchaseCount', 1)
-
+            
+            # 공통 필드(반품 전체에 해당) 추출
             claim_type = return_data.get('receiptType')
             claim_type_kor = receipt_type_map.get(claim_type, claim_type)
 
@@ -209,28 +211,29 @@ def update_returns_logic():
                     claim_request_date = timezone.make_aware(claim_request_date, timezone.get_current_timezone())
             else:
                 claim_request_date = None
+            
+            # (A) returnItems가 여러 개 있을 수 있으므로 루프
+            return_items = return_data.get('returnItems', [])
+            if not return_items:
+                # 만약 returnItems가 비어 있다면 건너뜀
+                continue
 
-            seller_product_id = return_data.get('returnItems', [{}])[0].get('sellerProductId')
-            vendor_item_id = return_data.get('returnItems', [{}])[0].get('vendorItemId')
-
-            external_vendor_sku = get_external_vendor_sku(seller_product_id, vendor_item_id, account)
-            option_code = external_vendor_sku
-
+            # (B) 배송일/운송장번호 조회 (주문 단위로 한 번만 호출)
             invoice_number, delivered_date = get_order_detail(order_id, account)
-
             if delivered_date and delivered_date.strip():
                 try:
-                    delivered_date = parse(delivered_date)
-                    if timezone.is_naive(delivered_date):
-                        delivered_date = timezone.make_aware(delivered_date, timezone.get_current_timezone())
+                    delivered_date_parsed = parse(delivered_date)
+                    if timezone.is_naive(delivered_date_parsed):
+                        delivered_date_parsed = timezone.make_aware(delivered_date_parsed, timezone.get_current_timezone())
+                    delivered_date = delivered_date_parsed
                 except Exception as e:
                     logger.error(f"Delivered date parsing error: {e}")
                     delivered_date = None
             else:
                 delivered_date = None
-
+            
+            # (C) 회수 송장번호/배송사 (receiptId 기준)
             return_request_details = get_return_request_details(account['vendor_id'], return_data.get('receiptId'), account)
-
             collect_tracking_number = ''
             collect_delivery_company = ''
             if return_request_details:
@@ -242,35 +245,52 @@ def update_returns_logic():
                             collect_tracking_number = dto.get('deliveryInvoiceNo', '')
                             collect_delivery_company = dto.get('deliveryCompanyCode', '')
                             break
+            
+            # (D) 아이템별로 DB 저장
+            for item in return_items:
+                product_name = item.get('vendorItemName')
+                quantity = item.get('purchaseCount', 1)
+                seller_product_id = item.get('sellerProductId')
+                vendor_item_id = item.get('vendorItemId')
+                
+                # external SKU 매핑
+                external_vendor_sku = get_external_vendor_sku(seller_product_id, vendor_item_id, account)
+                option_code = external_vendor_sku
 
-            existing_item = ReturnItem.objects.filter(platform='Coupang', order_number=order_id).first()
-            if existing_item and existing_item.collect_tracking_number:
-                continue
+                # ★ order_number = orderId - vendorItemId
+                order_number = f"{order_id}-{vendor_item_id}"
 
-            ReturnItem.objects.update_or_create(
-                platform='Coupang',
-                order_number=order_id,
-                defaults={
-                    'claim_type': claim_type_kor,
-                    'store_name': store_name,
-                    'recipient_name': recipient_name,
-                    'option_code': option_code,
-                    'product_name': product_name,
-                    'option_name': option_name,
-                    'quantity': quantity,
-                    'invoice_number': invoice_number,
-                    'claim_status': claim_status_kor,
-                    'claim_reason': claim_reason_kor,
-                    'customer_reason': customer_reason_kor,
-                    'return_shipping_charge': return_shipping_charge,
-                    'collect_tracking_number': collect_tracking_number,
-                    'collect_delivery_company': collect_delivery_company,
-                    'claim_request_date': claim_request_date,
-                    'delivered_date': delivered_date,
-                }
-            )
+                # 혹시 기존에 이미 collect_tracking_number가 채워져 있다면 건너뛰기
+                existing_item = ReturnItem.objects.filter(platform='Coupang', order_number=order_number).first()
+                if existing_item and existing_item.collect_tracking_number:
+                    continue
 
-        # 쿠팡 교환 데이터 처리
+                ReturnItem.objects.update_or_create(
+                    platform='Coupang',
+                    order_number=order_number,
+                    defaults={
+                        'claim_type': claim_type_kor,
+                        'store_name': store_name,
+                        'recipient_name': recipient_name,
+                        'option_code': option_code,
+                        'product_name': product_name,
+                        'option_name': product_name,  # 기존 코드에서는 option_name = product_name
+                        'quantity': quantity,
+                        'invoice_number': invoice_number,
+                        'claim_status': claim_status_kor,
+                        'claim_reason': claim_reason_kor,
+                        'customer_reason': customer_reason_kor,
+                        'return_shipping_charge': return_shipping_charge,
+                        'collect_tracking_number': collect_tracking_number,
+                        'collect_delivery_company': collect_delivery_company,
+                        'claim_request_date': claim_request_date,
+                        'delivered_date': delivered_date,
+                    }
+                )
+        
+        # -----------------------------
+        # (2) 쿠팡 교환
+        # -----------------------------
         exchanges = fetch_coupang_exchanges(account)
         logger.info(f"{account['names'][0]}에서 가져온 쿠팡 교환 데이터 수: {len(exchanges)}")
 
@@ -278,10 +298,8 @@ def update_returns_logic():
             order_id = exchange_data.get('orderId')
             store_name = account['names'][0]
             recipient_name = exchange_data.get('requesterName')
-            product_name = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('vendorItemName')
-            option_name = product_name
-            quantity = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('purchaseCount', 1)
 
+            # 공통 필드(교환 전체에 해당)
             claim_type = exchange_data.get('receiptType')
             claim_type_kor = receipt_type_map.get(claim_type, claim_type)
 
@@ -292,7 +310,6 @@ def update_returns_logic():
             claim_reason_kor = cancel_reason_category_map.get(claim_reason, claim_reason)
 
             customer_reason = exchange_data.get('reasonCodeText', '')
-
             return_shipping_charge = exchange_data.get('returnShippingCharge')
             claim_request_date_str = exchange_data.get('createdAt')
 
@@ -303,52 +320,68 @@ def update_returns_logic():
             else:
                 claim_request_date = None
 
-            seller_product_id = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('sellerProductId')
-            vendor_item_id = exchange_data.get('exchangeItemDtoV1s', [{}])[0].get('vendorItemId')
-
-            external_vendor_sku = get_external_vendor_sku(seller_product_id, vendor_item_id, account)
-            option_code = external_vendor_sku
-
+            # (A) 교환 아이템 배열
+            exchange_items = exchange_data.get('exchangeItemDtoV1s', [])
+            if not exchange_items:
+                continue
+            
+            # (B) 배송일/운송장 조회
             invoice_number, delivered_date = get_order_detail(order_id, account)
             if delivered_date and delivered_date.strip():
                 try:
-                    delivered_date = parse(delivered_date)
-                    if timezone.is_naive(delivered_date):
-                        delivered_date = timezone.make_aware(delivered_date, timezone.get_current_timezone())
+                    delivered_date_parsed = parse(delivered_date)
+                    if timezone.is_naive(delivered_date_parsed):
+                        delivered_date_parsed = timezone.make_aware(delivered_date_parsed, timezone.get_current_timezone())
+                    delivered_date = delivered_date_parsed
                 except Exception as e:
                     logger.error(f"Delivered date parsing error: {e}")
                     delivered_date = None
             else:
                 delivered_date = None
-
+            
+            # 교환에는 수거(collect) 정보가 현재 로직상 없거나, 필요하면 로직 추가
             collect_tracking_number = ''
             collect_delivery_company = ''
 
-            existing_item = ReturnItem.objects.filter(platform='Coupang', order_number=order_id).first()
-            if existing_item and existing_item.collect_tracking_number:
-                continue
+            # (C) 아이템별로 DB 저장
+            for item in exchange_items:
+                product_name = item.get('vendorItemName')
+                quantity = item.get('purchaseCount', 1)
+                seller_product_id = item.get('sellerProductId')
+                vendor_item_id = item.get('vendorItemId')
 
-            ReturnItem.objects.update_or_create(
-                platform='Coupang',
-                order_number=order_id,
-                defaults={
-                    'claim_type': claim_type_kor,
-                    'store_name': store_name,
-                    'recipient_name': recipient_name,
-                    'option_code': option_code,
-                    'product_name': product_name,
-                    'option_name': option_name,
-                    'quantity': quantity,
-                    'invoice_number': invoice_number,
-                    'claim_status': claim_status_kor,
-                    'claim_reason': claim_reason_kor,
-                    'customer_reason': customer_reason,
-                    'return_shipping_charge': return_shipping_charge,
-                    'collect_tracking_number': collect_tracking_number,
-                    'collect_delivery_company': collect_delivery_company,
-                    'claim_request_date': claim_request_date,
-                    'delivered_date': delivered_date,
-                }
-            )
+                # external SKU 매핑
+                external_vendor_sku = get_external_vendor_sku(seller_product_id, vendor_item_id, account)
+                option_code = external_vendor_sku
+
+                # ★ order_number = orderId - vendorItemId
+                order_number = f"{order_id}-{vendor_item_id}"
+
+                existing_item = ReturnItem.objects.filter(platform='Coupang', order_number=order_number).first()
+                if existing_item and existing_item.collect_tracking_number:
+                    continue
+
+                ReturnItem.objects.update_or_create(
+                    platform='Coupang',
+                    order_number=order_number,
+                    defaults={
+                        'claim_type': claim_type_kor,
+                        'store_name': store_name,
+                        'recipient_name': recipient_name,
+                        'option_code': option_code,
+                        'product_name': product_name,
+                        'option_name': product_name,
+                        'quantity': quantity,
+                        'invoice_number': invoice_number,
+                        'claim_status': claim_status_kor,
+                        'claim_reason': claim_reason_kor,
+                        'customer_reason': customer_reason,
+                        'return_shipping_charge': return_shipping_charge,
+                        'collect_tracking_number': collect_tracking_number,
+                        'collect_delivery_company': collect_delivery_company,
+                        'claim_request_date': claim_request_date,
+                        'delivered_date': delivered_date,
+                    }
+                )
 
     logger.info("반품 데이터 업데이트 로직 완료")
