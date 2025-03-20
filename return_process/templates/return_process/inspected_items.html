@@ -5,6 +5,9 @@
 
     <!-- 사유(검수결과) 및 노트 일괄 적용 영역 시작 -->
     <div class="d-flex align-items-center mb-3">
+        <span class="ms-2">
+            선택된 항목: <strong id="selected-count">0</strong>개
+          </span>
         <div class="btn-group me-3">
             <button class="btn btn-outline-danger reason-btn" data-reason="오배송">오배송</button>
             <button class="btn btn-outline-success reason-btn" data-reason="이상없음">이상없음</button>
@@ -334,6 +337,15 @@
         });
     });
 
+    // 1) updateSelectedCount 함수 추가
+    function updateSelectedCount() {
+        const checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
+        const selectedCountEl = document.getElementById('selected-count');
+        if (selectedCountEl) {
+            selectedCountEl.textContent = checkedCount;
+        }
+    }
+
     // 전체 선택 체크박스 기능
     document.getElementById('select-all').addEventListener('change', function() {
         const checkboxes = document.querySelectorAll('#items-table tbody input[type="checkbox"]');
@@ -342,17 +354,27 @@
         }
     });
 
-    // 행 클릭 시 체크박스 토글
+    // 2) 행 클릭 시 체크박스 토글
     const rows = document.querySelectorAll('#items-table tbody tr');
     rows.forEach(row => {
         row.addEventListener('click', function(e) {
             if (e.target.tagName.toLowerCase() !== 'input' && !e.target.classList.contains('order-number-cell')) {
                 const checkbox = this.querySelector('input[type="checkbox"]');
                 if (checkbox) {
+                    // 토글
                     checkbox.checked = !checkbox.checked;
+                    // (B) 행 클릭 후, 개수 갱신
+                    updateSelectedCount();
                 }
             }
         });
+    });
+
+    // 3) 개별 체크박스 직접 클릭 시에도 개수 갱신
+    //    (즉, 행 안의 체크박스를 직접 클릭한 경우도 카운트가 맞도록)
+    const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+    rowCheckboxes.forEach(chk => {
+        chk.addEventListener('change', updateSelectedCount);
     });
 
     const issueFilter = document.getElementById('issue-filter');

@@ -16,7 +16,7 @@
                 {% for sc in status_counts %}
                   <li>{{ sc.processing_status }}: {{ sc.count }}건</li>
                 {% endfor %}
-                </ul>
+            </ul>
         </div>
     </div>
 
@@ -24,12 +24,12 @@
     {% for message in messages %}
     <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
         {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        <button type="button" class="btn btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
     {% endfor %}
     {% endif %}
 
-    <!-- 상태 필터 섹션 추가 -->
+    <!-- 상태 필터 + 수취인명 검색 -->
     <div class="mb-3 d-flex align-items-center">
         <label for="statusFilter" class="me-2">상태 필터:</label>
         <select id="statusFilter" class="form-select" style="width:auto;">
@@ -43,20 +43,20 @@
             <option value="처리완료">처리완료</option>
         </select>
 
-           <!-- 수취인명 검색 폼 -->
-    <form method="GET" action="" class="d-flex align-items-center ms-3">
-        <input type="text" name="recipient_name" class="form-control" placeholder="수취인명 검색"
-               value="{{ request.GET.recipient_name|default_if_none:'' }}" style="width:200px;">
-        <button type="submit" class="btn btn-secondary ms-2">검색</button>
-    </form>
+        <!-- 수취인명 검색 폼 (서버 필터) -->
+        <form method="GET" action="" class="d-flex align-items-center ms-3">
+            <input type="text" name="recipient_name" class="form-control" placeholder="수취인명 검색"
+                   value="{{ request.GET.recipient_name|default_if_none:'' }}" style="width:200px;">
+            <button type="submit" class="btn btn-secondary ms-2">검색</button>
+        </form>
     </div>
 
- 
     <div class="card shadow-sm">
         <div class="card-body">
-            <!-- 일괄 삭제 버튼 추가 -->
+            <!-- 일괄 삭제 버튼 -->
             <button type="button" class="btn btn-danger mb-3" id="bulk-delete-btn">선택 항목 삭제</button>
 
+            <!-- 테이블 -->
             <div class="table-responsive">
                 <table class="table table-hover table-striped" id="returnTable">
                     <thead>
@@ -148,6 +148,14 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- 페이지네이션 버튼/정보 영역 -->
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <button id="prevPageBtn" class="btn btn-secondary">이전</button>
+                <span id="pageInfo"></span>
+                <button id="nextPageBtn" class="btn btn-secondary">다음</button>
+            </div>
+
         </div>
     </div>
 </div>
@@ -405,7 +413,7 @@
     }
 </style>
 
-<!-- Modal -->
+<!-- 상세 정보 모달 -->
 <div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable" style="max-height:80%;">
         <div class="modal-content" style="max-height:80%; overflow-y:auto;">
@@ -468,9 +476,11 @@
     </div>
 </div>
 
-
+<!-- 메인 스크립트 -->
 <script>
-    // 전체 선택 체크박스
+    // ========================
+    // 1) 체크박스 제어
+    // ========================
     const selectAllCheckbox = document.getElementById('select-all-checkbox');
     const itemCheckboxes = document.querySelectorAll('.select-item-checkbox');
 
@@ -478,31 +488,31 @@
         itemCheckboxes.forEach(chk => chk.checked = selectAllCheckbox.checked);
     });
 
-    // 행 클릭 시 체크박스 토글
     const tableRows = document.querySelectorAll('#returnTable tbody tr');
     tableRows.forEach(row => {
         row.addEventListener('click', function(e) {
-            // 클릭한 요소가 'order-number-cell' 클래스거나 'select-item-checkbox' 자체라면 토글하지 않음
-            if (e.target.classList.contains('order-number-cell') || e.target.classList.contains('select-item-checkbox')) {
+            // 특정 셀 클릭 시(주문번호 셀, 체크박스)는 토글 동작 안 하도록
+            if (
+                e.target.classList.contains('order-number-cell') ||
+                e.target.classList.contains('select-item-checkbox')
+            ) {
                 return;
             }
-
             const checkbox = this.querySelector('.select-item-checkbox');
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
             }
-
-            // 모든 체크박스 상태에 따라 전체선택 체크박스 상태 갱신
             updateSelectAllCheckbox();
         });
     });
-
     function updateSelectAllCheckbox() {
         const allChecked = Array.from(itemCheckboxes).every(chk => chk.checked);
         selectAllCheckbox.checked = allChecked;
     }
 
-    // 일괄 삭제
+    // ========================
+    // 2) 일괄 삭제
+    // ========================
     document.getElementById('bulk-delete-btn').addEventListener('click', function() {
         const checkedBoxes = document.querySelectorAll('.select-item-checkbox:checked');
         if (checkedBoxes.length === 0) {
@@ -535,115 +545,15 @@
         });
     });
 
-    // 상태 필터 기능
-    const statusFilter = document.getElementById('statusFilter');
-    const rows = document.querySelectorAll('#returnTable tbody tr');
-
-    statusFilter.addEventListener('change', function() {
-        const filterValue = this.value;
-        rows.forEach(row => {
-            const rowStatus = row.dataset.processing_status;
-            if (!filterValue || rowStatus === filterValue) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    });
-
-    
-    function uploadExcel(type) {
-        let form;
-        let url;
-        if (type === 'seller') {
-            form = document.getElementById('sellerToolForm');
-            url = "{% url 'upload_returns_excel' %}";
-        } else {
-            form = document.getElementById('courierForm');
-            url = "{% url 'upload_courier_excel' %}";
-        }
-
-        const formData = new FormData(form);
-        fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: formData
-            }).then(res => res.json())
-            .then(data => {
-                const tbody = document.querySelector('#uploadResultTable tbody');
-                tbody.innerHTML = '';
-                if (data.success) {
-                    data.items.forEach(item => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td>${item.display_status}</td>
-                            <td>${item.claim_type}</td>
-                            <td>${item.store_name}</td>
-                            <td>${item.order_number}</td>
-                            <td>${item.collect_tracking_number}</td>
-                            <td>${item.collect_delivery_company}</td>
-                            <td>${item.recipient_name}</td>
-                            <td>${item.option_code}</td>
-                            <td>${item.product_name}</td>
-                            <td>${item.option_name}</td>
-                            <td>${item.quantity}</td>
-                            <td>${item.invoice_number}</td>
-                            <td>${item.claim_status}</td>
-                            <td>${item.claim_reason}</td>
-                            <td>${item.customer_reason}</td>
-                            <td>${item.return_shipping_charge}</td>
-                            <td>${item.shipping_charge_payment_method}</td>
-                            <td>${item.processing_status}</td>
-                            <td>${item.note}</td>
-                            <td>${item.inspector}</td>
-                            <td>${item.product_issue}</td>
-                            <td>${item.delivered_date}</td>
-                            <td>${item.claim_request_date}</td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                } else {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `<td colspan="4">${data.message || '오류 발생'}</td>`;
-                    tbody.appendChild(tr);
-                }
-            }).catch(err => {
-                console.error(err);
-                const tbody = document.querySelector('#uploadResultTable tbody');
-                tbody.innerHTML = '<tr><td colspan="4">업로드 중 오류 발생</td></tr>';
-            });
-    }
-    function updateReturns() {
-        // "반품 목록 업데이트" 버튼 클릭 시 AJAX로 update_returns 뷰 호출
-        fetch("{% url 'update_returns' %}", {
-            method: 'GET',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}'
-            }
-        })
-        .then(res => {
-            if (!res.ok) {
-                throw new Error('네트워크 응답 에러');
-            }
-            // 성공하면 페이지 새로고침
-            location.reload();
-        })
-        .catch(err => {
-            console.error('반품 목록 업데이트 중 오류:', err);
-            alert('반품 목록 업데이트 중 오류 발생');
-        });
-    }
-</script>
-<script>
+    // ========================
+    // 3) 상세 모달 열기
+    // ========================
     document.addEventListener("DOMContentLoaded", function() {
         const orderNumberCells = document.querySelectorAll(".order-number-cell");
         const detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
 
         orderNumberCells.forEach(cell => {
             cell.addEventListener('click', function(event) {
-                // 클릭한 셀의 부모 tr을 찾음
                 const row = this.closest('tr');
                 if (!row) return;
 
@@ -674,95 +584,229 @@
                 event.stopPropagation();
             });
         });
-
-        // 상태 필터 기능
-        const statusFilter = document.getElementById('statusFilter');
-        const rows = document.querySelectorAll('#returnTable tbody tr');
-
-        statusFilter.addEventListener('change', function() {
-            const filterValue = this.value;
-            rows.forEach(row => {
-                const rowStatus = row.dataset.processing_status;
-                if (!filterValue || rowStatus === filterValue) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
     });
-    function uploadReasonExcel() {
-            const form = document.getElementById('reasonExcelForm');
-            const formData = new FormData(form);
 
-            fetch("{% url 'upload_reason_excel' %}", {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}'
-                },
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                const tbody = document.querySelector('#reasonUploadResultTable tbody');
-                tbody.innerHTML = '';
-                if (data.success) {
-                    data.items.forEach(item => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td>${item.display_status}</td>
-                            <td>${item.claim_type}</td>
-                            <td>${item.store_name}</td>
-                            <td>${item.order_number}</td>
-                            <td>${item.collect_tracking_number}</td>
-                            <td>${item.collect_delivery_company}</td>
-                            <td>${item.recipient_name}</td>
-                            <td>${item.option_code}</td>
-                            <td>${item.product_name}</td>
-                            <td>${item.option_name}</td>
-                            <td>${item.quantity}</td>
-                            <td>${item.invoice_number}</td>
-                            <td>${item.claim_status}</td>
-                            <td>${item.claim_reason}</td>
-                            <td>${item.customer_reason}</td>
-                            <td>${item.return_shipping_charge}</td>
-                            <td>${item.shipping_charge_payment_method}</td>
-                            <td>${item.processing_status}</td>
-                            <td>${item.note}</td>
-                            <td>${item.inspector}</td>
-                            <td>${item.product_issue}</td>
-                            <td>${item.delivered_date}</td>
-                            <td>${item.claim_request_date}</td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                } else {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `<td colspan="23">${data.message || '오류 발생'}</td>`;
-                    tbody.appendChild(tr);
-                }
+    // ========================
+    // 4) 프론트 단 페이지네이션
+    // ========================
+    const pageSize = 100;       // 한 페이지에 보여줄 개수
+    let currentPage = 1;        // 현재 페이지
+    const statusFilter = document.getElementById('statusFilter');
+    const rows = Array.from(tableRows); // 모든 <tr> DOM
 
-                if (data.errors && data.errors.length > 0) {
-                    console.warn('업로드 중 오류 항목:', data.errors);
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                const tbody = document.querySelector('#reasonUploadResultTable tbody');
-                tbody.innerHTML = '<tr><td colspan="23">업로드 중 오류 발생</td></tr>';
-            });
+    // 페이지네이션 + 상태 필터 한번에 적용
+    function applyFilterAndPagination() {
+        const filterValue = statusFilter.value;
+
+        // 1) 상태 필터에 해당되는 행만 추리기
+        const filteredRows = [];
+        rows.forEach(row => {
+            const rowStatus = row.dataset.processing_status;
+            // 필터값이 없거나(전체) 또는 rowStatus가 필터값과 같으면 대상
+            if (!filterValue || rowStatus === filterValue) {
+                filteredRows.push(row);
+            }
+        });
+
+        // 2) 총 페이지 수 계산
+        const totalRows = filteredRows.length;
+        const totalPages = Math.ceil(totalRows / pageSize);
+
+        // 현재 페이지가 총 페이지보다 많으면 보정
+        if (currentPage > totalPages) {
+            currentPage = totalPages || 1; // totalPages가 0이면 1페이지로
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            const updateReturnsBtn = document.getElementById('update-returns-btn');
+        // 3) 시작/끝 인덱스로 행 보여주기
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+
+        // 모든 행은 기본적으로 숨김
+        rows.forEach(r => { r.style.display = 'none'; });
+
+        // 필터된 행 중 현재 페이지 범위에 있는 것만 보여줌
+        filteredRows.forEach((row, i) => {
+            if (i >= startIndex && i < endIndex) {
+                row.style.display = '';
+            }
+        });
+
+        // 4) 페이지 정보 표시
+        const pageInfo = document.getElementById('pageInfo');
+        pageInfo.textContent = `${currentPage} / ${totalPages || 1} 페이지 (총 ${totalRows}건)`;
+    }
+
+    // 상태 필터 변경 시, 페이지를 1로 돌리고 다시 적용
+    statusFilter.addEventListener('change', () => {
+        currentPage = 1;
+        applyFilterAndPagination();
+    });
+
+    // 페이지 버튼
+    const prevPageBtn = document.getElementById('prevPageBtn');
+    const nextPageBtn = document.getElementById('nextPageBtn');
+
+    prevPageBtn.addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            applyFilterAndPagination();
+        }
+    });
+
+    nextPageBtn.addEventListener('click', () => {
+        currentPage++;
+        applyFilterAndPagination();
+    });
+
+    // 페이지 로드시 초기 적용
+    document.addEventListener('DOMContentLoaded', function() {
+        applyFilterAndPagination();
+    });
+
+    // ========================
+    // 5) 엑셀 업로드 관련
+    // ========================
+    function uploadExcel(type) {
+        let form;
+        let url;
+        if (type === 'seller') {
+            form = document.getElementById('sellerToolForm');
+            url = "{% url 'upload_returns_excel' %}";
+        } else {
+            form = document.getElementById('courierForm');
+            url = "{% url 'upload_courier_excel' %}";
+        }
+
+        const formData = new FormData(form);
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.querySelector('#uploadResultTable tbody');
+            tbody.innerHTML = '';
+            if (data.success) {
+                data.items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${item.display_status}</td>
+                        <td>${item.claim_type}</td>
+                        <td>${item.store_name}</td>
+                        <td>${item.order_number}</td>
+                        <td>${item.collect_tracking_number}</td>
+                        <td>${item.collect_delivery_company}</td>
+                        <td>${item.recipient_name}</td>
+                        <td>${item.option_code}</td>
+                        <td>${item.product_name}</td>
+                        <td>${item.option_name}</td>
+                        <td>${item.quantity}</td>
+                        <td>${item.invoice_number}</td>
+                        <td>${item.claim_status}</td>
+                        <td>${item.claim_reason}</td>
+                        <td>${item.customer_reason}</td>
+                        <td>${item.return_shipping_charge}</td>
+                        <td>${item.shipping_charge_payment_method}</td>
+                        <td>${item.processing_status}</td>
+                        <td>${item.note}</td>
+                        <td>${item.inspector}</td>
+                        <td>${item.product_issue}</td>
+                        <td>${item.delivered_date}</td>
+                        <td>${item.claim_request_date}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="4">${data.message || '오류 발생'}</td>`;
+                tbody.appendChild(tr);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            const tbody = document.querySelector('#uploadResultTable tbody');
+            tbody.innerHTML = '<tr><td colspan="4">업로드 중 오류 발생</td></tr>';
+        });
+    }
+
+    // 사유 엑셀 업로드
+    function uploadReasonExcel() {
+        const form = document.getElementById('reasonExcelForm');
+        const formData = new FormData(form);
+
+        fetch("{% url 'upload_reason_excel' %}", {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.querySelector('#reasonUploadResultTable tbody');
+            tbody.innerHTML = '';
+            if (data.success) {
+                data.items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${item.display_status}</td>
+                        <td>${item.claim_type}</td>
+                        <td>${item.store_name}</td>
+                        <td>${item.order_number}</td>
+                        <td>${item.collect_tracking_number}</td>
+                        <td>${item.collect_delivery_company}</td>
+                        <td>${item.recipient_name}</td>
+                        <td>${item.option_code}</td>
+                        <td>${item.product_name}</td>
+                        <td>${item.option_name}</td>
+                        <td>${item.quantity}</td>
+                        <td>${item.invoice_number}</td>
+                        <td>${item.claim_status}</td>
+                        <td>${item.claim_reason}</td>
+                        <td>${item.customer_reason}</td>
+                        <td>${item.return_shipping_charge}</td>
+                        <td>${item.shipping_charge_payment_method}</td>
+                        <td>${item.processing_status}</td>
+                        <td>${item.note}</td>
+                        <td>${item.inspector}</td>
+                        <td>${item.product_issue}</td>
+                        <td>${item.delivered_date}</td>
+                        <td>${item.claim_request_date}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="23">${data.message || '오류 발생'}</td>`;
+                tbody.appendChild(tr);
+            }
+
+            if (data.errors && data.errors.length > 0) {
+                console.warn('업로드 중 오류 항목:', data.errors);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            const tbody = document.querySelector('#reasonUploadResultTable tbody');
+            tbody.innerHTML = '<tr><td colspan="23">업로드 중 오류 발생</td></tr>';
+        });
+    }
+
+    // "반품 목록 업데이트" 버튼
+    document.addEventListener('DOMContentLoaded', function() {
+        const updateReturnsBtn = document.getElementById('update-returns-btn');
+        if (updateReturnsBtn) {
             updateReturnsBtn.addEventListener('click', function() {
-                // 업로드된 엑셀 데이터가 기존 데이터에 매핑되었다고 가정하므로
-                // 여기서는 모달 닫고 반품목록 페이지로 이동
+                // 모달 닫고 페이지 새로고침 or 이동
                 const reasonUploadModal = bootstrap.Modal.getInstance(document.getElementById('reasonUploadModal'));
                 reasonUploadModal.hide();
+                // 페이지 새로고침 또는 다른 동작
                 window.location.href = "{% url '반품목록' %}";
             });
-        });
+        }
+    });
 </script>
-
 {% endblock %}

@@ -6,12 +6,16 @@
     <h2 class="mb-4 text-primary">수거완료 목록</h2>
 
     <div class="d-flex align-items-center mb-3">
+        <span class="ms-2">
+            선택된 항목: <strong id="selected-count">0</strong>개
+          </span>
         <div class="btn-group me-3">
             <button class="btn btn-outline-danger reason-btn" data-reason="오배송">오배송</button>
             <button class="btn btn-outline-success reason-btn" data-reason="이상없음">이상없음</button>
             <button class="btn btn-outline-warning reason-btn" data-reason="파손및불량">파손및불량</button>
             <button class="btn btn-outline-info reason-btn" data-reason="보류">보류</button>
         </div>
+        
 
         <input type="text" class="form-control w-auto" id="input-note" placeholder="사유(특이사항) 입력">
         <button class="btn btn-primary ms-2" id="apply-reason">사유 일괄 적용</button>
@@ -298,12 +302,48 @@
 
         let selectedIssue = null;
         let currentEditItemId = null; // 수량 수정용
+
+        // "선택된 항목" 개수 업데이트
+        function updateSelectedCount() {
+            const checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
+            const selectedCountEl = document.getElementById('selected-count');
+            if (selectedCountEl) {
+                selectedCountEl.textContent = checkedCount;
+            }
+        }
+
+
+        // 전체선택 체크박스
         checkAll.addEventListener('change', function() {
             const allRowCheckboxes = document.querySelectorAll('.row-checkbox');
             allRowCheckboxes.forEach(chk => {
                 chk.checked = checkAll.checked;
             });
+            updateSelectedCount();  // << 전체선택 시 개수 갱신
         });
+
+
+        // 행 클릭 시 체크박스 토글 + 개수 갱신
+        rows.forEach(row => {
+            row.addEventListener('click', function (e) {
+                // 이미 예외처리: 수량 수정, 모달 클릭 등
+                if (e.target.tagName.toLowerCase() !== 'input' &&
+                    !e.target.classList.contains('quantity-cell') &&
+                    !e.target.classList.contains('open-modal')) {
+                    const checkbox = this.querySelector('input[type="checkbox"]');
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        updateSelectedCount(); // << 여기서도 개수 갱신
+                    }
+                }
+            });
+        });
+
+        // 개별 체크박스 직접 클릭 시에도 개수 갱신
+        document.querySelectorAll('.row-checkbox').forEach(chk => {
+            chk.addEventListener('change', updateSelectedCount);
+        });
+
         // 알림 표시 함수 (1초 후 자동 제거)
         function showTemporaryMessage(msg, duration = 1000) {
             const alertDiv = document.createElement('div');
@@ -360,19 +400,9 @@
             });
         });
 
-        // 행 클릭 시 체크박스 토글
-        rows.forEach(row => {
-            row.addEventListener('click', function (e) {
-                if (e.target.tagName.toLowerCase() !== 'input' &&
-                    !e.target.classList.contains('quantity-cell') &&
-                    !e.target.classList.contains('open-modal')) {
-                    const checkbox = this.querySelector('input[type="checkbox"]');
-                    if (checkbox) {
-                        checkbox.checked = !checkbox.checked;
-                    }
-                }
-            });
-        });
+
+
+        
 
         // 검수 상태 업데이트 (오배송, 이상없음, 파손및불량, 보류)
         reasonButtons.forEach(btn => {
@@ -658,6 +688,9 @@
         "노는개최고양": "w4g8ot",
         "아르빙": "w48val"
       };
+
+      
     });
+    
   </script>
   {% endblock %}
