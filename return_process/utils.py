@@ -385,3 +385,97 @@ def update_returns_logic():
                 )
 
     logger.info("반품 데이터 업데이트 로직 완료")
+
+
+    
+import time
+import hmac
+import hashlib
+from typing import Dict, Any
+
+def generate_sellertool_signature(api_key: str, secret_key: str) -> (str, str):
+    """
+    셀러툴에서 요구하는 시그니처 생성:
+     - x-sellertool-timestamp: 밀리초 단위 Unix time (string)
+     - x-sellertool-signiture: HmacSHA256(apiKey + timestamp, secretKey) -> hex
+    """
+    timestamp = str(int(time.time() * 1000))  # 밀리초 Unix Time
+    message = api_key + timestamp
+    signature = hmac.new(
+        secret_key.encode('utf-8'),
+        message.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    return timestamp, signature
+
+
+def get_return_exchange_type(claim_type: str) -> str:
+    """
+    ReturnItem.claim_type -> 셀러툴 returnExchangeType
+      '반품' -> 'RETURN'
+      '교환' -> 'EXCHANGE'
+      그 외는 필요에 따라 처리
+    """
+    if claim_type == "반품":
+        return "RETURN"
+    elif claim_type == "교환":
+        return "EXCHANGE"
+    return "RETURN"  # 기본값(또는 EXCHANGE 등 필요에 맞게)
+
+
+def get_return_exchange_proceed_type(processing_status: str) -> str:
+    """
+    ReturnItem.processing_status -> 셀러툴 returnExchangeProceedStatus
+    """
+    mapping = {
+        '미처리': 'PREPARING',
+        '스캔': 'COLLECTION_REQUEST',
+        '수거완료': 'COLLECTION_COMPLETE',
+        '검수완료': 'INSPECTION_COMPLETE',
+        '반품완료': 'RETURN_SHIPMENT',
+        '재고반영': 'PROCESSING_COMPLETE',
+        '처리완료': 'PROCESSING_COMPLETE',
+    }
+    return mapping.get(processing_status, 'PREPARING')
+
+STORE_ID_MAP = {
+    "니뜰리히": "e2fa1155-8e54-48ae-be4c-cfc77bef19d9",
+    "수비다": "928c3a99-7acf-4869-bb07-cdeb6c7588ad",
+    "노는개최고양": "0877c607-3849-4a6d-902e-4bb29306351d",
+    "아르빙": "c483aaf6-7a82-4b51-9ece-11222a80eb1a",
+    "쿠팡01": "7e915702-42f9-402c-934e-02f2257e0038",
+    "쿠팡02": "9347b814-7096-4902-9353-763197988e64"
+    # 필요 시 추가
+}
+
+
+def convert_return_item_to_formdata(return_item) -> Dict[str, Any]:
+    store_name = return_item.store_name or ""  # 예: '니뜰리히'
+    store_id = STORE_ID_MAP.get(store_name, "")  # 매핑 없는 경우 빈 문자열
+
+    """
+    ReturnItem 객체를 셀러툴 formData 사양의 dict로 변환.
+    """
+    return {
+        "orderNumber1": return_item.order_number,
+        "returnExchangeType": get_return_exchange_type(return_item.claim_type),
+        "returnExchangeProceedStatus": get_return_exchange_proceed_type(return_item.processing_status),
+        "returnExchangeQuantity": return_item.quantity or 1,
+        "returnExchangeDeliveryPaidMethod": return_item.shipping_charge_payment_method or "",
+        "customerRequestCollectionMethod": "",  # 필요 시 ReturnItem에 필드 추가
+        "collectionWaybillNumber": return_item.invoice_number or "",
+        "collectionOptionCode": return_item.option_code or "",
+        "inspectionResultMemo": return_item.product_issue or "",
+        "inspectionPassedQuantity": 0,  # 로직에 따라 변경 가능
+        # 여기서 매핑된 GUID를 넣는다
+        "salesChannelMatchingStoreId": store_id,
+        
+        # 여기에 실제 스토어 이름을 메모로 넣는다
+        "salesChannelMatchingStoreMemo": store_name,
+
+        "claimSystem": return_item.claim_reason or "",
+        "claimCustomer": return_item.customer_reason or "",
+        "returnExchangeMemo1": return_item.collect_delivery_company or "",
+        # inspected_at(datetime)을 문자열로 변환해서 넣음
+        "returnExchangeMemo2": str(return_item.inspected_at) if return_item.inspected_at else ""
+    }
