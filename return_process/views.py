@@ -768,27 +768,6 @@ def scan_submit(request):
         if not action:
             return JsonResponse({'success': False, 'error': 'action parameter is missing'})
 
-        # # 기존 로직
-        # print("DEBUG: action value:", action, flush=True)
-        # if action == 'check_number':
-        #     number = data.get('number', '').strip()
-        #     print("DEBUG: check_number received:", repr(number), flush=True)
-            
-        #     if not number:
-        #         return JsonResponse({'success': False, 'error': 'no number provided', 'action': 'check_number'})
-
-        #     exists = ReturnItem.objects.filter(collect_tracking_number=number).exists()
-        #     if exists:
-        #         if number not in scanned_numbers and number not in unmatched_numbers:
-        #             scanned_numbers.append(number)
-        #             request.session['scanned_numbers'] = scanned_numbers
-        #         return JsonResponse({'success': True, 'matched': True, 'number': number, 'action': 'check_number'})
-        #     else:
-        #         if number not in unmatched_numbers and number not in scanned_numbers:
-        #             unmatched_numbers.append(number)
-        #             request.session['unmatched_numbers'] = unmatched_numbers
-        #         return JsonResponse({'success': True, 'matched': False, 'number': number, 'action': 'check_number'})
-
         if action == 'approve_returns':
             # 1) DB에서 user가 matched=True로 저장해둔 운송장번호 목록을 가져옴
             matched_logs = ScanLog.objects.filter(user=user, matched=True)
@@ -871,24 +850,53 @@ def scan_submit(request):
 
             if not ids:
                 return JsonResponse({'success': False, 'message': 'No item ids provided.'})
+            
+            # 로그: 전달받은 데이터 확인
+            print("DEBUG: update_issue - ids:", ids, "product_issue:", product_issue)
 
-            # 1) 해당 아이템들 가져오기
             items = ReturnItem.objects.filter(id__in=ids)
-
-            # 업데이트된 갯수를 세기 위해 변수 준비
-            #  - 방법 A) items를 순회하며 count += 1
-            #  - 방법 B) save() 끝난 뒤 len(items)를 그대로 사용
             updated_count = len(items)
+            print("DEBUG: 업데이트할 아이템 수:", updated_count)
 
-            # 2) 개별 아이템에 대해 product_issue, processing_status 설정 + save()
             for item in items:
                 item.product_issue = product_issue
                 item.processing_status = '검수완료'
                 item.save()
-
-            # 3) updated_count에 따라 응답
+            
             if updated_count > 0:
-                return JsonResponse({'success': True, 'updated_count': updated_count})
+                ST_API_KEY = config('ST_API_KEY', default=None)
+                ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
+                
+                timestamp, signature = generate_sellertool_signature(ST_API_KEY, ST_SECRET_KEY)
+                headers = {
+                    "x-sellertool-apiKey": ST_API_KEY,
+                    "x-sellertool-timestamp": timestamp,
+                    "x-sellertool-signiture": signature,
+                    "Content-Type": "application/json",
+                }
+                
+                form_datas = [convert_return_item_to_formdata(item) for item in items]
+                body = {"formDatas": form_datas}
+
+                # 로그: 셀러툴 전송 전 body 내용 확인
+                print("DEBUG: 셀러툴 전송 준비 - headers:", headers)
+                print("DEBUG: 셀러툴 전송 준비 - body:", body)
+
+                url = "https://sellertool-api-server-function.azurewebsites.net/api/return-exchanges/from-system"
+                try:
+                    response = requests.post(url, headers=headers, json=body)
+                    print("DEBUG: 셀러툴 API 응답 코드:", response.status_code)
+                    seller_tool_result = response.json()
+                    print("DEBUG: 셀러툴 API 응답 내용:", seller_tool_result)
+                except Exception as e:
+                    print("DEBUG: 셀러툴 API 전송 중 에러 발생:", str(e))
+                    seller_tool_result = {"error": str(e)}
+                
+                return JsonResponse({
+                    'success': True,
+                    'updated_count': updated_count,
+                    'seller_tool_response': seller_tool_result
+                })
             else:
                 return JsonResponse({'success': False, 'message': 'No items updated.'})
 
@@ -2022,3 +2030,57 @@ def return_dashboard(request):
         # GET
         return render(request, 'return_process/return_dashboard.html')
   
+from decouple import config
+from django.views import View  # FBV가 아닌 CBV로 예시
+from .utils import (
+    generate_sellertool_signature,
+    convert_return_item_to_formdata
+)
+
+class SendReturnItemsView(View):
+    """
+    예: /myapp/send-return-items/ 로 GET 요청 시
+    특정 ReturnItem들(예: processing_status = '검수완료' 등)을
+    셀러툴에 전송하는 예시
+    """
+
+    def get(self, request, *args, **kwargs):
+        # 1) 전송할 ReturnItem들 조회 (예: 모두, 혹은 특정 조건)
+        return_items = ReturnItem.objects.all()
+
+        # 2) API Key / Secret Key (settings나 env에 저장했다 가정)
+        ST_API_KEY = config('ST_API_KEY', default=None)
+        ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
+
+        # 3) 시그니처 생성
+        timestamp, signature = generate_sellertool_signature(ST_API_KEY, ST_SECRET_KEY)
+
+        # 4) 헤더 구성
+        headers = {
+            "x-sellertool-apiKey": ST_API_KEY,
+            "x-sellertool-timestamp": timestamp,
+            "x-sellertool-signiture": signature,
+            "Content-Type": "application/json",
+        }
+
+        # 5) formDatas 배열 만들기
+        form_datas = []
+        for item in return_items:
+            data = convert_return_item_to_formdata(item)
+            form_datas.append(data)
+
+        # 6) 최종 Body
+        body = {
+            "formDatas": form_datas
+        }
+
+        # 7) 요청 보내기
+        url = "https://sellertool-api-server-function.azurewebsites.net/api/return-exchanges/from-system"
+        response = requests.post(url, headers=headers, json=body)
+        response_data = response.json()
+
+        # 8) 응답(JSON)을 출력 or DB 저장 등
+        return JsonResponse({
+            "status_code": response.status_code,
+            "response": response_data
+        })

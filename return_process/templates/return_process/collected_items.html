@@ -1,3 +1,5 @@
+<!-- return_process/templates/return_process/collected_items.html -->
+
 {% extends 'return_process_base.html' %}
 {% load dict_extras %}
 {% block content %}
@@ -511,21 +513,29 @@
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    action: 'delete_items',
-                    ids: checkedIds
+                    action: 'update_issue',
+                    ids: checkedIds,
+                    product_issue: selectedIssue
                 })
             })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        showTemporaryMessage('데이터 삭제 완료');
-                        setTimeout(() => {
-                            location.reload();
-                        }, 1100);
-                    } else {
-                        showTemporaryMessage('삭제 실패');
-                    }
-                });
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    console.log(data.seller_tool_response);
+                    // 여기서 셀러툴 응답을 확인할 수 있음
+                    // 예: data.seller_tool_response.content.successContents
+                    showTemporaryMessage(`검수 상태 ${data.updated_count}건 업데이트 & 셀러툴 전송 완료`, 1500);
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1600);
+                } else {
+                    showTemporaryMessage(data.message || '업데이트 실패');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showTemporaryMessage('요청 오류 발생');
+            });
         });
 
         document.getElementById('update-product-order-status').addEventListener('click', function() {

@@ -37,6 +37,7 @@ urlpatterns = [
     path('return_dashboard/', views.return_dashboard, name='return_dashboard'),
     path('update-claim-type/', views.update_claim_type_bulk, name='update_claim_type'),
     path('inspected-export-excel/', views.inspected_export_excel, name='inspected_export_excel'),
+    path('send-return-items/', views.SendReturnItemsView.as_view(), name='send_return_items'),
 
     path('biztalk_proxy/<str:order_number>/', views.biztalk_proxy, name='biztalk_proxy'),
 
