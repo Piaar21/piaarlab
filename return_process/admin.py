@@ -31,7 +31,7 @@ class ReturnItemAdmin(admin.ModelAdmin):
     list_display = (
         'order_number', 'platform', 'store_name', 'product_name', 'quantity',
         'processing_status', 'collected_at', 'inspected_at', 'returned_at',
-        'stock_updated_at', 'completed_at',
+        'stock_updated_at', 'completed_at','claim_type',
     )
     list_filter = ('platform', 'store_name', 'processing_status', 'claim_type')
     search_fields = ('order_number', 'product_name', 'store_name', 'option_code')
