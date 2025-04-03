@@ -62,7 +62,8 @@
                                 <th>상품명</th>
                                 <th>옵션명</th>
                                 <th>수량</th>
-                                <th>업데이트시간</th>
+                                <th>검수완료일</th>
+                                <th>반품완료일</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -85,7 +86,8 @@
                                 <td>{{ item.product_name|default:"N/A" }}</td>
                                 <td>{{ item.option_name|default:"N/A" }}</td>
                                 <td>{{ item.quantity|default:"0" }}</td>
-                                <td>{{ item.returned_at|default:"N/A"}}    </td>
+                                <td>{{ item.inspection_completed_at|default:"N/A" }}</td>
+                                <td>{{ item.returned_at|default:"N/A"}}</td>
                             </tr>
                             {% empty %}
                             <tr>
