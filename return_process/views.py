@@ -864,38 +864,9 @@ def scan_submit(request):
                 item.save()
             
             if updated_count > 0:
-                ST_API_KEY = config('ST_API_KEY', default=None)
-                ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
-                
-                timestamp, signature = generate_sellertool_signature(ST_API_KEY, ST_SECRET_KEY)
-                headers = {
-                    "x-sellertool-apiKey": ST_API_KEY,
-                    "x-sellertool-timestamp": timestamp,
-                    "x-sellertool-signiture": signature,
-                    "Content-Type": "application/json",
-                }
-                
-                form_datas = [convert_return_item_to_formdata(item) for item in items]
-                body = {"formDatas": form_datas}
-
-                # 로그: 셀러툴 전송 전 body 내용 확인
-                print("DEBUG: 셀러툴 전송 준비 - headers:", headers)
-                print("DEBUG: 셀러툴 전송 준비 - body:", body)
-
-                url = "https://sellertool-api-server-function.azurewebsites.net/api/return-exchanges/from-system"
-                try:
-                    response = requests.post(url, headers=headers, json=body)
-                    print("DEBUG: 셀러툴 API 응답 코드:", response.status_code)
-                    seller_tool_result = response.json()
-                    print("DEBUG: 셀러툴 API 응답 내용:", seller_tool_result)
-                except Exception as e:
-                    print("DEBUG: 셀러툴 API 전송 중 에러 발생:", str(e))
-                    seller_tool_result = {"error": str(e)}
-                
                 return JsonResponse({
                     'success': True,
                     'updated_count': updated_count,
-                    'seller_tool_response': seller_tool_result
                 })
             else:
                 return JsonResponse({'success': False, 'message': 'No items updated.'})
@@ -2070,24 +2041,20 @@ from .utils import (
 )
 
 class SendReturnItemsView(View):
-    """
-    예: /myapp/send-return-items/ 로 GET 요청 시
-    특정 ReturnItem들(예: processing_status = '검수완료' 등)을
-    셀러툴에 전송하는 예시
-    """
+    def post(self, request, *args, **kwargs):
+        # 클라이언트에서 전달된 JSON 데이터를 파싱합니다.
+        data = json.loads(request.body)
+        ids = data.get('ids', [])
+        if not ids:
+            return JsonResponse({'success': False, 'message': 'No item ids provided.'}, status=400)
+        
+        # 선택된 아이디들에 해당하는 ReturnItem 조회
+        return_items = ReturnItem.objects.filter(id__in=ids)
+        updated_count = return_items.count()
 
-    def get(self, request, *args, **kwargs):
-        # 1) 전송할 ReturnItem들 조회 (예: 모두, 혹은 특정 조건)
-        return_items = ReturnItem.objects.all()
-
-        # 2) API Key / Secret Key (settings나 env에 저장했다 가정)
         ST_API_KEY = config('ST_API_KEY', default=None)
         ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
-
-        # 3) 시그니처 생성
         timestamp, signature = generate_sellertool_signature(ST_API_KEY, ST_SECRET_KEY)
-
-        # 4) 헤더 구성
         headers = {
             "x-sellertool-apiKey": ST_API_KEY,
             "x-sellertool-timestamp": timestamp,
@@ -2095,24 +2062,23 @@ class SendReturnItemsView(View):
             "Content-Type": "application/json",
         }
 
-        # 5) formDatas 배열 만들기
-        form_datas = []
-        for item in return_items:
-            data = convert_return_item_to_formdata(item)
-            form_datas.append(data)
+        # formDatas 배열 생성
+        form_datas = [convert_return_item_to_formdata(item) for item in return_items]
+        body = {"formDatas": form_datas}
 
-        # 6) 최종 Body
-        body = {
-            "formDatas": form_datas
-        }
-
-        # 7) 요청 보내기
         url = "https://sellertool-api-server-function.azurewebsites.net/api/return-exchanges/from-system"
-        response = requests.post(url, headers=headers, json=body)
-        response_data = response.json()
-
-        # 8) 응답(JSON)을 출력 or DB 저장 등
+        try:
+            response = requests.post(url, headers=headers, json=body)
+            try:
+                seller_tool_result = response.json()
+            except Exception as e:
+                seller_tool_result = {"error": "응답 JSON 파싱 실패"}
+        except Exception as e:
+            seller_tool_result = {"error": str(e)}
+        
         return JsonResponse({
+            "success": True,
+            "updated_count": updated_count,
             "status_code": response.status_code,
-            "response": response_data
+            "response": seller_tool_result
         })
