@@ -469,7 +469,7 @@ def convert_return_item_to_formdata(return_item) -> Dict[str, Any]:
         "returnExchangeQuantity": return_item.quantity or 1,
         "returnExchangeDeliveryPaidMethod": return_item.shipping_charge_payment_method or "",
         "customerRequestCollectionMethod": "",
-        "collectionWaybillNumber": return_item.invoice_number or "",
+        "collectionWaybillNumber": return_item.collect_tracking_number or "",
         "collectionOptionCode": return_item.option_code or "",
         "inspectionResultMemo": return_item.product_issue or "",
         "inspectionPassedQuantity": 0,
