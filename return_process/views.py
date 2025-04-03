@@ -914,8 +914,21 @@ def scan_submit(request):
         
         elif action == 'delete_items':
             ids = data.get('ids', [])
-            ReturnItem.objects.filter(id__in=ids).delete()
-            return JsonResponse({'success': True})
+            
+            # ids가 비어있는 경우
+            if not ids:
+                return JsonResponse({'success': False, 'message': '삭제할 항목이 선택되지 않았습니다.'}, status=400)
+            
+            queryset = ReturnItem.objects.filter(id__in=ids)
+            to_delete_count = queryset.count()
+            
+            if to_delete_count == 0:
+                return JsonResponse({'success': False, 'message': '선택된 항목이 존재하지 않습니다.'}, status=400)
+            
+            # 여기서 실제 삭제
+            queryset.delete()
+            
+            return JsonResponse({'success': True, 'message': f'{to_delete_count}건 삭제 완료'})
 
         elif action == 'update_quantity':
             item_id = data.get('id', None)
@@ -1321,18 +1334,18 @@ def inspected_items(request):
 
             # --- "기발송건" 로직 추가 ---
             if success:
-                # 정상 성공: 로컬 상태를 '수거완료'로 변경
-                item_obj.processing_status = '수거완료'
+                # 정상 성공: 로컬 상태를 '반품완료'로 변경
+                item_obj.processing_status = '반품완료'
                 item_obj.save()
                 return JsonResponse({'success': True, 'message': message})
             else:
                 # 실패했지만 메시지에 "기발송건입니다."가 있다면, 이미 발송이 된 것이므로
                 if "기발송건입니다." in message:
-                    item_obj.processing_status = '수거완료'
+                    item_obj.processing_status = '반품완료'
                     item_obj.save()
                     return JsonResponse({
                         'success': True,
-                        'message': "이미 발송된 주문 건이므로 로컬상태를 '수거완료'로 변경했습니다."
+                        'message': "이미 발송된 주문 건이므로 로컬상태를 '반품완료'로 변경했습니다."
                     })
                 else:
                     # 실제 오류는 그대로 실패 처리
