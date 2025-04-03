@@ -1260,11 +1260,12 @@ def inspected_items(request):
                         total_updated_count += 1
 
             return JsonResponse({'success': True, 'updated_count': total_updated_count})
+
         elif action == 'back_to_collected':
             ids = data.get('ids', [])
             ReturnItem.objects.filter(id__in=ids, processing_status='검수완료').update(processing_status='수거완료')
             return JsonResponse({'success': True})
-        
+
         elif action == 'dispatch_exchange':
             print("[DEBUG] dispatch_exchange action 호출됨.")
             print(f"[DEBUG] request.POST or body data: {data}")
@@ -1286,22 +1287,22 @@ def inspected_items(request):
             print(f"[DEBUG] order_number={product_order_id} + 검수완료 매칭 개수: {count_in_inspected}")
 
             # item 조회
-            item = ReturnItem.objects.filter(order_number=product_order_id, processing_status='검수완료').first()
-            if not item:
+            item_obj = ReturnItem.objects.filter(order_number=product_order_id, processing_status='검수완료').first()
+            if not item_obj:
                 print("[DEBUG] 400 반환: 해당 주문번호(검수완료) 아이템을 찾을 수 없습니다.")
                 return JsonResponse({'success': False, 'message': '해당 주문번호(검수완료) 아이템을 찾을 수 없습니다.'}, status=400)
 
             # >>> 여기서 실제 DB에서 찾은 item의 order_number를 찍어볼 수 있음 <<<
-            print(f"[DEBUG] 찾은 item: ID={item.id}, order_number={item.order_number}")
+            print(f"[DEBUG] 찾은 item: ID={item_obj.id}, order_number={item_obj.order_number}")
 
-            platform = item.platform.lower()
-            print(f"[DEBUG] 찾은 item의 platform={platform}, store_name={item.store_name}")
+            platform = item_obj.platform.lower()
+            print(f"[DEBUG] 찾은 item의 platform={platform}, store_name={item_obj.store_name}")
 
             if platform != 'naver':
                 print(f"[DEBUG] 400 반환: 네이버가 아닌 플랫폼({platform})")
                 return JsonResponse({'success': False, 'message': f'네이버 플랫폼이 아니므로 재배송 처리를 지원하지 않습니다. ({platform})'}, status=400)
 
-            store_name = item.store_name
+            store_name = item_obj.store_name
             account_info = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
             if not account_info:
                 print("[DEBUG] 400 반환: NAVER 계정을 찾을 수 없음")
@@ -1317,7 +1318,25 @@ def inspected_items(request):
             )
 
             print(f"[DEBUG] 교환 재배송 처리 결과: success={success}, message={message}")
-            return JsonResponse({'success': success, 'message': message})
+
+            # --- "기발송건" 로직 추가 ---
+            if success:
+                # 정상 성공: 로컬 상태를 '수거완료'로 변경
+                item_obj.processing_status = '수거완료'
+                item_obj.save()
+                return JsonResponse({'success': True, 'message': message})
+            else:
+                # 실패했지만 메시지에 "기발송건입니다."가 있다면, 이미 발송이 된 것이므로
+                if "기발송건입니다." in message:
+                    item_obj.processing_status = '수거완료'
+                    item_obj.save()
+                    return JsonResponse({
+                        'success': True,
+                        'message': "이미 발송된 주문 건이므로 로컬상태를 '수거완료'로 변경했습니다."
+                    })
+                else:
+                    # 실제 오류는 그대로 실패 처리
+                    return JsonResponse({'success': False, 'message': f'교환 재배송 처리 실패: {message}'})
 
     # GET 요청: 전달할 컨텍스트에 store_code_map_keys 추가
     store_code_map = {
