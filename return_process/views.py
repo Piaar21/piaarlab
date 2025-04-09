@@ -2042,19 +2042,30 @@ from .utils import (
 
 class SendReturnItemsView(View):
     def post(self, request, *args, **kwargs):
-        # 클라이언트에서 전달된 JSON 데이터를 파싱합니다.
-        data = json.loads(request.body)
+        logger.info("POST /send-return-items/ 요청 시작.")
+
+        # 클라이언트에서 전달된 JSON 데이터를 파싱
+        try:
+            data = json.loads(request.body)
+            logger.debug("받은 데이터: %s", data)
+        except Exception as e:
+            logger.exception("JSON 파싱 중 에러 발생: %s", e)
+            return JsonResponse({'success': False, 'message': 'Invalid JSON data.'}, status=400)
+
         ids = data.get('ids', [])
         if not ids:
+            logger.warning("아이디가 제공되지 않음.")
             return JsonResponse({'success': False, 'message': 'No item ids provided.'}, status=400)
-        
-        # 선택된 아이디들에 해당하는 ReturnItem 조회
+
+        # 선택된 아이디에 해당하는 ReturnItem 조회
         return_items = ReturnItem.objects.filter(id__in=ids)
         updated_count = return_items.count()
+        logger.info("조회된 ReturnItem 개수: %d", updated_count)
 
         ST_API_KEY = config('ST_API_KEY', default=None)
         ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
         timestamp, signature = generate_sellertool_signature(ST_API_KEY, ST_SECRET_KEY)
+        logger.debug("Signature 생성 완료: timestamp=%s, signature=%s", timestamp, signature)
         headers = {
             "x-sellertool-apiKey": ST_API_KEY,
             "x-sellertool-timestamp": timestamp,
@@ -2065,20 +2076,48 @@ class SendReturnItemsView(View):
         # formDatas 배열 생성
         form_datas = [convert_return_item_to_formdata(item) for item in return_items]
         body = {"formDatas": form_datas}
+        logger.debug("전송할 body 데이터: %s", body)
 
         url = "https://sellertool-api-server-function.azurewebsites.net/api/return-exchanges/from-system"
+        success = True
+        error_message = ""
         try:
             response = requests.post(url, headers=headers, json=body)
+            logger.info("외부 API 호출 응답 코드: %d", response.status_code)
             try:
                 seller_tool_result = response.json()
+                logger.debug("외부 API 응답 JSON: %s", seller_tool_result)
             except Exception as e:
-                seller_tool_result = {"error": "응답 JSON 파싱 실패"}
+                error_message = "응답 JSON 파싱 실패: " + str(e)
+                seller_tool_result = {"error": error_message}
+                success = False
+                logger.error(error_message)
         except Exception as e:
-            seller_tool_result = {"error": str(e)}
-        
+            error_message = "외부 API 호출 중 예외 발생: " + str(e)
+            seller_tool_result = {"error": error_message}
+            success = False
+            logger.exception(error_message)
+
+        # 응답의 상태코드, error 키, 그리고 failureContents 검사
+        failure_contents = seller_tool_result.get("content", {}).get("failureContents", [])
+        if response.status_code != 200 or seller_tool_result.get("error") or (failure_contents and len(failure_contents) > 0):
+            success = False
+            if not error_message:
+                # failureContents에 있는 실패 사유들을 연결하여 에러 메시지 생성
+                error_reasons = [item.get("reason", "Unknown error") for item in failure_contents]
+                error_message = "Seller Tool 전송 실패: " + ", ".join(error_reasons)
+            logger.error("API 호출 실패: status_code=%s, error=%s", response.status_code, error_message)
+
+        # 셀러툴 전송이 성공하면 해당 ReturnItem 항목들의 상태 업데이트
+        if success:
+            ReturnItem.objects.filter(id__in=ids).update(processing_status='검수완료', product_issue='보류')
+            logger.info("셀러툴 전송 성공에 따라 DB 업데이트 완료: processing_status='검수완료', product_issue='보류'")
+
+        logger.info("최종 응답 반환.")
         return JsonResponse({
-            "success": True,
+            "success": success,
             "updated_count": updated_count,
             "status_code": response.status_code,
-            "response": seller_tool_result
+            "response": seller_tool_result,
+            "error_message": error_message  # 실패한 경우 사유 전달
         })

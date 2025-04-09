@@ -459,7 +459,7 @@ STORE_ID_MAP = {
 
 from django.utils import timezone
 
-def convert_return_item_to_formdata(return_item) -> Dict[str, Any]:
+def convert_return_item_to_formdata(return_item) -> dict:
     store_name = return_item.store_name or ""
     store_id = STORE_ID_MAP.get(store_name, "")
     return {
@@ -478,7 +478,6 @@ def convert_return_item_to_formdata(return_item) -> Dict[str, Any]:
         "claimSystem": return_item.claim_reason or "",
         "claimCustomer": return_item.customer_reason or "",
         "returnExchangeMemo1": return_item.collect_delivery_company or "",
-        # inspected_at이 있을 경우, 한국 시간으로 변환 후 "검수완료시간 : ..." 형식으로 반환
         "returnExchangeMemo2": (
             f"검수완료시간 : {timezone.localtime(return_item.inspected_at).strftime('%Y-%m-%d %H:%M:%S')}"
             if return_item.inspected_at else ""
