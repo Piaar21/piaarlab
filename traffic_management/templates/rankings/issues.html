@@ -85,11 +85,14 @@
                                         <span class="material-icons" style="vertical-align: middle;">arrow_drop_up</span>
                                         {{ task.difference_rank }}
                                     </span>
-                                {% elif task.difference_rank < 0 %}
-                                    <span class="text-blue-500">
-                                        <span class="material-icons" style="vertical-align: middle;">arrow_drop_down</span>
-                                        {{ task.difference_rank|abs }}
+                                    {% elif task.difference_rank < 0 %}
+                                    <span class="text-blue-500 d-flex align-items-center justify-content-center">
+                                      <span class="material-icons" style="vertical-align: middle;">
+                                        arrow_drop_down
+                                      </span>
+                                      {{ task.difference_rank|cut:"-" }}
                                     </span>
+                                  
                                 {% else %}
                                     -
                                 {% endif %}

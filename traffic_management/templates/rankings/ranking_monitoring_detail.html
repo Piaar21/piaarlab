@@ -1,0 +1,190 @@
+
+
+{% extends "traffic_management_base.html" %}
+{% load humanize %}
+{% block content %}
+<div class="container-fluid mt-4" style="width: 80%; margin: 0 auto;">
+
+  <!-- 1) 헤더: 이미지 + 제목 + 태그 -->
+  <div class="card mb-4 p-3">
+    <div class="d-flex align-items-center">
+      <a href="{{ product.link }}" target="_blank" rel="noopener" class="d-block me-3">
+        <img
+          src="{{ product.image_url }}"
+          alt="{{ product.title }}"
+          class="rounded"
+          style="width:64px; height:64px; object-fit:cover;"
+        />
+      </a>
+      <div class="flex-grow-1">
+        <h4 class="mb-1">{{ product.title }}</h4>
+        <div class="flex-wrap">
+          {% for tag in product.tags %}
+            <span class="badge bg-secondary me-1 mb-1">#{{ tag }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="ms-3 text-end">
+        <button class="btn btn-sm btn-outline-secondary p-1">
+          <i class="bi bi-star{{ product.is_favorite|yesno:'-fill,' }} text-warning"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- 2) 검색량 업데이트 버튼 -->
+  <div class="mb-4">
+    <form method="POST" action="{% url 'rankings:update_monitoring_search' %}"
+          class="d-inline-block">
+      {% csrf_token %}
+      <input type="hidden" name="product_id" value="{{ product.id }}">
+      <button class="btn btn-sm btn-primary">검색량 업데이트</button>
+    </form>
+  </div>
+
+<!-- 3) 키워드 추가/편집 폼 -->
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="POST" action="{% url 'rankings:add_monitoring_detail' %}">
+      {% csrf_token %}
+      <input type="hidden" name="selected_products" value="{{ product.id }}">
+      
+      <label for="monitoring_keywords" class="form-label">
+        키워드 추가/편집 (쉼표로 구분)
+      </label>
+      <div class="input-group input-group-sm mb-3">
+        <input
+          type="text"
+          id="monitoring_keywords"
+          name="monitoring_keywords"
+          class="form-control"
+          placeholder="예: 토스트, 간편식, 주방가전"
+          value=""
+        >
+        <button type="submit" class="btn btn-primary">저장</button>
+      </div>
+    </form>
+
+    {% if existing_keywords %}
+    <div class="border rounded p-2">
+      <small class="text-muted">등록된 키워드</small>
+      <div class="mt-1">
+        {% for kw in existing_keywords %}
+          <span class="badge bg-secondary me-1 mb-1">#{{ kw }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    
+  </div>
+</div>
+
+  <!-- 순위 모니터링 테이블 -->
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">순위 모니터링</h5>
+      <button class="btn btn-sm btn-outline-secondary">크게보기</button>
+    </div>
+    <div class="card-body">
+
+      <p class="text-muted small mb-3">매일 오전 PC 쇼핑 기준 업데이트</p>
+
+      <div class="table-responsive border rounded">
+        <table class="table-modern">
+          <colgroup>
+            <col style="width:150px">
+            <col style="width:120px">
+            {% for _ in date_columns %}
+              <col>
+            {% endfor %}
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="sticky-col first text-left">키워드</th>
+              <th class="sticky-col second text-left">검색량</th>
+              {% for dt in date_columns %}
+                <th class="text-center">{{ dt}}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in rank_list %}
+            <tr>
+              <td class="sticky-col first">{{ item.keyword }}</td>
+              <td class="sticky-col second text-success">
+                {{ item.search_volume|intcomma }}
+              </td>
+              {% for rank in item.history %}
+                <td class="text-center">
+                  {% if rank == '—' %}
+                    400위 밖
+                  {% else %}
+                    {{ rank|intcomma }}위
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+  {% block extra_css %}
+<style>
+  /* 1. 테이블 기본 */
+  .table-modern {
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background-color: #fff;
+    font-size: 0.875rem;
+  }
+
+  /* 2. 셀 패딩 & 보더 */
+  .table-modern th,
+  .table-modern td {
+    padding: 0.75rem 1rem;
+    border: 1px solid #dee2e6;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  /* 3. 헤더 스타일 */
+  .table-modern thead th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+  }
+
+  /* 4. 줄무늬 & 호버 */
+  .table-modern tbody tr:nth-child(odd) {
+    background-color: #ffffff;
+  }
+  .table-modern tbody tr:nth-child(even) {
+    background-color: #f2f2f2;
+  }
+  .table-modern tbody tr:hover {
+    background-color: #e9ecef;
+  }
+
+  /* 5. 고정 컬럼 (첫·두 번째) */
+  .sticky-col {
+    position: sticky;
+    background-color: #fff;
+    z-index: 2;
+  }
+  .sticky-col.first {
+    left: 0;
+  }
+  .sticky-col.second {
+    left: 150px; /* 첫 컬럼 width + 보더(1px) 포함 */
+  }
+</style>
+{% endblock %}
+{% endblock %}

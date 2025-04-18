@@ -21,93 +21,71 @@
       </div>
     </div>
   </div>
-  
-  <!-- 확장형 메인 테이블 (상위행) -->
-  <div class="card mb-4">
-    <div class="card-body">
-      <div class="expandable-table-container">
-        <table class="expandable-table">
-          <thead>
-            <tr>
-              <th style="width: 100px;">상품ID</th>
-              <th style="width: 150px;">상품명</th>
-              <th style="width: 150px;">메인키워드1</th>
-              <th style="width: 100px;">메인1 순위</th>
-              <th style="width: 150px;">메인키워드2</th>
-              <th style="width: 100px;">메인2 순위</th>
-              <th style="width: 150px;">메인키워드3</th>
-              <th style="width: 100px;">메인3 순위</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in rankings %}
-            <tr id="row-{{ r.product_id }}" class="product-row" style="cursor: pointer;" onclick="toggleRow('{{ r.product_id }}');">
-              <td>
-                <span class="toggle-arrow">▶</span> {{ r.product_id }}
-              </td>
-              <td>{{ r.product_name }}</td>
-              <td class="mainKeyword1">{{ r.main_keyword1 }}</td>
-              <td class="mainKeyword1Rank">{{ r.main_keyword1_rank|default:"0" }}</td>
-              <td class="mainKeyword2">{{ r.main_keyword2 }}</td>
-              <td class="mainKeyword2Rank">{{ r.main_keyword2_rank|default:"0" }}</td>
-              <td class="mainKeyword3">{{ r.main_keyword3 }}</td>
-              <td class="mainKeyword3Rank">{{ r.main_keyword3_rank|default:"0" }}</td>
-            </tr>
-            
-            <!-- 하위행 (키워드 목록) -->
-            <tr id="sub-{{ r.product_id }}" class="sub-row" style="display: none;">
-              <td colspan="8">
-                <div class="sub-table-wrapper">
-                  <table class="sub-table">
-                    <thead>
-                      <tr>
-                        <th class="star-col">★</th>
-                        <th class="keyword-col">키워드</th>
-                        <th class="volume-col">검색량</th>
-                        {% for dt in date_columns %}
-                          <th class="date-cell-head">{{ dt }}</th>
-                        {% endfor %}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {% for keyword, info in r.sorted_pivot_data %}
-                      <tr>
-                        <td class="star-col">
-                          <span class="star-icon"
-                                data-product="{{ r.product_id }}"
-                                data-keyword="{{ keyword }}"
-                                onclick="toggleStar(event, '{{ r.product_id }}', '{{ keyword }}', '{{ info.latest_rank|default:0 }}')">
-                            ☆
-                          </span>
-                        </td>
-                        <td class="keyword-col">{{ keyword }}</td>
-                        <td class="volume-col">{{ info.search_volume }}</td>
-                        {% for dt in date_columns %}
-                          <td class="date-cell">
-                            {% if dt in info.ranks %}
-                              {% with current_rank=info.ranks|get_item:dt diff=info.rank_diffs|get_item:dt %}
-                                {{ current_rank }}
-                                {% if diff > 0 %}
-                                  <span class="arrow-up">▲ {{ diff }}</span>
-                                {% elif diff < 0 %}
-                                  <span class="arrow-down">▼ {{ diff|get_abs }}</span>
-                                {% endif %}
-                              {% endwith %}
-                            {% endif %}
-                          </td>
-                        {% endfor %}
-                      </tr>
-                      {% endfor %}
-                    </tbody>
-                  </table>
-                </div>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+  <form method="get" class="mb-4 d-flex justify-content-left">
+    <div class="input-group w-50">
+      <span class="input-group-text bg-white border-end-0">
+        <i class="bi bi-search text-muted"></i>
+      </span>
+      <input
+        type="text"
+        name="q"
+        value="{{ search_query }}"
+        class="form-control border-start-0"
+        placeholder="상품명으로 검색"
+        aria-label="상품명 검색"
+      />
+      <button class="btn btn-primary" type="submit">검색</button>
     </div>
+  </form>
+  
+  <!-- 카드 그리드 -->
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    {% for r in rankings %}
+      <div class="col">
+        <a
+        href="{% url 'rankings:ranking_monitoring_detail_list' %}?product_id={{ r.product_id }}"
+        class="text-decoration-none text-reset"
+      >
+      <div class="card h-100 shadow-sm p-3">
+        <!-- 카드 헤더: 썸네일 / 텍스트 / 배지+별 -->
+        <div class="d-flex align-items-start mb-2">
+          <!-- 썸네일 -->
+          <div class="flex-shrink-0 me-3">
+            <img
+              src="{{ r.product_img }}"
+              alt="{{ r.product_name }}"
+              class="rounded"
+              style="width:48px; height:48px; object-fit:cover;"
+            />
+          </div>
+      
+          <!-- 제목 & 서브타이틀 -->
+          <div class="flex-grow-1">
+            <h5 class="fs-6 mb-1">{{ r.product_name }}</h5>
+            <p class="text-muted small mb-0">ID: {{ r.product_id }}</p>
+          </div>
+      
+          <!-- 우측 상단: 예시상품 배지 + 별 아이콘 -->
+          <div class="d-flex flex-column align-items-end">
+              <i class="bi bi-star{{ r.is_favorite|yesno:'-fill,' }} text-warning"></i>
+            </button>
+          </div>
+        </div>
+      
+        <!-- 키워드 리스트 -->
+        <div class="d-flex flex-wrap gap-1">
+          {% for kw, info in r.sorted_pivot_data|slice:":4" %}
+            <span class="badge bg-light text-dark small">
+              {{ kw }} {{ info.latest_rank|default:"—" }}위
+            </span>
+          {% endfor %}
+          {% if r.sorted_pivot_data|length > 4 %}
+          {% endif %}
+        </div>
+      </div>
+        </a>
+      </div>
+    {% endfor %}
   </div>
 </div>
 
@@ -205,19 +183,12 @@
   }
 
   // 행 펼치기/접기
-  function toggleRow(productId) {
-    const subRow = document.getElementById('sub-' + productId);
-    const productRow = document.getElementById('row-' + productId);
-    if (!subRow) return;
-    if (subRow.style.display === "none" || subRow.style.display === "") {
-      subRow.style.display = "table-row";
-      const arrow = productRow.querySelector(".toggle-arrow");
-      if (arrow) arrow.textContent = "▼";
-    } else {
-      subRow.style.display = "none";
-      const arrow = productRow.querySelector(".toggle-arrow");
-      if (arrow) arrow.textContent = "▶";
-    }
+  function toggleSub(productId) {
+    const el = document.getElementById('sub-' + productId);
+    if (!el) return;
+    el.style.display = (el.style.display === 'none' || el.style.display === '') 
+      ? 'block' 
+      : 'none';
   }
 
 
@@ -260,6 +231,11 @@
 </script>
 
 <style>
+    /* 카드 높이를 맞추고 그림자만 추가, 기존 .card 스타일은 유지 */
+  .card.h-100 { display: flex; flex-direction: column; }
+  .shadow-sm { box-shadow: 0 .125rem .25rem rgba(0,0,0,.075) !important; }
+  .star-icon { cursor: pointer; color: gray; font-size:1.2rem; }
+  .star-icon.active-star { color: gold; }
   .container-fluid {
     margin-left: 16rem;
     width: calc(100% - 16rem);

@@ -81,16 +81,28 @@ async def get_naver_rank_async(NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, keyword, ta
                 'start': start,
                 'sort': 'sim',
             }
-            task = asyncio.create_task(fetch(session, SEARCH_URL, headers, params, start, target_url, semaphore))
+            logger.debug(f"[{keyword}] queueing fetch start={start}, target_url={target_url}")
+            task = asyncio.create_task(
+                fetch(session, SEARCH_URL, headers, params, start, target_url, semaphore)
+            )
             tasks.append(task)
             await asyncio.sleep(0.1)
 
+        # 실제 API 호출 & 응답 수집
         responses = await asyncio.gather(*tasks)
-        for result in responses:
+
+        # 받은 응답을 하나씩 찍어봅니다.
+        for idx, result in enumerate(responses):
+            logger.debug(f"[{keyword}] response #{idx} → {result!r}")
             if result is not None:
+                # result가 (rank, image_url) 같은 튜플이라면
+                # rank, image_url = result
+                logger.info(f"[{keyword}] 최종 매칭 → {result!r}")
                 return result
 
     return -1
+
+
 def get_naver_rank(keyword, target_url):
     # NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET 확인
     if not naver_client_id or not naver_client_secret:
