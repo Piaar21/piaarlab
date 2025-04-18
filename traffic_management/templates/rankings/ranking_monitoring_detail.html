@@ -140,7 +140,7 @@
 
   /* 1. 테이블 기본 */
   .table-modern {
-    table-layout: fixed;
+    table-layout: auto;  /* fixed → auto 로 바꿔 줍니다 */
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
@@ -169,7 +169,7 @@
   /* 나머지 날짜 컬럼은 기본값 */
   .table-modern thead th:nth-child(n+3),
   .table-modern tbody td:nth-child(n+3) {
-    min-width: 60px;   /* 필요에 따라 60px → 80px 등으로 조절 */
+    min-width: 80px;   /* 필요에 따라 60px → 80px 등으로 조절 */
     width: auto;       /* 고정 width 제거 */
   }
 
