@@ -442,96 +442,131 @@ def task_register(request):
         }
         return render(request, 'rankings/task_register.html', context)
     
+
+
 @login_required
 def task_upload_excel_data(request):
-    if request.method == 'POST':
-        excel_file = request.FILES.get('excel_file')
-        if not excel_file:
-            return JsonResponse({'success': False, 'error': '엑셀 파일이 전송되지 않았습니다.'})
-        
-        # 모달에서 선택한 트래픽 ID를 POST 데이터로 받음
-        traffic_id = request.POST.get('traffic_id')
-        selected_traffic = None
-        if traffic_id:
-            try:
-                selected_traffic = Traffic.objects.get(id=traffic_id)
-            except Traffic.DoesNotExist:
-                selected_traffic = None
-        
-        try:
-            # 1) 엑셀 파일 파싱
-            wb = load_workbook(filename=excel_file, data_only=True)
-            ws = wb.active  # 활성 시트 사용
+    logger.info("▶▶ task_upload_excel_data 호출")
 
-            # 2) 엑셀 내 데이터 추출
-            # 엑셀 열 순서 (트래픽명은 엑셀에 포함하지 않음):
-            # 0: 상품ID, 1: 상품명, 2: 카테고리, 3: 순위조회키워드,
-            # 4: URL, 5: 메모, 6: 이용권수, 7: 이용가능 시작일자, 8: 이용가능 종료일자
-            tasks_to_create = []
-            for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                product_id = row[0]
-                product_name_from_excel = row[1]
-                category = row[2]
-                keyword_name = row[3]
-                url = row[4]
-                memo = row[5]
-                ticket_count = row[6]
-                available_start_date = row[7]
-                available_end_date = row[8]
-                store_name = row[9] if len(row) > 9 else ''  # 엑셀에 스토어명 컬럼이 있으면 가져오고, 없으면 빈 문자열로 처리
-
-                # product_id에 맞는 Product 객체 가져오기
-                try:
-                    product = Product.objects.get(id=product_id)
-                except Product.DoesNotExist:
-                    continue
-
-                # NAVER 랭킹 조회 로직 재사용
-                start_rank = get_naver_rank(keyword_name, url)
-                if start_rank == -1 or start_rank > 1000:
-                    start_rank = None
-
-                # Keyword 생성 또는 가져오기
-                keyword_obj, created = Keyword.objects.get_or_create(name=keyword_name)
-
-                task_data = {
-                    'product': product,
-                    'category': category,
-                    'keyword': keyword_obj,
-                    'url': url,
-                    'start_rank': start_rank,
-                    'yesterday_rank': start_rank,
-                    'current_rank': start_rank,
-                    'difference_rank': 0,
-                    'memo': memo,
-                    'product_name': product_name_from_excel,
-                    'ticket_count': ticket_count if ticket_count else 0,
-                    'available_start_date': available_start_date,
-                    'available_end_date': available_end_date,
-                    'traffic': selected_traffic,  # 모달에서 선택한 트래픽 할당
-                    'single_product_link': product.single_product_link,  # 추가
-                    'single_product_mid': product.single_product_mid,    # 추가
-                    'store_name': store_name,  # 추가된 store_name 필드
-                }
-                logger.debug(f"Product {product.id} - single_product_link: {product.single_product_link}, single_product_mid: {product.single_product_mid}")
-                tasks_to_create.append(task_data)
-
-            # 3) 실제 DB에 Task 및 Ranking 생성
-            for task_data in tasks_to_create:
-                task = Task.objects.create(**task_data)
-                Ranking.objects.create(
-                    task=task,
-                    product=task.product,
-                    keyword=task.keyword,
-                    rank=task.start_rank if task.start_rank is not None else 1000,
-                    date_time=timezone.now()
-                )
-
-            return JsonResponse({'success': True})
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
-    else:
+    if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'POST 요청이 아닙니다.'})
+
+    excel_file = request.FILES.get('excel_file')
+    if not excel_file:
+        return JsonResponse({'success': False, 'error': '엑셀 파일이 전송되지 않았습니다.'})
+
+    try:
+        wb = load_workbook(filename=excel_file, data_only=True)
+        ws = wb.active
+
+        # 1) 헤더 읽기 및 컬럼 인덱스 찾기
+        headers = [str(cell.value).strip() for cell in ws[1]]
+        logger.debug(f"  ▶ 읽어온 헤더: {headers}")
+
+        # 필수 컬럼 체크
+        for col_name in ['상품명', '단일', '원부']:
+            if col_name not in headers:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'엑셀 헤더에 "{col_name}" 컬럼이 없습니다.'
+                })
+        name_col      = headers.index('상품명')
+        single_col    = headers.index('단일')
+        original_col  = headers.index('원부')
+        keyword_col   = headers.index('순위조회키워드') if '순위조회키워드' in headers else None
+        url_col       = headers.index('URL')               if 'URL' in headers               else None
+        memo_col      = headers.index('메모')              if '메모' in headers              else None
+        ticket_col    = headers.index('이용권 수')         if '이용권 수' in headers         else None
+        start_col     = headers.index('이용가능 시작일자')  if '이용가능 시작일자' in headers  else None
+        end_col       = headers.index('이용가능 종료일자') if '이용가능 종료일자' in headers else None
+
+        tasks_to_create = []
+        for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            # 2) 엑셀값 꺼내기
+            name_excel     = row[name_col]
+            single_excel   = row[single_col]
+            original_excel = row[original_col]
+            keyword_name   = row[keyword_col] if keyword_col is not None else ''
+            ranking_url    = row[url_col]     if url_col     is not None else ''
+            memo           = row[memo_col]    if memo_col    is not None else ''
+            ticket_count   = row[ticket_col]  if ticket_col  is not None else 0
+            start_date     = row[start_col]   if start_col   is not None else None
+            end_date       = row[end_col]     if end_col     is not None else None
+
+            logger.debug(f"  ▶ 행 {idx}: name={name_excel!r}, single={single_excel!r}, original={original_excel!r}")
+
+            # 3) Product 조회 (상품명 + 링크 조합)
+            product = None
+            if name_excel and single_excel:
+                product = Product.objects.filter(
+                    name=name_excel.strip(),
+                    single_product_link=single_excel.strip()
+                ).first()
+            if not product and name_excel and original_excel:
+                product = Product.objects.filter(
+                    name=name_excel.strip(),
+                    original_link=original_excel.strip()
+                ).first()
+
+            if not product:
+                logger.warning(f"  ✖ 행 {idx}: 상품({name_excel!r}) + 링크 매칭 실패 (single:{single_excel!r}, original:{original_excel!r})")
+                continue
+
+            # 4) 트래픽 조회 (엑셀의 '트래픽명' 컬럼이 있을 경우)
+            traffic_obj = None
+            if '트래픽명' in headers:
+                traffic_name = row[headers.index('트래픽명')]
+                if traffic_name:
+                    traffic_obj = Traffic.objects.filter(name=traffic_name.strip()).first()
+                    if not traffic_obj:
+                        logger.warning(f"  ✖ 행 {idx}: 트래픽명({traffic_name!r}) 매칭 실패")
+
+            # 5) Ranking 로직
+            start_rank = get_naver_rank(keyword_name, ranking_url) if keyword_name and ranking_url else None
+            if start_rank == -1 or (start_rank and start_rank > 1000):
+                start_rank = None
+
+            keyword_obj, _ = Keyword.objects.get_or_create(name=keyword_name)
+
+            # 6) Task 생성 데이터 축적
+            tasks_to_create.append({
+                'product':              product,
+                'category':             product.category,   # 기존 FK/필드 사용
+                'keyword':              keyword_obj,
+                'url':                  ranking_url,
+                'start_rank':           start_rank,
+                'yesterday_rank':       start_rank,
+                'current_rank':         start_rank,
+                'difference_rank':      0,
+                'memo':                 memo,
+                'product_name':         name_excel,
+                'ticket_count':         ticket_count or 0,
+                'available_start_date': start_date,
+                'available_end_date':   end_date,
+                'traffic':              traffic_obj,
+            })
+
+        logger.info(f"▶ 총 생성할 Task 개수: {len(tasks_to_create)}")
+
+        # 7) 실제 DB 반영
+        for data in tasks_to_create:
+            task = Task.objects.create(**data)
+            Ranking.objects.create(
+                task=task,
+                product=task.product,
+                keyword=task.keyword,
+                rank=task.start_rank or 1000,
+                date_time=timezone.now()
+            )
+            logger.info(f"  ✔ Task(ID={task.id}) 및 Ranking 생성 완료")
+
+        return JsonResponse({'success': True})
+
+    except Exception as e:
+        logger.error(f"▶ 예외 발생: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
 
 
 @login_required
@@ -2020,7 +2055,7 @@ def traffic_list(request):
             return redirect('rankings:traffic_list')
 
     # GET 요청 처리
-    traffics_list = Traffic.objects.all()
+    traffics_list = Traffic.objects.all().order_by('-id')
 
     # 페이지네이션 설정
     page = request.GET.get('page', 1)
@@ -2727,8 +2762,13 @@ def download_selected_products_excel(request):
         messages.error(request, '상품이 선택되지 않았습니다.')
         return redirect('rankings:product_list')
 
-    product_ids = product_ids.split(',')
-    products = Product.objects.filter(id__in=product_ids)
+    ids = [int(pk) for pk in product_ids.split(',') if pk.isdigit()]
+    products = Product.objects.filter(id__in=ids)
+
+    # 오늘 날짜 기준
+    today = date.today()
+    start_date = today + timedelta(days=1)
+    end_date   = today + timedelta(days=10)
 
     # 엑셀 워크북 생성
     wb = openpyxl.Workbook()
@@ -2736,25 +2776,30 @@ def download_selected_products_excel(request):
     ws.title = '작업 등록'
 
     # 헤더 작성
-    headers = ['번호', '상품명', '카테고리', '순위조회키워드', 'URL 타입', 'URL', '메모', '트래픽명', '이용권 수', '이용가능 시작일자', '이용가능 종료일자']
+    headers = ['상품ID', '상품명', '카테고리', '순위조회키워드', 'URL 타입', 'URL', '메모', '트래픽명', '이용권 수', '이용가능 시작일자', '이용가능 종료일자','단일','원부']
     ws.append(headers)
 
+
+
     # 데이터 작성
-    for idx, product in enumerate(products, start=1):
+    for idx, prod in enumerate(products, start=1):
         row = [
-            idx,
-            product.name,
-            product.category,
-            product.search_keyword,
-            '',  # URL 타입
-            '',  # URL
-            '',  # 메모
-            '',  # 트래픽명
-            '',  # 이용권 수
-            '',  # 이용가능 시작일자
-            '',  # 이용가능 종료일자
+            prod.id,
+            prod.name,
+            prod.category or '',            # ← 카테고리가 str 이면 바로 사용
+            prod.search_keyword or '',
+            '',
+            '',
+            '',                             # 메모
+            '',                             # 트래픽명
+            1,                              # 이용권 수
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+            prod.single_product_link or '',
+            prod.original_link       or '',
         ]
         ws.append(row)
+
 
     # 컬럼 너비 조절
     for col_idx, _ in enumerate(headers, start=1):
@@ -2769,74 +2814,86 @@ def download_selected_products_excel(request):
 
 @login_required
 def upload_excel_data(request):
-    if request.method == 'POST':
-        excel_file = request.FILES.get('excel_file')
-        if not excel_file:
-            messages.error(request, '엑셀 파일을 선택해주세요.')
-            return redirect('rankings:product_list')
-
-        try:
-            wb = openpyxl.load_workbook(excel_file)
-            ws = wb.active
-
-            # 헤더 추출
-            headers = [str(cell.value).strip() if cell.value else '' for cell in ws[1]]
-
-            # 기대하는 헤더 목록
-            expected_headers = ['번호', '상품명', '카테고리', '순위조회키워드', 'URL 타입', 'URL', '메모', '트래픽명', '이용권 수', '이용가능 시작일자', '이용가능 종료일자']
-
-            # 헤더 검증
-            if headers != expected_headers:
-                messages.error(request, '엑셀 파일의 헤더가 올바르지 않습니다. 다운로드한 템플릿을 사용해주세요.')
-                return redirect('rankings:product_list')
-
-            # 데이터 추출
-            task_data = []
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                data = dict(zip(headers, row))
-                task_data.append(data)
-
-            if not task_data:
-                messages.error(request, '엑셀 파일에 데이터가 없습니다.')
-                return redirect('rankings:product_list')
-
-            # 작업 등록 페이지를 직접 렌더링
-            products = []
-            initial_data = {}
-            for idx, data in enumerate(task_data):
-                product_name = data.get('상품명')
-                if not product_name:
-                    continue  # 상품명이 없으면 건너뜁니다.
-                try:
-                    product = Product.objects.get(name=product_name)
-                except Product.DoesNotExist:
-                    continue
-                products.append(product)
-                product_id = product.id
-                initial_data[product_id] = {
-                    'keyword': data.get('순위조회키워드', ''),
-                    'url_type': data.get('URL 타입', ''),
-                    'url': data.get('URL', ''),
-                    'memo': data.get('메모', ''),
-                    'product_name': product_name,
-                    'traffic_id': '',  # 필요 시 추가
-                    'ticket_count': data.get('이용권 수', ''),
-                    'available_start_date': data.get('이용가능 시작일자', ''),
-                    'available_end_date': data.get('이용가능 종료일자', ''),
-                }
-
-            traffics = Traffic.objects.all()
-            context = {
-                'products': products,
-                'traffics': traffics,
-                'initial_data': initial_data,
-            }
-            return render(request, 'rankings/task_register.html', context)
-        except Exception as e:
-            messages.error(request, f'엑셀 파일 처리 중 오류가 발생했습니다: {str(e)}')
-            return redirect('rankings:product_list')
-    else:
+    if request.method != 'POST':
         messages.error(request, '잘못된 요청입니다.')
+        return redirect('rankings:product_list')
+
+    excel_file = request.FILES.get('excel_file')
+    if not excel_file:
+        messages.error(request, '엑셀 파일을 선택해주세요.')
+        return redirect('rankings:product_list')
+
+    try:
+        wb = openpyxl.load_workbook(excel_file)
+        ws = wb.active
+
+        # 1) 헤더 읽기
+        headers = [str(cell.value).strip() if cell.value else '' for cell in ws[1]]
+        expected_headers = [
+            '번호', '상품명', '카테고리', '순위조회키워드',
+            '트래픽명',     # <- 엑셀 템플릿에 반드시 이 이름으로 컬럼 추가
+            'URL 타입', 'URL', '메모',
+            '이용권 수', '이용가능 시작일자', '이용가능 종료일자',
+        ]
+        if headers != expected_headers:
+            messages.error(request, '엑셀 헤더가 올바르지 않습니다. “트래픽명” 컬럼이 빠졌거나 순서가 다를 수 있습니다.')
+            return redirect('rankings:product_list')
+
+        # 2) 데이터 읽어서 task_data 로 변환
+        task_data = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            task_data.append(dict(zip(headers, row)))
+        if not task_data:
+            messages.error(request, '엑셀에 데이터가 없습니다.')
+            return redirect('rankings:product_list')
+
+        # 3) products, initial_data 준비
+        products = []
+        initial_data = {}
+        for idx, data in enumerate(task_data, start=1):
+            prod_name = data.get('상품명')
+            if not prod_name:
+                continue
+            try:
+                product = Product.objects.get(name=prod_name)
+            except Product.DoesNotExist:
+                continue
+            products.append(product)
+
+            # --- 여기서 트래픽명으로 조회 ---
+            traffic_name = (data.get('트래픽명') or '').strip()
+            traffic_id = None
+            if traffic_name:
+                try:
+                    traffic = Traffic.objects.get(name=traffic_name)
+                    traffic_id = traffic.id
+                except Traffic.DoesNotExist:
+                    messages.warning(request, f'행 {idx}: “{traffic_name}” 트래픽을 찾을 수 없습니다.')
+            # --------------------------------
+
+            initial_data[product.id] = {
+                'keyword':              data.get('순위조회키워드', ''),
+                'url_type':             data.get('URL 타입', ''),
+                'url':                  data.get('URL', ''),
+                'memo':                 data.get('메모', ''),
+                'traffic_name':         traffic_name,
+                'traffic_id':           traffic_id or '',
+                'ticket_count':         data.get('이용권 수', ''),
+                'available_start_date': data.get('이용가능 시작일자', ''),
+                'available_end_date':   data.get('이용가능 종료일자', ''),
+            }
+
+            
+
+        traffics = Traffic.objects.all()
+        return render(request, 'rankings/task_register.html', {
+            'products': products,
+            'traffics': traffics,
+            'initial_data': initial_data,
+        })
+
+    except Exception as e:
+        messages.error(request, f'엑셀 처리 중 오류: {e}')
         return redirect('rankings:product_list')
 
 

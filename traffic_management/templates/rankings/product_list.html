@@ -110,12 +110,12 @@
                                 {% csrf_token %}
                                 <!-- 트래픽 선택 셀렉트를 폼 내부로 이동 -->
                                 <div class="mb-4">
-                                    <label for="traffic_select" class="block text-sm font-medium text-gray-700">트래픽 선택</label>
-                                    <select id="traffic_select" name="traffic_id" class="border rounded p-1">
-                                        {% for traffic in traffics %}
-                                            <option value="{{ traffic.id }}">{{ traffic.name }} | {{ traffic.vendor }} | {{ traffic.type }}</option>
-                                        {% endfor %}
-                                    </select>
+                                    <div id="selectedProductNames" class="mb-4">
+                                        <p>상품을 클릭 후 엑셀 다운로드 눌러주세요.</p>
+                                    </div>
+                                    <button type="button" onclick="downloadExcel()" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600" id="downloadButton">
+                                    엑셀 다운로드
+                                    </button>
                                 </div>
                                 <div class="mb-4">
                                     <label for="excel_file" class="block text-sm font-medium text-gray-700">엑셀 파일 업로드:</label>
@@ -127,11 +127,7 @@
                                             onclick="submitExcelFile()">
                                         업로드 후 작업 등록
                                     </button>
-                                    <a id="sampleExcelLink" href="#">
-                                        <button type="button" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600" onclick="downloadExcelSample()">
-                                            샘플 엑셀 다운로드
-                                        </button>
-                                    </a>
+
                                 </div>
                             </form>
                         </div>
@@ -340,7 +336,9 @@
             alert('상품을 선택해주세요.');
             return;
         }
-        const url = "{% url 'rankings:download_selected_products_excel' %}?product_ids=" + selectedProductIds.join(',');
+        // 트래픽 파라미터 제거
+        const url = "{% url 'rankings:download_selected_products_excel' %}"
+                + "?product_ids=" + selectedProductIds.join(',');
         window.location.href = url;
     }
 
@@ -439,6 +437,7 @@
   
     // 엑셀 파일을 서버로 전송하여 업로드 & 파싱 & task 등록을 한 번에 처리
     function submitExcelFile() {
+        console.log('✅ submitExcelFile 호출됨');
         let uploadButton = document.getElementById('uploadButton');
         // 버튼을 즉시 비활성화
         uploadButton.disabled = true;
@@ -455,9 +454,6 @@
         // CSRF 토큰 처리
         formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
         
-        // 트래픽 선택 값 수동 추가
-        let trafficId = document.getElementById('traffic_select').value;
-        formData.append('traffic_id', trafficId);
 
         fetch("{% url 'rankings:task_upload_excel_data' %}", {
             method: 'POST',
