@@ -137,7 +137,10 @@
 
   {% block extra_css %}
 <style>
-
+.table-responsive {
+  z-index: 1;
+  /* 혹은 불필요한 stacking context 유발 속성(예: transform)을 제거 */
+}
   /* 1. 테이블 기본 */
   .table-modern {
     table-layout: auto;  /* fixed → auto 로 바꿔 줍니다 */
