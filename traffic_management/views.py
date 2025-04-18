@@ -3253,11 +3253,11 @@ def ranking_monitoring_detail_list(request):
         product_id_of_mall=product_id
     ).first()
     image_url = nav_prod.product_image_url if nav_prod else "/static/placeholder.svg"
-    try:
-        prod_obj = Product.objects.get(single_product_mid=product_id)
+    prod_obj = Product.objects.filter(single_product_mid=product_id).first()
+    if prod_obj:
         product_link = prod_obj.single_product_link
-    except Product.DoesNotExist:
-        product_link = ranking_obj.product_url  # fallback
+    else:
+        product_link = ranking_obj.product_url
 
     # 5) product info
     product = {

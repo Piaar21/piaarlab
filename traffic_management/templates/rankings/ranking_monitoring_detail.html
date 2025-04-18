@@ -162,11 +162,15 @@
     background-color: #f8f9fa;
     font-weight: 600;
     color: #495057;
+    /* 전체 헤더에 최소 너비를 줄 수도 있습니다 */
+    /* min-width: 60px; */
   }
 
   /* 나머지 날짜 컬럼은 기본값 */
-  .table-modern thead th:nth-child(n+3) {
-    width: 40px;
+  .table-modern thead th:nth-child(n+3),
+  .table-modern tbody td:nth-child(n+3) {
+    min-width: 60px;   /* 필요에 따라 60px → 80px 등으로 조절 */
+    width: auto;       /* 고정 width 제거 */
   }
 
   /* 4. 줄무늬 & 호버 */
@@ -186,11 +190,16 @@
     background-color: #fff;
     z-index: 2;
   }
+  /* 5. 고정 컬럼 (첫·두 번째) – 너비 유지 */
   .sticky-col.first {
     left: 0;
+    min-width: 150px;  /* 첫 컬럼 최소 너비 */
+    width: 150px;
   }
   .sticky-col.second {
-    left: 150px; /* 첫 컬럼 width + 보더(1px) 포함 */
+    left: 150px;       /* 첫 컬럼 width 만큼 */
+    min-width: 120px;  /* 두 번째 컬럼 최소 너비 */
+    width: 120px;
   }
   
 </style>
