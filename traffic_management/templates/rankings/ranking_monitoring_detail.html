@@ -104,7 +104,8 @@
               <th class="sticky-col first text-left">키워드</th>
               <th class="sticky-col second text-left">검색량</th>
               {% for dt in date_columns %}
-                <th class="text-center">{{ dt}}</th>
+                <th class="text-center">  {{ dt|slice:"5:7" }}-{{ dt|slice:"8:10" }}
+                </th>
               {% endfor %}
             </tr>
           </thead>
@@ -136,6 +137,7 @@
 
   {% block extra_css %}
 <style>
+
   /* 1. 테이블 기본 */
   .table-modern {
     table-layout: fixed;
@@ -162,6 +164,11 @@
     color: #495057;
   }
 
+  /* 나머지 날짜 컬럼은 기본값 */
+  .table-modern thead th:nth-child(n+3) {
+    width: 40px;
+  }
+
   /* 4. 줄무늬 & 호버 */
   .table-modern tbody tr:nth-child(odd) {
     background-color: #ffffff;
@@ -185,6 +192,7 @@
   .sticky-col.second {
     left: 150px; /* 첫 컬럼 width + 보더(1px) 포함 */
   }
+  
 </style>
 {% endblock %}
 {% endblock %}
