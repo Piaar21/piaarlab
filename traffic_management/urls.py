@@ -19,6 +19,7 @@ urlpatterns = [
     path('ranking-monitoring/', views.ranking_monitoring_list, name='ranking_monitoring_list'),
     path('monitoring/search_update/', views.update_monitoring_search, name='update_monitoring_search'),
     path('monitoring/rank_update/', views.update_monitoring_rank, name='update_monitoring_rank'),
+    path('ranking-monitoring-detail/update-search/',views.update_monitoring_search_detail,name='update_monitoring_search_detail'),
     path('monitoring/add/', views.add_monitoring, name='add_monitoring'),
     path('monitoring/update_main_keywords/', views.update_main_keywords, name='update_main_keywords'),
     path('ranking-monitoring-detail/', views.ranking_monitoring_detail_list, name='ranking_monitoring_detail_list'),
