@@ -3337,44 +3337,45 @@ def ranking_monitoring_detail_list(request):
 
 @login_required
 def add_monitoring_detail(request):
+    # 1) single_mid는 GET(product_id) 또는 POST(selected_products) 둘 다 지원
+    single_mid = (request.GET.get('product_id') or
+                  request.POST.get('selected_products', '')).strip()
+    product = get_object_or_404(Product, single_product_mid=single_mid)
+
+    # 2) RankingMonitoring 생성 또는 조회
+    ranking_obj, created = RankingMonitoring.objects.get_or_create(
+        product_id=product.single_product_mid,
+        defaults={
+            'product_url':  product.single_product_link,
+            'product_name': product.name,
+        }
+    )
+    if not created:
+        ranking_obj.product_url  = product.single_product_link
+        ranking_obj.product_name = product.name
+        ranking_obj.save()
+
     if request.method == 'POST':
-        # hidden input 으로 넘어온 single_product_mid 값
-        single_mid = request.POST.get('selected_products', '').strip()
+        # 3) POST: 키워드 처리
         monitoring_keywords = request.POST.get('monitoring_keywords', '')
-
-        # 단일 조회: single_product_mid 필드로 찾기
-        product = get_object_or_404(Product, single_product_mid=single_mid)
-
-        # 이제 product 는 정상 조회됩니다.
-        ranking_obj, created = RankingMonitoring.objects.get_or_create(
-            product_id=product.single_product_mid,
-            defaults={
-                'product_url':  product.single_product_link,
-                'product_name': product.name,
-            }
-        )
-        if not created:
-            ranking_obj.product_url  = product.single_product_link
-            ranking_obj.product_name = product.name
-            ranking_obj.save()
-
-        # 키워드 리스트 분리
         keyword_list = [kw.strip() for kw in monitoring_keywords.split(',') if kw.strip()]
-
-        # 중복 제거
         unique_keywords = list(dict.fromkeys(keyword_list))
 
-        # 네이버 랭킹 처리 (기존 로직 그대로)
         best_rank = 1001
         best_link = product.single_product_link
 
         for kw in unique_keywords:
             if ranking_obj.keywords.filter(keyword=kw).exists():
                 continue
-            rank_single   = get_naver_rank(kw, product.single_product_link)
-            rank_original = get_naver_rank(kw, product.original_link)
 
-            # final_rank, is_orig 결정 (기존 로직)
+            rank_single = get_naver_rank(kw, product.single_product_link)
+            # original_link 가 있을 때만 조회
+            if product.original_link:
+                rank_original = get_naver_rank(kw, product.original_link)
+            else:
+                rank_original = -1
+
+            # final_rank, is_orig 결정
             if rank_single == -1 and rank_original == -1:
                 final_rank, is_orig = 1001, False
             elif rank_single == -1:
@@ -3387,6 +3388,7 @@ def add_monitoring_detail(request):
                 else:
                     final_rank, is_orig = rank_single, False
 
+            # best link 업데이트
             if final_rank < best_rank:
                 best_rank, best_link = final_rank, (
                     product.original_link if is_orig else product.single_product_link
@@ -3399,13 +3401,15 @@ def add_monitoring_detail(request):
                 is_original_better=is_orig
             )
 
-        # best_link 업데이트
+        # 4) best_link & 메인 키워드 업데이트
         ranking_obj.product_url = best_link
-        ranking_obj.save()
-
-        # 메인키워드 업데이트 (최대 3개)
-        for idx, field in enumerate(['main_keyword1','main_keyword2','main_keyword3'], start=0):
-            setattr(ranking_obj, field, unique_keywords[idx] if idx < len(unique_keywords) else '')
+        for idx, field in enumerate(
+            ['main_keyword1', 'main_keyword2', 'main_keyword3']
+        ):
+            setattr(
+                ranking_obj, field,
+                unique_keywords[idx] if idx < len(unique_keywords) else ''
+            )
             setattr(
                 ranking_obj,
                 f"{field}_rank",
@@ -3414,8 +3418,13 @@ def add_monitoring_detail(request):
         ranking_obj.save()
 
         messages.success(request, "모니터링 키워드가 업데이트되었습니다.")
-        # 다시 detail 페이지로 리다이렉트 (쿼리스트링 유지)
-        return redirect(f"{request.path.replace('add/','')}?product_id={single_mid}")
+        # POST-Redirect-GET: same URL(add/)로 product_id 쿼리스트링 유지
+        return redirect(f"{request.path}?product_id={single_mid}")
 
-    # GET 은 detail 로
-    return redirect(f"{request.path.replace('add/','')}?product_id={request.GET.get('product_id','')}")
+    # 5) GET 또는 POST 후 리다이렉트된 GET: 상세 페이지 렌더
+    keywords = ranking_obj.keywords.all()
+    return render(request, 'traffic/monitoring_detail.html', {
+        'product': product,
+        'ranking': ranking_obj,
+        'keywords': keywords,
+    })
