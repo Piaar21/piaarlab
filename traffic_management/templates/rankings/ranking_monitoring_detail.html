@@ -18,6 +18,14 @@
       </a>
       <div class="flex-grow-1">
         <h4 class="mb-1">{{ product.title }}</h4>
+
+        {# 카테고리 경로가 있으면 출력 #}
+        {% if product.category_path %}
+          <p class="text-muted small mb-2">
+            카테고리 {{ product.category_path }}
+          </p>
+        {% endif %}
+
         <div class="flex-wrap">
           {% for tag in product.tags %}
             <span class="badge bg-secondary me-1 mb-1">#{{ tag }}</span>
@@ -41,6 +49,16 @@
       <input type="hidden" name="product_id" value="{{ product.id }}">
       <button class="btn btn-sm btn-primary">검색량 업데이트</button>
     </form>
+    <form
+    method="POST"
+    action="{% url 'rankings:delete_monitoring_detail' %}"
+    id="delete-form"
+    class="d-inline-block ms-2"
+  >
+    {% csrf_token %}
+    <input type="hidden" name="product_id" value="{{ product.id }}">
+    <button type="submit" class="btn btn-sm btn-danger">상품삭제</button>
+  </form>
   </div>
 
 <!-- 3) 키워드 추가/편집 폼 -->
@@ -48,10 +66,21 @@
   <div class="card-body">
     <form method="POST" action="{% url 'rankings:add_monitoring_detail' %}">
       {% csrf_token %}
-      <input type="hidden" name="selected_products" value="{{ product.id }}">
-      
+      <input
+        type="hidden"
+        name="selected_products"
+        value="{{ product.id }}"
+      >
+      {# 삭제된 키워드를 이 필드에 comma-separated 로 담아 보냅니다 #}
+      <input
+        type="hidden"
+        name="deleted_keywords"
+        id="deleted_keywords"
+        value=""
+      >
+    
       <label for="monitoring_keywords" class="form-label">
-        키워드 추가/편집 (쉼표로 구분)
+        키워드 추가 (쉼표 구분)
       </label>
       <div class="input-group input-group-sm mb-3">
         <input
@@ -59,24 +88,26 @@
           id="monitoring_keywords"
           name="monitoring_keywords"
           class="form-control"
-          placeholder="예: 토스트, 간편식, 주방가전"
+          placeholder="예: 토스트, 간편식"
           value=""
         >
         <button type="submit" class="btn btn-primary">저장</button>
       </div>
     </form>
-
+    
     {% if existing_keywords %}
-    <div class="border rounded p-2">
-      <small class="text-muted">등록된 키워드</small>
+    <div class="border rounded p-2 existing-keywords">
+      <small class="text-muted">등록된 키워드 (클릭 시 삭제)</small>
       <div class="mt-1">
         {% for kw in existing_keywords %}
-          <span class="badge bg-secondary me-1 mb-1">#{{ kw }}</span>
+          <span
+            class="badge bg-secondary me-1 mb-1 removable-badge"
+            data-kw="{{ kw }}"
+          >#{{ kw }}</span>
         {% endfor %}
       </div>
     </div>
     {% endif %}
-    
   </div>
 </div>
 
@@ -134,7 +165,41 @@
     </div>
   </div>
 </div>
-
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const deletedInput = document.getElementById('deleted_keywords');
+  
+    document.querySelectorAll('.removable-badge').forEach(function(badge){
+      badge.addEventListener('click', function(){
+        const kw = this.dataset.kw;
+        // 화면에서 즉시 제거
+        this.remove();
+        // deleted_keywords 에 누적
+        const arr = deletedInput.value
+          .split(',')
+          .map(s=>s.trim())
+          .filter(s=>s);
+        if (!arr.includes(kw)) {
+          arr.push(kw);
+          deletedInput.value = arr.join(',');
+        }
+      });
+    });
+  });
+  </script>
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    // 삭제 확인 다이얼로그
+    const deleteForm = document.getElementById('delete-form');
+    if (deleteForm) {
+      deleteForm.addEventListener('submit', function(e){
+        if (!confirm('정말로 삭제하시겠습니까?')) {
+          e.preventDefault();
+        }
+      });
+    }
+  });
+  </script>
   {% block extra_css %}
 <style>
 .table-responsive {

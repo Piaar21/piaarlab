@@ -4528,6 +4528,8 @@ def save_naver_shopping_product():
                 product_id_of_mall = row[13]
                 product_name = row[14]
                 product_image_url = row[15]
+                category_path = row[28]
+
             except IndexError as e:
                 logger.error(f"IndexError in ShoppingProduct row: {row} - {e}")
                 continue
@@ -4540,7 +4542,8 @@ def save_naver_shopping_product():
                     "product_id": product_id,
                     "product_id_of_mall": product_id_of_mall,
                     "product_name": product_name,
-                    "product_image_url": product_image_url
+                    "product_image_url": product_image_url,
+                    "category_path": category_path,     
                 }
             )
     

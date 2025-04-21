@@ -657,7 +657,7 @@ class NaverAdShoppingProduct(models.Model):
     product_id_of_mall = models.CharField(max_length=100, blank=True, null=True)
     product_name = models.CharField(max_length=200, blank=True, null=True)
     product_image_url = models.URLField(blank=True, null=True)
-
+    category_path = models.CharField(max_length=255, blank=True, null=True)
     
 
     def __str__(self):
