@@ -3448,3 +3448,56 @@ def delete_monitoring_detail(request):
 
     # 삭제 완료 후 모니터링 목록 페이지로 이동
     return redirect('rankings:ranking_monitoring_list')
+
+
+
+@login_required
+def update_monitoring_search_detail(request):
+    """
+    단일 상품(product_id)에 묶여 있는 KeywordRanking만
+    get_rel_keywords()를 사용해 한 달 검색량을 업데이트
+    """
+    product_id = request.GET.get('product_id')
+    if not product_id:
+        logger.error("update_monitoring_search_detail: product_id 파라미터 누락")
+        messages.error(request, "product_id 파라미터가 없습니다.")
+        return redirect('rankings:ranking_monitoring_list')
+
+    ranking_obj = get_object_or_404(RankingMonitoring, product_id=product_id)
+    keyword_qs = ranking_obj.keywords.all()
+
+    updated_count = 0
+    logger.info(f"시작: product_id={product_id}에 대한 검색량 업데이트 (키워드 {keyword_qs.count()}건)")
+    for kwobj in keyword_qs:
+        logger.debug(f"처리 중: KeywordRanking(id={kwobj.id}, keyword={kwobj.keyword})")
+        try:
+            df = get_rel_keywords([kwobj.keyword])
+        except Exception as e:
+            logger.exception(f"get_rel_keywords 호출 중 예외: keyword={kwobj.keyword}")
+            continue
+
+        if df is None or df.empty:
+            logger.warning(f"검색량 데이터 없음: keyword={kwobj.keyword}")
+            continue
+
+        row = df.iloc[0]
+        total_search = int(row.get('totalSearchCount', 0))
+        logger.debug(f"조회결과: keyword={kwobj.keyword}, total_search_count={total_search}")
+
+        if kwobj.search_volume != total_search:
+            old = kwobj.search_volume
+            kwobj.search_volume = total_search
+            kwobj.save(update_fields=['search_volume'])
+            updated_count += 1
+            logger.info(f"업데이트: keyword={kwobj.keyword} ({old} → {total_search})")
+        else:
+            logger.debug(f"변경없음: keyword={kwobj.keyword}, 현재값={kwobj.search_volume}")
+
+    logger.info(f"완료: {updated_count}건 반영 (product_id={product_id})")
+    messages.success(
+        request,
+        f"상품(ID={product_id}) 검색량 업데이트 완료! ({updated_count}건 반영)"
+    )
+    return redirect(
+        f"{reverse('rankings:ranking_monitoring_detail_list')}?product_id={product_id}"
+    )

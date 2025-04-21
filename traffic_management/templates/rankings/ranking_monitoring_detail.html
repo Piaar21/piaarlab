@@ -43,7 +43,7 @@
 
   <!-- 2) 검색량 업데이트 버튼 -->
   <div class="mb-4">
-    <form method="POST" action="{% url 'rankings:update_monitoring_search' %}"
+    <form method="POST" action="{% url 'rankings:update_monitoring_search_detail' %}"
           class="d-inline-block">
       {% csrf_token %}
       <input type="hidden" name="product_id" value="{{ product.id }}">
