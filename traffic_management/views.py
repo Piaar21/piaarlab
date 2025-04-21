@@ -3454,43 +3454,50 @@ def delete_monitoring_detail(request):
 
 @login_required
 def update_monitoring_search_detail(request):
-    # GET 또는 POST 에서 product_id 꺼내기
+    """
+    단일 상품(product_id)에 묶여 있는 KeywordRanking 중
+    중복 키워드를 제거하고 한 번씩만 검색량을 업데이트
+    """
     product_id = request.POST.get('product_id') or request.GET.get('product_id')
-    if not product_id:
-        logger.error("update_monitoring_search_detail: product_id 파라미터 누락")
-        messages.error(request, "product_id 파라미터가 없습니다.")
-        return redirect('rankings:ranking_monitoring_list')
-
     ranking_obj = get_object_or_404(RankingMonitoring, product_id=product_id)
     keyword_qs = ranking_obj.keywords.all()
 
     updated_count = 0
-    logger.info(f"시작: product_id={product_id}에 대한 검색량 업데이트 (키워드 {keyword_qs.count()}건)")
+    processed = set()  # 이미 처리한 키워드 집합
+
+    logger.info(f"시작: product_id={product_id}, total 키워드 건수={keyword_qs.count()}")
     for kwobj in keyword_qs:
-        logger.debug(f"처리 중: KeywordRanking(id={kwobj.id}, keyword={kwobj.keyword})")
+        kw = kwobj.keyword
+        if kw in processed:
+            logger.debug(f"스킵(중복): keyword={kw}")  # 이미 한 번 처리한 키워드
+            continue
+
+        processed.add(kw)
+        logger.debug(f"처리 중: keyword={kw}")
+
         try:
-            df = get_rel_keywords([kwobj.keyword])
+            df = get_rel_keywords([kw])
         except Exception:
-            logger.exception(f"get_rel_keywords 호출 중 예외: keyword={kwobj.keyword}")
+            logger.exception(f"get_rel_keywords 호출 실패: keyword={kw}")
             continue
 
         if df is None or df.empty:
-            logger.warning(f"검색량 데이터 없음: keyword={kwobj.keyword}")
+            logger.warning(f"검색량 데이터 없음: keyword={kw}")
             continue
 
         total_search = int(df.iloc[0].get('totalSearchCount', 0))
-        logger.debug(f"조회결과: keyword={kwobj.keyword}, total_search_count={total_search}")
+        logger.debug(f"조회결과: keyword={kw}, total_search_count={total_search}")
 
-        if kwobj.search_volume != total_search:
-            old = kwobj.search_volume
-            kwobj.search_volume = total_search
-            kwobj.save(update_fields=['search_volume'])
-            updated_count += 1
-            logger.info(f"업데이트: keyword={kwobj.keyword} ({old} → {total_search})")
-        else:
-            logger.debug(f"변경없음: keyword={kwobj.keyword}, 현재값={kwobj.search_volume}")
+        # 해당 키워드를 가진 모든 레코드 한 번에 업데이트
+        objs = KeywordRanking.objects.filter(ranking=ranking_obj, keyword=kw)
+        # 변경 전후 비교해서 실제 바뀌는 레코드 수 집계
+        changed = objs.exclude(search_volume=total_search)\
+                      .update(search_volume=total_search)
+        if changed:
+            updated_count += changed
+            logger.info(f"업데이트: keyword={kw}, 변경건수={changed}")
 
-    logger.info(f"완료: {updated_count}건 반영 (product_id={product_id})")
+    logger.info(f"완료: 총 {updated_count}건 반영 (product_id={product_id})")
     messages.success(
         request,
         f"상품(ID={product_id}) 검색량 업데이트 완료! ({updated_count}건 반영)"
