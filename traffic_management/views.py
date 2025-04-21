@@ -3451,13 +3451,11 @@ def delete_monitoring_detail(request):
 
 
 
+
 @login_required
 def update_monitoring_search_detail(request):
-    """
-    단일 상품(product_id)에 묶여 있는 KeywordRanking만
-    get_rel_keywords()를 사용해 한 달 검색량을 업데이트
-    """
-    product_id = request.GET.get('product_id')
+    # GET 또는 POST 에서 product_id 꺼내기
+    product_id = request.POST.get('product_id') or request.GET.get('product_id')
     if not product_id:
         logger.error("update_monitoring_search_detail: product_id 파라미터 누락")
         messages.error(request, "product_id 파라미터가 없습니다.")
@@ -3472,7 +3470,7 @@ def update_monitoring_search_detail(request):
         logger.debug(f"처리 중: KeywordRanking(id={kwobj.id}, keyword={kwobj.keyword})")
         try:
             df = get_rel_keywords([kwobj.keyword])
-        except Exception as e:
+        except Exception:
             logger.exception(f"get_rel_keywords 호출 중 예외: keyword={kwobj.keyword}")
             continue
 
@@ -3480,8 +3478,7 @@ def update_monitoring_search_detail(request):
             logger.warning(f"검색량 데이터 없음: keyword={kwobj.keyword}")
             continue
 
-        row = df.iloc[0]
-        total_search = int(row.get('totalSearchCount', 0))
+        total_search = int(df.iloc[0].get('totalSearchCount', 0))
         logger.debug(f"조회결과: keyword={kwobj.keyword}, total_search_count={total_search}")
 
         if kwobj.search_volume != total_search:
