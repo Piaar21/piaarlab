@@ -3310,6 +3310,7 @@ def ranking_monitoring_detail_list(request):
         product_id_of_mall=product_id
     ).first()
     image_url = nav_prod.product_image_url if nav_prod else "/static/placeholder.svg"
+    category_path = nav_prod.category_path if nav_prod and nav_prod.category_path else ""
     prod_obj = Product.objects.filter(single_product_mid=product_id).first()
     if prod_obj:
         product_link = prod_obj.single_product_link
@@ -3321,6 +3322,7 @@ def ranking_monitoring_detail_list(request):
         'id':        ranking_obj.product_id,
         'title':     ranking_obj.product_name,
         'image_url': image_url,
+        'category_path':  category_path,      # ← 여기에 넣어줌
         'tags':      [],  # 필요시 채우세요
         'link':      product_link,   # ← 새로 추가
     }
@@ -3337,14 +3339,13 @@ def ranking_monitoring_detail_list(request):
 
 @login_required
 def add_monitoring_detail(request):
-    # single_mid는 GET(product_id) 또는 POST(selected_products) 양쪽 지원
+    # single_mid 얻기
     single_mid = (
-        request.GET.get('product_id', '').strip() or
         request.POST.get('selected_products', '').strip()
+        or request.GET.get('product_id', '').strip()
     )
     product = get_object_or_404(Product, single_product_mid=single_mid)
 
-    # RankingMonitoring 생성 또는 조회
     ranking_obj, created = RankingMonitoring.objects.get_or_create(
         product_id=product.single_product_mid,
         defaults={
@@ -3358,26 +3359,36 @@ def add_monitoring_detail(request):
         ranking_obj.save()
 
     if request.method == 'POST':
-        # 키워드 분리 및 중복 제거
+        # ① 삭제된 키워드만 지우기
+        deleted_str = request.POST.get('deleted_keywords', '')
+        deleted_list = [kw.strip() for kw in deleted_str.split(',') if kw.strip()]
+        if deleted_list:
+            KeywordRanking.objects.filter(
+                ranking=ranking_obj,
+                keyword__in=deleted_list
+            ).delete()
+
+        # ② 새로 추가할 키워드 처리
         monitoring_keywords = request.POST.get('monitoring_keywords', '')
-        keyword_list = [kw.strip() for kw in monitoring_keywords.split(',') if kw.strip()]
-        unique_keywords = list(dict.fromkeys(keyword_list))
+        new_list = [kw.strip() for kw in monitoring_keywords.split(',') if kw.strip()]
+        unique_new = list(dict.fromkeys(new_list))
 
         best_rank = 1001
         best_link = product.single_product_link
 
-        for kw in unique_keywords:
+        for kw in unique_new:
+            # 이미 있으면 건너뜀
             if ranking_obj.keywords.filter(keyword=kw).exists():
                 continue
 
+            # 단일/오리지널 순위 조회
             rank_single = get_naver_rank(kw, product.single_product_link)
-            # original_link가 있을 때만 조회
             if product.original_link:
                 rank_original = get_naver_rank(kw, product.original_link)
             else:
                 rank_original = -1
 
-            # final_rank, is_orig 결정
+            # final_rank 결정
             if rank_single == -1 and rank_original == -1:
                 final_rank, is_orig = 1001, False
             elif rank_single == -1:
@@ -3390,11 +3401,14 @@ def add_monitoring_detail(request):
                 else:
                     final_rank, is_orig = rank_single, False
 
+            # best_link 업데이트
             if final_rank < best_rank:
                 best_rank, best_link = final_rank, (
-                    product.original_link if is_orig else product.single_product_link
+                    product.original_link if is_orig
+                    else product.single_product_link
                 )
 
+            # DB에 생성
             KeywordRanking.objects.create(
                 ranking=ranking_obj,
                 keyword=kw,
@@ -3402,18 +3416,35 @@ def add_monitoring_detail(request):
                 is_original_better=is_orig
             )
 
-        # best_link & 메인 키워드 업데이트
+        # ③ best_link (& 필요시 메인키워드) 업데이트
         ranking_obj.product_url = best_link
-        for idx, field in enumerate(['main_keyword1', 'main_keyword2', 'main_keyword3']):
-            setattr(ranking_obj, field,
-                    unique_keywords[idx] if idx < len(unique_keywords) else '')
-            setattr(ranking_obj, f"{field}_rank",
-                    0 if idx < len(unique_keywords) else None)
         ranking_obj.save()
 
         messages.success(request, "모니터링 키워드가 업데이트되었습니다.")
-        # POST 처리 후 목록 페이지로 리다이렉트
         return redirect(f"/traffic/ranking-monitoring-detail/?product_id={single_mid}")
 
-    # GET 으로 들어왔을 때도 목록 페이지로 리다이렉트
+    # GET 은 그대로 상세 페이지로
     return redirect(f"/traffic/ranking-monitoring-detail/?product_id={single_mid}")
+
+
+@login_required
+def delete_monitoring_detail(request):
+    if request.method == 'POST':
+        pid = request.POST.get('product_id', '').strip()
+
+        # 1) pid가 곧 RankingMonitoring.product_id라면 바로 삭제 시도
+        try:
+            ranking_obj = RankingMonitoring.objects.get(product_id=pid)
+        except RankingMonitoring.DoesNotExist:
+            # 2) pid가 Product PK일 수도 있으니 한 번 더 시도
+            product = get_object_or_404(Product, pk=pid)
+            ranking_obj = get_object_or_404(
+                RankingMonitoring,
+                product_id=product.single_product_mid
+            )
+
+        ranking_obj.delete()
+        messages.success(request, "모니터링 상품이 삭제되었습니다.")
+
+    # 삭제 완료 후 모니터링 목록 페이지로 이동
+    return redirect('rankings:ranking_monitoring_list')

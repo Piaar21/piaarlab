@@ -90,3 +90,47 @@ class NaverMarketingCostAdmin(admin.ModelAdmin):
     list_filter = ('task', 'date')
     search_fields = ('product__name',)  # product의 name 필드를 검색
     ordering = ('-date',)               # 최신 날짜가 상단에 오도록
+
+
+from .models import Ad
+
+@admin.register(Ad)
+class AdAdmin(admin.ModelAdmin):
+    # 리스트 화면에 표시할 필드
+    list_display = (
+        'id',
+        'start_date',
+        'end_date',
+        'channel',
+        'name',
+        'category',    # 카테고리 필드 표시
+        'product',
+        'sales',
+        'margin',
+        'cost',
+        'profit',      # @property 로 정의한 메서드도 표시 가능
+        'margin_rate',
+        'profit_rate',
+        'roas',
+        'roi',
+    )
+    # 사이드바에 필터로 표시할 필드
+    list_filter = (
+        'category',    # 카테고리별 필터
+        'channel',
+        'company',
+        'start_date',
+    )
+    # 검색 가능한 필드
+    search_fields = (
+        'category',
+        'name',
+        'product',
+        'company',
+    )
+    # 날짜 내비게이션
+    date_hierarchy = 'start_date'
+    # 기본 정렬
+    ordering = ('-start_date',)
+    # 페이지당 항목 수
+    list_per_page = 25

@@ -23,6 +23,7 @@ urlpatterns = [
     path('monitoring/update_main_keywords/', views.update_main_keywords, name='update_main_keywords'),
     path('ranking-monitoring-detail/', views.ranking_monitoring_detail_list, name='ranking_monitoring_detail_list'),
     path('monitoring-detail/add/', views.add_monitoring_detail, name='add_monitoring_detail'),
+    path('monitoring-detail/delete/',views.delete_monitoring_detail,name='delete_monitoring_detail'),
     path('task/register/', views.task_register, name='task_register'),
     path('task/edit/', views.task_edit, name='task_edit'),
     path('task/update/', views.task_update, name='task_update'),

@@ -371,7 +371,7 @@ from .models import NaverAdShoppingProduct
 
 @admin.register(NaverAdShoppingProduct)
 class NaverAdShoppingProductAdmin(admin.ModelAdmin):
-    list_display = ('date', 'ad_group_id', 'ad_id', 'product_id', 'product_id_of_mall', 'product_name', 'product_image_url')
+    list_display = ('date', 'ad_group_id', 'ad_id', 'product_id', 'product_id_of_mall', 'product_name', 'product_image_url','category_path')
     search_fields = ('ad_id', 'product_name','product_id_of_mall')
 
 
@@ -384,3 +384,5 @@ class NaverPurchaseCostAdmin(admin.ModelAdmin):
     search_fields = ('sku_id', 'option_code', 'manager')
     list_filter = ('manager',)
     ordering = ('sku_id',)
+
+
