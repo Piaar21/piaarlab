@@ -3413,7 +3413,7 @@ def add_monitoring_detail(request):
 
         messages.success(request, "모니터링 키워드가 업데이트되었습니다.")
         # POST 처리 후 목록 페이지로 리다이렉트
-        return redirect(reverse('ranking_monitoring_list'))
+        return redirect(f"/traffic/ranking-monitoring-detail/?product_id={single_mid}")
 
     # GET 으로 들어왔을 때도 목록 페이지로 리다이렉트
-    return redirect(reverse('ranking_monitoring_list'))
+    return redirect(f"/traffic/ranking-monitoring-detail/?product_id={single_mid}")
