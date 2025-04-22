@@ -3151,26 +3151,35 @@ def add_monitoring(request):
 @login_required
 def update_monitoring_search(request):
     """
-    등록된 KeywordRanking의 각 keyword에 대해 
-    get_rel_keywords() 함수를 이용하여 한 달 검색량을 업데이트.
+    등록된 모든 KeywordRanking 중
+    키워드별로 한 번씩만 get_rel_keywords() 호출하여
+    한 달 검색량을 업데이트.
     """
-    # 모든 키워드를 불러온다고 가정 (필요에 따라 filter(...) 사용 가능)
-    keyword_qs = KeywordRanking.objects.all()
+    # 1) 중복 제거된 키워드 리스트만 뽑기
+    unique_keywords = KeywordRanking.objects\
+        .values_list('keyword', flat=True)\
+        .distinct()
 
     updated_count = 0
-    for kwobj in keyword_qs:
-        # API를 통해 키워드 검색량 조회
-        df = get_rel_keywords([kwobj.keyword])  # ['키워드'] 형태로 전달
-        if df is not None and not df.empty:
-            row = df.iloc[0]
-            total_search = int(row.get('totalSearchCount', 0))
-            # 예: KeywordRanking 모델에 search_volume 필드가 있다고 가정
-            kwobj.search_volume = total_search  
-            kwobj.save()
-            updated_count += 1
+
+    for kw in unique_keywords:
+        # API 호출은 키워드당 한 번만!
+        df = get_rel_keywords([kw])
+        if df is None or df.empty:
+            continue
+
+        total_search = int(df.iloc[0].get('totalSearchCount', 0))
+
+        # 같은 키워드를 가진 레코드 중, 실제 값이 바뀌는 것만 한꺼번에 업데이트
+        changed = KeywordRanking.objects\
+            .filter(keyword=kw)\
+            .exclude(search_volume=total_search)\
+            .update(search_volume=total_search)
+
+        updated_count += changed
 
     messages.success(request, f"검색량 업데이트 완료! ({updated_count}건 반영)")
-    return redirect('rankings:ranking_monitoring_list')  # 업데이트 후 모니터링 목록 페이지로 이동
+    return redirect('rankings:ranking_monitoring_list')
 
 
 @login_required
