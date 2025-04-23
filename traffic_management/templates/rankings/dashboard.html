@@ -412,9 +412,12 @@
   function openCombinedModal(taskId, keyword) {
     Promise.all([
       fetch(`/traffic/api/get_ranking_data/?task_id=${taskId}`).then(response => response.json()),
-      fetch(`/traffic/api/dashborad_get_sales_data/?task_id=${taskId}`).then(response => response.json()),
+      fetch(`/traffic/api/dashborad_get_sales_data/?task_id=${taskId}`)
+        .then(res => res.json())
+        .catch(err => ({ error: err.message })),
       fetch(`/traffic/api/get_keyword_volume_recent_month/?keyword=${encodeURIComponent(keyword)}&task_id=${taskId}`)
-        .then(response => response.json()),
+        .then(res => res.json())
+        .catch(err => ({ error: err.message })),
       fetch(`/traffic/api/get_kpi_data/?task_id=${taskId}`).then(response => response.json())
     ])
     .then(([rankingData, salesData, volumeData, kpiData]) => {
@@ -422,13 +425,15 @@
         alert("랭킹 데이터 에러: " + rankingData.error);
         return;
       }
+      // 매출 에러는 무시하고 빈 배열로 대체
       if (salesData.error) {
-        alert("매출 데이터 에러: " + salesData.error);
-        return;
+        console.warn("매출 데이터 에러, 제외합니다:", salesData.error);
+        salesData = { sales: [] };
       }
+      // 검색량 에러는 무시하고 빈 배열로 대체
       if (volumeData.error) {
-        alert("검색량 데이터 에러: " + volumeData.error);
-        return;
+        console.warn("검색량 데이터 에러, 제외합니다:", volumeData.error);
+        volumeData = { data: { results: [] } };
       }
       if (kpiData.error) {
         alert("KPI 데이터 에러: " + kpiData.error);
