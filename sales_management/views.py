@@ -4715,10 +4715,26 @@ def naver_profit_report_view(request):
                          
 
         try:
-            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
+            cost_obj  = NaverPurchaseCost.objects.get(sku_id=sku)
             unit_price = cost_obj.purchasing_price
+        except MultipleObjectsReturned:
+            # 동일한 sku_id로 2개 이상 레코드가 있을 때
+            logger.error(
+                "MultipleObjectsReturned: ds.id=%s, date=%s, sku=%r → 레코드 %d개",
+                ds.id, d_str, sku,
+                NaverPurchaseCost.objects.filter(sku_id=sku).count()
+            )
+            # fallback: 가장 최근 값 하나만 사용
+            first_obj  = NaverPurchaseCost.objects.filter(sku_id=sku).order_by('-id').first()
+            unit_price = first_obj.purchasing_price if first_obj else 0
         except NaverPurchaseCost.DoesNotExist:
+            # 아예 레코드가 없을 때
+            logger.warning(
+                "DoesNotExist: ds.id=%s, date=%s, sku=%r → 레코드 없음",
+                ds.id, d_str, sku
+            )
             unit_price = 0
+
         partial_cost = unit_price * sold_qty
 
         daily_map[(d_str, brand_label)]["sold_items"] += sold_qty
