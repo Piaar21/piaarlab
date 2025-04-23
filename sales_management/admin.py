@@ -386,3 +386,4 @@ class NaverPurchaseCostAdmin(admin.ModelAdmin):
     ordering = ('sku_id',)
 
 
+
