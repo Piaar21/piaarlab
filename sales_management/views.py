@@ -23,7 +23,7 @@ from django.conf import settings
 import decimal
 from decimal import Decimal
 from collections import defaultdict, OrderedDict  # 추가
-
+from django.core.exceptions import MultipleObjectsReturned
 
 from .api_clients import COUPANG_ACCOUNTS, fetch_coupang_all_seller_products, get_coupang_seller_product,fetch_seller_tool_option_info
 
@@ -4712,18 +4712,26 @@ def naver_profit_report_view(request):
             mapped_account = channel_brand_map.get(channel, "N/A")
             itemName = naver_item_map.get(channel, "N/A")
                          
+        
 
         try:
-            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
-            unit_price = cost_obj.purchasing_price
-        except NaverPurchaseCost.DoesNotExist:
-            unit_price = 0
-        partial_cost = unit_price * sold_qty
-
-        daily_map[(d_str, brand_label)]["sold_items"] += sold_qty
-        daily_map[(d_str, brand_label)]["net_sales"] += net_s
-        daily_map[(d_str, brand_label)]["purchase_cost"] += partial_cost
-        daily_map[(d_str, brand_label)]["etc_cost"] += 0
+            # 중복 가능성을 고려해 get() 대신 먼저 filter() → order_by() → first() 로 단일 객체 취득
+            cost_obj = (
+                NaverPurchaseCost.objects
+                .filter(sku_id=sku)
+                .order_by('-created_at')  # created_at 대신 id, updated_at 등으로 바꿔도 OK
+                .first()
+            )
+            unit_price = cost_obj.purchasing_price if cost_obj else Decimal("0.00")
+        except MultipleObjectsReturned:
+            # (filter().first()면 사실 이 블록은 안 타지만, 안전을 위해 남겨도 됩니다)
+            unit_price = (
+                NaverPurchaseCost.objects
+                .filter(sku_id=sku)
+                .order_by('-created_at')
+                .first()
+                .purchasing_price
+            )
 
     # ---------------------------------------------------------
     # (E) 광고 데이터 조회
