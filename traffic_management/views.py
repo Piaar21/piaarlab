@@ -31,6 +31,7 @@ from openpyxl.utils import get_column_letter
 from django.utils.encoding import smart_str
 from openpyxl import load_workbook  # 엑셀 파일 파싱을 위해
 from sales_management.models import NaverDailySales
+import re
 
 
 logger = logging.getLogger(__name__)
@@ -2754,7 +2755,9 @@ def get_keyword_volume_recent_month(request):
     호출 예:
     GET /traffic/api/get_keyword_volume_recent_month/?keyword=방석
     """
-    keyword = request.GET.get('keyword')
+    raw = request.GET.get('keyword', '')
+    # 모든 공백문자를 제거
+    keyword = re.sub(r'\s+', '', raw)
     if not keyword:
         return JsonResponse({'error': 'No keyword provided.'}, status=400)
     
