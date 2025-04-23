@@ -203,7 +203,8 @@ def dashborad_get_sales_data(request):
     
     if not task.single_product_mid:
         logger.error("Task id %s does not have single_product_mid", task_id)
-        return JsonResponse({'error': 'Task does not have single_product_mid value'}, status=400)
+    logger.debug("single_product_mid repr: %r (type=%s)",
+             task.single_product_mid, type(task.single_product_mid))
     
     # 시작 날짜: task.available_start_date가 있다면 해당 날짜의 10일 전, 없으면 오늘 기준 10일 전
     if task.available_start_date:
@@ -1805,8 +1806,17 @@ from .tasks import update_task_status
 @login_required
 def update_all_rankings(request):
     if request.method == 'POST':
-        # 모든 미완료 작업을 대상으로 업데이트 (필요에 따라 필터 조건을 조정)
-        tasks = Task.objects.filter(is_completed=False)
+        
+
+        today = timezone.now().date()
+        # “시작 전날부터” 포함하려면 today + 1일
+        include_from = today + timedelta(days=1)
+
+        tasks = Task.objects.filter(
+            is_completed=False,
+            available_start_date__lte=include_from,
+            available_end_date__gte=today,
+        )
         today = timezone.now().date()
         for task in tasks:
             try:
