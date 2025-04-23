@@ -2968,6 +2968,10 @@ def task_register_from_excel(request):
 #모니터링 시작 
 from .models import RankingMonitoring, KeywordRanking
 
+    
+
+from django.db.models import Max
+
 
 @login_required
 def ranking_monitoring_list(request):
@@ -2980,7 +2984,7 @@ def ranking_monitoring_list(request):
     if q:
         rankings = rankings.filter(product_name__icontains=q)
 
-    # 2) sales_management 측에서 이미지 URL을 한 번에 조회
+    # 2) 이미지 URL 맵
     product_ids = [r.product_id for r in rankings]
     img_qs = NaverAdShoppingProduct.objects.filter(
         product_id_of_mall__in=product_ids
@@ -3010,7 +3014,7 @@ def ranking_monitoring_list(request):
     # 5) 각 랭킹 객체에 추가 데이터 세팅
     for r in rankings:
         # 이미지 & 링크
-        r.product_img = img_map.get(r.product_id, '/static/placeholder.svg')
+        r.product_img  = img_map.get(r.product_id, '/static/placeholder.svg')
         r.product_link = link_map.get(r.product_id, '#')
 
         # 피벗 준비
@@ -3021,10 +3025,11 @@ def ranking_monitoring_list(request):
             if (kwobj.keyword, date_str) in seen:
                 continue
             seen.add((kwobj.keyword, date_str))
-            entry = pivot_data.setdefault(kwobj.keyword, {
-                'search_volume': kwobj.search_volume,
-                'ranks': {}
-            })
+
+            entry = pivot_data.setdefault(
+                kwobj.keyword,
+                {'search_volume': kwobj.search_volume, 'ranks': {}}
+            )
             entry['ranks'][date_str] = kwobj.rank
 
         # 순위 계산
@@ -3032,6 +3037,7 @@ def ranking_monitoring_list(request):
             if date_columns:
                 latest = date_columns[0]
                 info['latest_rank'] = info['ranks'].get(latest, 0)
+
                 if len(date_columns) > 1:
                     prev = date_columns[1]
                     prev_rank = info['ranks'].get(prev, 0)
@@ -3043,12 +3049,20 @@ def ranking_monitoring_list(request):
             else:
                 info['latest_rank'] = info['previous_rank'] = info['rank_change'] = info['abs_rank_change'] = 0
 
-        # 정렬된 피벗 데이터
+        # 정렬된 피벗 데이터 (검색량 기준)
         r.sorted_pivot_data = sorted(
             pivot_data.items(),
             key=lambda item: item[1]['search_volume'],
             reverse=True
         )
+
+        # 5.1) 최신 순위만 뽑아서 매핑
+        latest_date = r.keywords.aggregate(latest=Max('update_at'))['latest']
+        if latest_date:
+            recent_qs = r.keywords.filter(update_at=latest_date)
+            r.latest_ranks = {kr.keyword: kr.rank for kr in recent_qs}
+        else:
+            r.latest_ranks = {}
 
     # 6) 컨텍스트 전달
     context = {
@@ -3058,6 +3072,7 @@ def ranking_monitoring_list(request):
         'search_query': q,
     }
     return render(request, 'rankings/ranking_monitoring.html', context)
+
 
 
 
