@@ -74,12 +74,15 @@
       
         <!-- 키워드 리스트 -->
         <div class="d-flex flex-wrap gap-1">
-          {% for kw, info in r.sorted_pivot_data|slice:":4" %}
+          {% for kw, rank in r.latest_ranks.items|slice:":4" %}
             <span class="badge bg-light text-dark small">
-              {{ kw }} {{ info.latest_rank|default:"—" }}위
+              {{ kw }} {{ rank|default:"—" }}위
             </span>
           {% endfor %}
-          {% if r.sorted_pivot_data|length > 4 %}
+          {% if r.latest_ranks|length > 4 %}
+            <span class="badge bg-light text-muted small">
+              +{{ r.latest_ranks|length|add:-4 }}개 더
+            </span>
           {% endif %}
         </div>
       </div>
