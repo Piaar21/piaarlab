@@ -633,21 +633,21 @@ def upload_reason_excel(request):
 
         # 헤더 매핑:
         # R(18), D(4), E(5), F(6), K(11)
-        claim_status_col = 4
-        claim_reason_col = 5
-        customer_reason_col = 6
-        claim_request_col = 11
-        order_number_col = 18
+        order_number_col    = 1   # 주문번호
+        claim_status_col    = 2   # 클레임상태
+        claim_reason_col    = 3   # 클레임사유
+        customer_reason_col = 4   # 고객사유
+        claim_request_col   = 5   # 클레임요청일
 
         success_items = []
         error_items = []
 
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-            order_number = row[order_number_col - 1]
-            claim_status = row[claim_status_col - 1]
-            claim_reason = row[claim_reason_col - 1]
-            customer_reason = row[customer_reason_col - 1]
-            claim_request_raw = row[claim_request_col - 1]
+            order_number        = row[order_number_col - 1]
+            claim_status        = row[claim_status_col - 1]
+            claim_reason        = row[claim_reason_col - 1]
+            customer_reason     = row[customer_reason_col - 1]
+            claim_request_raw   = row[claim_request_col - 1]
 
             # 기존 코드에서 날짜 파싱 부분 수정
             if isinstance(claim_request_raw, datetime.datetime):
@@ -723,6 +723,29 @@ def upload_reason_excel(request):
     
     return JsonResponse({'success': False, 'message': 'Invalid request'})
 
+
+@login_required
+def download_reason_template(request):
+    """
+    반품 사유 엑셀 예제 파일을 헤더(주문번호, 클레임상태, 클레임사유, 고객사유, 클레임요청일)만 담아 내려줍니다.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "반품사유_업로드템플릿"
+
+    headers = ["주문번호", "클레임상태", "클레임사유", "고객사유", "클레임요청일"]
+    ws.append(headers)
+    ws.freeze_panes = "A2"  # 헤더 고정
+
+    now = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"반품사유_템플릿_{now}.xlsx"
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
 
 
 @login_required
@@ -914,6 +937,69 @@ def scan_submit(request):
                     return JsonResponse({'success': False, 'message': 'Item not found'})
             else:
                 return JsonResponse({'success': False, 'message': 'Invalid parameters'})
+        elif action == 'update_all_claim_status':
+            # 1) 수거완료 상태인 모든 아이템의 주문번호 조회
+            items = ReturnItem.objects.filter(processing_status='수거완료')
+            if not items.exists():
+                return JsonResponse({
+                    'success': False,
+                    'message': '수거완료 상태인 아이템이 없습니다.'
+                }, status=400)
+
+            order_numbers = list(items.values_list('order_number', flat=True))
+
+            # 2) 첫 번째 아이템으로부터 네이버 계정 정보 선택
+            first = items.first()
+            platform    = first.platform.lower()
+            store_name  = first.store_name
+            if platform == 'naver':
+                target = next(
+                    (acc for acc in NAVER_ACCOUNTS if store_name in acc['names']),
+                    None
+                )
+                if not target:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'NAVER 계정을 찾을 수 없음'
+                    }, status=400)
+                account_info = target
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'message': '지원되지 않는 플랫폼'
+                }, status=400)
+
+            # 3) 50개씩 나눠서 API 호출
+            MAX_IDS = 50
+            all_details = []
+            for i in range(0, len(order_numbers), MAX_IDS):
+                batch = order_numbers[i:i+MAX_IDS]
+                result = get_product_order_details(account_info, batch)
+                if not result.get('success'):
+                    return JsonResponse({
+                        'success': False,
+                        'message': result.get('message', 'API 호출 실패')
+                    }, status=400)
+                all_details.extend(result.get('details', []))
+
+            # 4) 받은 상세정보로 ReturnItem.product_order_status 업데이트
+            updated_count = 0
+            for detail in all_details:
+                oid    = detail.get('productOrderId')
+                status = detail.get('productOrderStatus', 'N/A')
+                obj = ReturnItem.objects.filter(
+                    order_number=oid,
+                    processing_status='수거완료'
+                ).first()
+                if obj:
+                    obj.product_order_status = status
+                    obj.save()
+                    updated_count += 1
+
+            return JsonResponse({
+                'success': True,
+                'updated_count': updated_count
+            })
         elif action == 'get_details':
             item_id = data.get('id', None)
             if not item_id:
@@ -1057,61 +1143,15 @@ from .models import ReturnItem
 
 @login_required
 def collected_items(request):
-    """'수거완료' 상태인 아이템 목록을 보여주는 뷰.
-       'update_all_claim_status' POST 요청만 처리하고,
-       톡톡하기(API)는 프론트엔드에서 /biztalk_proxy/ 를 통해 호출한다.
-    """
-    # 1) '수거완료' 상태인 아이템들 조회
+    """'수거완료' 상태인 아이템 목록을 보여주는 뷰."""
+    # '수거완료' 상태인 아이템들 조회
     items = ReturnItem.objects.filter(processing_status='수거완료')
 
-    if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
-        action = data.get('action')
-
-        if action == 'update_all_claim_status':
-            order_numbers = list(items.values_list('order_number', flat=True))
-
-            if not items.exists():
-                return JsonResponse({'success': False, 'message': '수거완료 상태인 아이템이 없습니다.'}, status=400)
-
-            # 첫 번째 아이템 기준으로 account_info 결정 (예시)
-            first_item = items.first()
-            platform = first_item.platform.lower()
-            store_name = first_item.store_name
-            if platform == 'naver':
-                target_account = next((acc for acc in NAVER_ACCOUNTS if store_name in acc['names']), None)
-                if not target_account:
-                    return JsonResponse({'success': False, 'message': 'NAVER 계정을 찾을 수 없음'}, status=400)
-                account_info = target_account
-            else:
-                return JsonResponse({'success': False, 'message': '지원되지 않는 플랫폼'}, status=400)
-
-            MAX_IDS = 50  # API 제한을 고려한 최대 갯수
-            chunked_details = []
-
-            for i in range(0, len(order_numbers), MAX_IDS):
-                batch = order_numbers[i:i+MAX_IDS]
-                batch_result = get_product_order_details(account_info, batch)
-                if not batch_result.get('success'):
-                    return JsonResponse({'success': False, 'message': batch_result.get('message')}, status=400)
-                chunked_details.extend(batch_result.get('details', []))
-
-            updated_count = 0
-            for detail in chunked_details:
-                order_id = detail.get('productOrderId')
-                status = detail.get('productOrderStatus', 'N/A')
-                item = ReturnItem.objects.filter(order_number=order_id, processing_status='수거완료').first()
-                if item:
-                    item.product_order_status = status
-                    item.save()
-                    updated_count += 1
-
-            return JsonResponse({'success': True, 'updated_count': updated_count})
-
-    # GET 요청: 템플릿 렌더링 (BizTalk API 호출은 프론트엔드에서 처리)
+    # GET 요청: 템플릿 렌더링
     return render(request, 'return_process/collected_items.html', {
         'items': items,
     })
+
 
 @login_required
 def collected_items(request):

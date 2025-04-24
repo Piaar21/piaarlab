@@ -40,6 +40,7 @@ urlpatterns = [
     path('send-return-items/', views.SendReturnItemsView.as_view(), name='send_return_items'),
 
     path('biztalk_proxy/<str:order_number>/', views.biztalk_proxy, name='biztalk_proxy'),
+    path('download-reason-template/', views.download_reason_template, name='download_reason_template'),
 
 
 ]
