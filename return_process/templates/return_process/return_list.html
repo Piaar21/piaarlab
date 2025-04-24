@@ -242,6 +242,7 @@
                 <button type="button" class="btn btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+
                 <form id="reasonExcelForm" enctype="multipart/form-data">
                     {% csrf_token %}
                     <label class="form-label">사유 엑셀 파일 선택:</label>
@@ -287,6 +288,9 @@
             </div>
             <div class="modal-footer">
                 <!-- 반품 목록 업데이트 버튼 -->
+                <a href="{% url 'download_reason_template' %}" class="btn btn-outline-secondary mb-3">
+                    예제 파일 다운로드
+                  </a>
                 <button type="button" class="btn btn-primary" id="update-returns-btn">반품 목록 업데이트</button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
             </div>
