@@ -3223,18 +3223,28 @@ def update_monitoring_rank(request):
     today = timezone.now().date()
 
     updated_count = 0
+    # (1) (키워드, 상품URL) 쌍을 저장할 세트
+    seen_pairs = set()
+
     # 모든 RankingMonitoring + 해당 키워드
-    # (또는 필요 시 특정 조건 필터)
     rankings = RankingMonitoring.objects.all().prefetch_related('keywords')
 
     for r in rankings:
         for kwobj in r.keywords.all():
-            product_url = r.product_url
-            new_rank = get_naver_rank(kwobj.keyword, product_url)
+            # 키워드 문자열 & 현재 모니터링의 상품URL을 합쳐 유니크한 쌍으로 만든다
+            pair = (kwobj.keyword, r.product_url)
+
+            # (2) 이미 같은 (키워드, URL)을 처리했다면 건너뛰기
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+
+            # (3) 실제 API 호출
+            new_rank = get_naver_rank(kwobj.keyword, r.product_url)
             if new_rank == -1:
                 continue  # 조회 실패 시 스킵
 
-            # "오늘" 날짜 레코드만 찾음
+            # (4) 오늘 날짜 레코드만 찾아서 업데이트 or 생성
             existing_today = KeywordRanking.objects.filter(
                 ranking=r, 
                 keyword=kwobj.keyword,
@@ -3245,7 +3255,6 @@ def update_monitoring_rank(request):
                 # 오늘 날짜 레코드가 있으면 rank 업데이트
                 existing_today.rank = new_rank
                 existing_today.save()
-                updated_count += 1
             else:
                 # 오늘 날짜 레코드가 없으면 새로 생성
                 KeywordRanking.objects.create(
@@ -3254,7 +3263,7 @@ def update_monitoring_rank(request):
                     rank=new_rank,
                     update_at=today
                 )
-                updated_count += 1
+            updated_count += 1
 
     messages.success(request, f"순위 업데이트 완료! ({updated_count}건 반영)")
     return redirect('rankings:ranking_monitoring_list')
