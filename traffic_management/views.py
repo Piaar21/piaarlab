@@ -32,6 +32,7 @@ from django.utils.encoding import smart_str
 from openpyxl import load_workbook  # 엑셀 파일 파싱을 위해
 from sales_management.models import NaverDailySales
 import re
+from django.contrib import messages
 
 
 logger = logging.getLogger(__name__)
@@ -96,37 +97,56 @@ def product_add(request):
                 messages.error(request, "엑셀 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인하세요.")
                 return redirect('rankings:product_add')
             
+        # 2) 폼으로 등록하는 로직
         elif 'register_products' in request.POST:
-            # 폼 데이터를 통해 등록하는 경우
             categories = request.POST.getlist('category[]')
             names = request.POST.getlist('name[]')
-            search_keywords = request.POST.getlist('search_keyword[]')  # 추가된 부분
+            search_keywords = request.POST.getlist('search_keyword[]')
             single_product_links = request.POST.getlist('single_product_link[]')
             single_product_mids = request.POST.getlist('single_product_mid[]')
             original_links = request.POST.getlist('original_link[]')
             original_mids = request.POST.getlist('original_mid[]')
             store_names = request.POST.getlist('store_name[]')
-            managers = request.POST.getlist('manager[]')  # 추가된 부분
+            managers = request.POST.getlist('manager[]')
 
-            for i in range(len(names)):
+            total_count = len(names)
+            created_count = 0
+
+            for i in range(total_count):
                 category = categories[i]
                 name = names[i]
-                search_keyword = search_keywords[i] if i < len(search_keywords) else ''  # 추가된 부분
+                search_keyword = search_keywords[i] if i < len(search_keywords) else ''
                 single_product_link = single_product_links[i]
                 single_product_mid = single_product_mids[i]
                 original_link = original_links[i]
                 original_mid = original_mids[i]
                 store_name = store_names[i]
                 manager = managers[i] if i < len(managers) else ''
-                
+
                 # 필수 값 검증
                 if not category or not name:
-                    continue  # 필수 값이 없으면 해당 상품은 건너뜁니다
+                    messages.warning(request, f"{i+1}번째 상품: 필수 항목(카테고리, 상품명) 누락으로 건너뜁니다.")
+                    continue
 
+                # (A) single_product_mid 중복 체크
+                if single_product_mid:
+                    if Product.objects.filter(single_product_mid=single_product_mid).exists():
+                        messages.error(request, 
+                            f"{i+1}번째 상품: single_product_mid값 [{single_product_mid}]가 이미 존재합니다. 건너뜁니다.")
+                        continue
+
+                # # (B) original_mid 중복 체크
+                # if original_mid:
+                #     if Product.objects.filter(original_mid=original_mid).exists():
+                #         messages.error(request, 
+                #             f"{i+1}번째 상품: original_mid값 [{original_mid}]가 이미 존재합니다. 건너뜁니다.")
+                #         continue
+
+                # (C) 중복이 없으면 DB에 생성
                 Product.objects.create(
                     category=category,
                     name=name,
-                    search_keyword=search_keyword,  # 추가된 부분
+                    search_keyword=search_keyword,
                     single_product_link=single_product_link,
                     single_product_mid=single_product_mid,
                     original_link=original_link,
@@ -134,19 +154,24 @@ def product_add(request):
                     store_name=store_name,
                     manager=manager,
                 )
+                created_count += 1
 
             # 세션에서 엑셀 데이터 삭제
             if 'excel_data' in request.session:
                 del request.session['excel_data']
 
-            messages.success(request, "상품을 성공적으로 추가했습니다.")
+            messages.success(request, f"상품 등록 완료! (총 {created_count}건 생성)")
             return redirect('rankings:product_list')
+
     else:
         form = ProductForm()
 
     # 세션에 엑셀 데이터가 있으면 컨텍스트에 전달
     excel_data = request.session.get('excel_data', [])
-    return render(request, 'rankings/product_add.html', {'form': form, 'excel_data': excel_data})
+    return render(request, 'rankings/product_add.html', {
+        'form': form, 
+        'excel_data': excel_data
+    })
 
 @login_required
 def download_product_sample_excel(request):

@@ -273,7 +273,7 @@ class RankingMonitoring(models.Model):
 class KeywordRanking(models.Model):
     ranking = models.ForeignKey(RankingMonitoring, on_delete=models.CASCADE, related_name='keywords')
     keyword = models.CharField(max_length=255)
-    rank = models.PositiveIntegerField()
+    rank = models.IntegerField(null=True, blank=True)
     update_at = models.DateField(auto_now_add=True)  # 순위 업데이트 날짜
     search_volume = models.PositiveIntegerField(default=0)  # 검색량
     is_original_better = models.BooleanField(default=False)

@@ -11,13 +11,28 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameField(
-            model_name='navermarketingcost',
-            old_name='product',
-            new_name='task',
-        ),
-        migrations.AlterUniqueTogether(
-            name='navermarketingcost',
-            unique_together={('task', 'date')},
+        migrations.CreateModel(
+            name='NaverMarketingCost',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('date', models.DateField(verbose_name='날짜')),
+                ('cost', models.DecimalField(max_digits=10, decimal_places=0, verbose_name='비용')),
+                ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='등록일자')),
+                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='수정일자')),
+                ('task', models.ForeignKey(
+                    on_delete=django.db.models.deletion.CASCADE,
+                    related_name='naver_costs',
+                    to='traffic_management.Task',
+                    verbose_name='작업'
+                )),
+            ],
+            options={
+                'unique_together': {('task', 'date')},
+                'verbose_name': '네이버 마케팅 비용',
+                'verbose_name_plural': '네이버 마케팅 비용',
+            },
         ),
     ]
+
+
+    

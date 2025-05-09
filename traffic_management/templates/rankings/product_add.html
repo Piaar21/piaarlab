@@ -5,6 +5,13 @@
 {% block content %}
 
 <div class="py-10 px-4">
+      {% if messages %}
+    <script>
+    {% for message in messages %}
+      alert("{{ message|escapejs }}");
+    {% endfor %}
+    </script>
+  {% endif %}
     <h2 class="text-2xl font-bold mb-6">상품 등록</h2>
     
     <!-- 상품 등록 폼 -->
