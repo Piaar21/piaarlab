@@ -28,12 +28,20 @@ class Command(BaseCommand):
 
             # (2) 키워드 + URL 쌍으로 실제 API 호출
             rank = get_naver_rank(kw, product_url)
+
             if rank == -1:
-                logger.warning("조회 실패: [%s], 상품URL=%s", kw, product_url)
+                logger.warning("조회 실패: [%s], 상품URL=%s ⇒ 1000위 밖 처리", kw, product_url)
+                # -1도 DB에 저장해서 테이블에 표시할 수 있게
+                obj, created = KeywordRanking.objects.update_or_create(
+                    keyword=kw,
+                    product_url=product_url,
+                    update_at=today,
+                    defaults={'rank': -1},
+                )
+                updated += 1
                 continue
 
             # (3) 오늘자 레코드가 있으면 업데이트, 없으면 생성
-            # (모델 구조에 따라 달라집니다!)
             obj, created = KeywordRanking.objects.update_or_create(
                 keyword=kw,
                 product_url=product_url,  # KeywordRanking에 product_url 필드가 있어야 함
