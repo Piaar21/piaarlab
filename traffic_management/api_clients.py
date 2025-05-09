@@ -33,6 +33,7 @@ def extract_product_id(url):
 def convert_to_naver_url(product_id):
     return f'https://smartstore.naver.com/main/products/{product_id}'
 
+# (1) fetch() 시그니처에 semaphore 포함
 async def fetch(session, url, headers, params, start, target_url, semaphore):
     async with semaphore:
         async with session.get(url, headers=headers, params=params) as response:
@@ -42,6 +43,7 @@ async def fetch(session, url, headers, params, start, target_url, semaphore):
                 if not items:
                     return None
 
+                # 각 아이템을 돌면서 product_id 추출 & URL 매칭
                 for index, item in enumerate(items):
                     total_rank = start + index
                     item_link = item['link']
@@ -69,11 +71,11 @@ async def get_naver_rank_async(NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, keyword, ta
     if product_id:
         target_url = convert_to_naver_url(product_id)
 
-    # 동시 요청 제한 (사실 Sequential 이므로 여기선 사실상 1씩 처리)
+    # 동시 요청 제한 (여기서는 사실상 한 번씩 순차 요청)
     semaphore = asyncio.Semaphore(1)
 
+    # 최대 10페이지(1~100, 101~200, …, 901~1000)까지 조회
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-        # 최대 10페이지(1~100, 101~200, … , 901~1000)까지 순차 탐색
         for start in range(1, 1001, 100):
             params = {
                 'query': keyword,
@@ -83,13 +85,15 @@ async def get_naver_rank_async(NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, keyword, ta
             }
             logger.debug(f"[{keyword}] fetch start={start}, target_url={target_url}")
 
-            # semaphore 로 감싸서 혹시라도 동시성 이슈 방지
-            async with semaphore:
-                try:
-                    result = await fetch(session, SEARCH_URL, headers, params, start, target_url)
-                except Exception as e:
-                    logger.error(f"[{keyword}] 페이지 {start} 조회 중 예외: {e}")
-                    result = None
+            try:
+                # (2) fetch() 호출 시 semaphore까지 넘김
+                result = await fetch(
+                    session, SEARCH_URL, headers, params,
+                    start, target_url, semaphore
+                )
+            except Exception as e:
+                logger.error(f"[{keyword}] 페이지 {start} 조회 중 예외: {e}")
+                result = None
 
             logger.debug(f"[{keyword}] response start={start} → {result!r}")
 
@@ -97,20 +101,23 @@ async def get_naver_rank_async(NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, keyword, ta
                 logger.info(f"[{keyword}] 최종 매칭 → {result!r}")
                 return result
 
-            # 너무 빠른 연속 요청 방지
+            # 페이지 사이 간격(Too Many Requests 방지)
             await asyncio.sleep(0.1)
 
-    # 어느 페이지에서도 못 찾았으면 -1
+    # 10페이지 내에서도 못 찾으면 -1
     return -1
 
 def get_naver_rank(keyword, target_url):
     if not naver_client_id or not naver_client_secret:
         raise ValueError("NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET를 마이페이지에서 설정해주세요.")
-    # 동기 호출
-    return async_to_sync(get_naver_rank_async)(naver_client_id, naver_client_secret, keyword, target_url)
 
-    # 비동기 함수 호출
-    return async_to_sync(get_naver_rank_async)(naver_client_id, naver_client_secret, keyword, target_url)
+    # 비동기 → 동기 변환
+    return async_to_sync(get_naver_rank_async)(
+        naver_client_id,
+        naver_client_secret,
+        keyword,
+        target_url
+    )
 
 import datetime
 import urllib.request
