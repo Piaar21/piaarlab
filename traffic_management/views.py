@@ -3242,7 +3242,16 @@ def update_monitoring_rank(request):
             # (3) 실제 API 호출
             new_rank = get_naver_rank(kwobj.keyword, r.product_url)
             if new_rank == -1:
-                continue  # 조회 실패 시 스킵
+                
+                # 수정: 그래도 DB에 (rank=-1, update_at=today)로 insert
+                KeywordRanking.objects.create(
+                    ranking=r,
+                    keyword=kwobj.keyword,
+                    rank=-1,
+                    update_at=today
+                )
+                updated_count += 1
+                continue
 
             # (4) 오늘 날짜 레코드만 찾아서 업데이트 or 생성
             existing_today = KeywordRanking.objects.filter(
