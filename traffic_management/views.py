@@ -526,14 +526,20 @@ def task_upload_excel_data(request):
             product = None
             if name_excel and single_excel:
                 product = Product.objects.filter(
-                    name=name_excel.strip(),
-                    single_product_link=single_excel.strip()
+                    name=name_excel.strip().lower(),
+                    single_product_link=single_excel.strip().lower()
                 ).first()
+                if product is None:
+                    logger.warning(f"  ✖ 행 {idx}: 상품({name_excel!r}) + 단일 링크({single_excel!r}) 매칭 실패")
+
             if not product and name_excel and original_excel:
                 product = Product.objects.filter(
-                    name=name_excel.strip(),
-                    original_link=original_excel.strip()
+                    name=name_excel.strip().lower(),
+                    original_link=original_excel.strip().lower()
                 ).first()
+                if product is None:
+                    logger.warning(f"  ✖ 행 {idx}: 상품({name_excel!r}) + 원부 링크({original_excel!r}) 매칭 실패")
+
 
             if not product:
                 logger.warning(f"  ✖ 행 {idx}: 상품({name_excel!r}) + 링크 매칭 실패 (single:{single_excel!r}, original:{original_excel!r})")
