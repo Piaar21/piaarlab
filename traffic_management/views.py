@@ -486,7 +486,17 @@ def task_upload_excel_data(request):
         wb = load_workbook(filename=excel_file, data_only=True)
         ws = wb.active
 
-        # 1) 헤더 읽기 및 컬럼 인덱스 찾기
+        # 1) 엑셀 내 모든 셀의 하이퍼링크 제거 + URL로 교체
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.hyperlink:
+                    # 셀에 하이퍼링크가 존재하는 경우, 아래 중 원하는 로직으로 사용
+                    # (1) 클릭 시 이동하는 실제 링크로 바꿔치기
+                    cell.value = cell.hyperlink.target  
+                    # (2) 링크 제거
+                    cell.hyperlink = None
+
+        # 2) 헤더 읽기 및 컬럼 인덱스 찾기
         headers = [str(cell.value).strip() for cell in ws[1]]
         logger.debug(f"  ▶ 읽어온 헤더: {headers}")
 
@@ -539,6 +549,8 @@ def task_upload_excel_data(request):
                 ).first()
                 if product is None:
                     logger.warning(f"  ✖ 행 {idx}: 상품({name_excel!r}) + 원부 링크({original_excel!r}) 매칭 실패")
+        
+
 
 
             if not product:
