@@ -149,9 +149,9 @@
               </td>
               {% for rank in item.history %}
                 <td class="text-center">
-                  {% if rank == '—' %}
-                    1000위 밖
-                  {% else %}
+                  {% if rank == '—' or rank == -1 %}
+                  1000위 밖
+                {% else %}
                     {{ rank|intcomma }}위
                   {% endif %}
                 </td>
