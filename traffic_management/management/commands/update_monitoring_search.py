@@ -9,16 +9,32 @@ class Command(BaseCommand):
     help = "등록된 KeywordRanking의 각 키워드에 대해 한 달 검색량을 업데이트합니다."
 
     def handle(self, *args, **options):
-        keyword_qs = KeywordRanking.objects.all()
+        # 1) 중복 제거된 키워드 리스트만 뽑기
+        unique_keywords = KeywordRanking.objects \
+            .values_list('keyword', flat=True) \
+            .distinct()
+
         updated_count = 0
-        for kwobj in keyword_qs:
-            # API를 통해 키워드 검색량 조회
-            df = get_rel_keywords([kwobj.keyword])
-            if df is not None and not df.empty:
-                row = df.iloc[0]
-                total_search = int(row.get('totalSearchCount', 0))
-                kwobj.search_volume = total_search
-                kwobj.save()
-                updated_count += 1
-                logger.info("키워드 [%s] 검색량 업데이트: %d", kwobj.keyword, total_search)
+
+        for kw in unique_keywords:
+            # API 호출은 키워드당 한 번만!
+            df = get_rel_keywords([kw])
+            if df is None or df.empty:
+                logger.warning("키워드 [%s] 검색량 조회 실패 또는 결과 없음", kw)
+                continue
+
+            total_search = int(df.iloc[0].get('totalSearchCount', 0))
+
+            # 같은 키워드를 가진 레코드 중, 실제 값이 바뀌는 것만 한꺼번에 업데이트
+            changed = KeywordRanking.objects \
+                .filter(keyword=kw) \
+                .exclude(search_volume=total_search) \
+                .update(search_volume=total_search)
+
+            if changed:
+                logger.info("키워드 [%s] 검색량 업데이트: %d건 → %d", kw, changed, total_search)
+                updated_count += changed
+            else:
+                logger.debug("키워드 [%s] 검색량 미변경 (값: %d)", kw, total_search)
+
         self.stdout.write(self.style.SUCCESS(f"검색량 업데이트 완료! ({updated_count}건 반영)"))
