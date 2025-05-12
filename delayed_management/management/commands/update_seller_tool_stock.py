@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from views import update_seller_tool_and_increase_stock_view
+from delayed_management.views import update_seller_tool_and_increase_stock_view
 
 class Command(BaseCommand):
     help = "셀러툴 재고 업데이트 후 플랫폼 재고 추가"
