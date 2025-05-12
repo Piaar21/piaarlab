@@ -1,53 +1,47 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from traffic_management.models import RankingMonitoring, KeywordRanking  # 실제 모델 경로에 맞게 수정하세요.
-from traffic_management.api_clients import get_naver_rank  # get_naver_rank 함수의 실제 경로로 수정
+from traffic_management.models import RankingMonitoring, KeywordRanking
+from traffic_management.api_clients import get_naver_rank
 from datetime import timedelta
-import logging
-import time
+import logging, time
+
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = "오늘 날짜의 순위를 (키워드 + 상품URL) 중복 없이 갱신합니다."
+    help = "오늘 날짜의 순위를 (키워드 + 모니터링 객체) 중복 없이 갱신합니다."
 
     def handle(self, *args, **options):
         today = timezone.localdate()
 
-        # (1) (키워드, 상품URL) 튜플로 중복 제거
+        # (1) (RankingMonitoring 인스턴스, 키워드) 튜플로 중복 제거
         unique_pairs = set()
-        for r in RankingMonitoring.objects.all():
-            for kwobj in r.keywords.all():
-                # kwobj.keyword: 실제 키워드 문자열
-                # r.product_url : 모니터링할 상품 URL
-                unique_pairs.add((kwobj.keyword, r.product_url))
+        for monitor in RankingMonitoring.objects.all():
+            for kwobj in monitor.keywords.all():
+                unique_pairs.add((monitor, kwobj.keyword))
 
         updated = 0
-        for (kw, product_url) in unique_pairs:
-            # 차단 방지를 위해 텀을 두는 것도 추천
-            time.sleep(0.5)
+        for monitor, kw in unique_pairs:
+            time.sleep(0.5)  # API 차단 방지
 
-            # (2) 키워드 + URL 쌍으로 실제 API 호출
-            rank = get_naver_rank(kw, product_url)
+            # (2) 실제 API 호출 (모니터링 객체에서 URL 꺼내 쓰기)
+            rank = get_naver_rank(kw, monitor.product_url)
 
             if rank == -1:
-                logger.warning("조회 실패: [%s], 상품URL=%s ⇒ 1000위 밖 처리", kw, product_url)
-                # -1도 DB에 저장해서 테이블에 표시할 수 있게
+                logger.warning("조회 실패: [%s], URL=%s ⇒ -1 처리", kw, monitor.product_url)
                 obj, created = KeywordRanking.objects.update_or_create(
+                    ranking=monitor,
                     keyword=kw,
-                    product_url=product_url,
                     update_at=today,
                     defaults={'rank': -1},
                 )
-                updated += 1
-                continue
+            else:
+                obj, created = KeywordRanking.objects.update_or_create(
+                    ranking=monitor,
+                    keyword=kw,
+                    update_at=today,
+                    defaults={'rank': rank},
+                )
 
-            # (3) 오늘자 레코드가 있으면 업데이트, 없으면 생성
-            obj, created = KeywordRanking.objects.update_or_create(
-                keyword=kw,
-                product_url=product_url,  # KeywordRanking에 product_url 필드가 있어야 함
-                update_at=today,
-                defaults={'rank': rank},
-            )
             updated += 1
 
         self.stdout.write(self.style.SUCCESS(
