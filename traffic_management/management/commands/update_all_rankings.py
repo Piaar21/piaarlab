@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from models import Task, Ranking
-from views import get_naver_rank,   # 해당 함수들이 있다면 임포트
+from views import get_naver_rank   # 해당 함수들이 있다면 임포트
 from tasks import update_task_status
 import logging
 
