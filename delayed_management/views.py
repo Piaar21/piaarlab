@@ -901,7 +901,17 @@ SOLAPI_SENDER_NUMBER = config('SOLAPI_SENDER_NUMBER', default='')  # 발신번�
 
 
 def send_message_list(request):
-    qs = DelayedShipment.objects.filter(flow_status='sent').order_by('-created_at')
+    # 기본 QS
+    qs = DelayedShipment.objects.filter(flow_status='sent')
+    
+    # 검색 파라미터가 있으면 필터링
+    recipient_name = request.GET.get('recipient_name')
+    if recipient_name:
+        qs = qs.filter(customer_name__icontains=recipient_name)
+
+    # 최신순 정렬
+    qs = qs.order_by('-created_at')
+
     today = date.today()
     for s in qs:
         min_days, max_days = ETA_RANGES.get(s.status, (0,0))
@@ -921,6 +931,7 @@ def send_message_list(request):
         else:
             s.expected_start = None
             s.expected_end   = None
+
     return render(request, 'delayed_management/send_message_list.html', {
         'shipments': qs
     })

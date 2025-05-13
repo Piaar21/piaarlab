@@ -3,6 +3,21 @@
 <div class="container-fluid mt-4">
     <h2 class="mb-4 text-primary">문자 발송 목록</h2>
 
+                <!-- 검색폼 시작 -->
+            <form method="get"
+            action=""
+            class="d-flex flex-nowrap align-items-center gap-2 mb-3">
+          <input type="text"
+                 name="recipient_name"
+                 class="form-control"
+                 placeholder="수취인명 검색"
+                 style="width:200px;"
+                 value="{{ request.GET.recipient_name|default_if_none:'' }}">
+          <button type="submit" class="btn btn-secondary">
+              검색
+          </button>
+      </form>
+    <!-- 검색폼 끝 -->
     <!-- 문자 발송 폼 시작 -->
     <form method="post" action="{% url 'send_message_process' %}">
         {% csrf_token %}
@@ -19,6 +34,7 @@
                 선택 삭제
             </button>            
         </div>
+
 
         <div class="card shadow-sm mb-4">
             <div class="table-responsive">
