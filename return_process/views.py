@@ -893,6 +893,16 @@ def scan_submit(request):
                 })
             else:
                 return JsonResponse({'success': False, 'message': 'No items updated.'})
+        elif action == 'update_order_number':
+            item_id = data.get('id')
+            new_orderno = data.get('order_number')
+            try:
+                item = ReturnItem.objects.get(pk=item_id)
+                item.order_number = new_orderno
+                item.save()
+                return JsonResponse({'success': True})
+            except ReturnItem.DoesNotExist:
+                return JsonResponse({'success': False, 'message': '존재하지 않는 항목입니다.'})
 
         elif action == 'update_note':
             ids = data.get('ids', [])
