@@ -571,26 +571,91 @@
                 })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.success) {
-                        const details = data.details;
-                        const tbody = document.getElementById('modal-item-details');
-                        tbody.innerHTML = '';
-                        for (const key in details) {
-                            const tr = document.createElement('tr');
-                            const th = document.createElement('th');
-                            th.textContent = key;
-                            const td = document.createElement('td');
-                            td.textContent = details[key];
-                            tr.appendChild(th);
-                            tr.appendChild(td);
-                            tbody.appendChild(tr);
+                    if (!data.success) return;
+                    const details = data.details;
+                    const tbody = document.getElementById('modal-item-details');
+                    tbody.innerHTML = '';
+
+                    for (const key in details) {
+                        const tr = document.createElement('tr');
+                        const th = document.createElement('th');
+                        th.textContent = key;
+                        const td = document.createElement('td');
+
+                        // 주문번호만 특별 처리
+                        if (key === 'order_number') {
+                        td.classList.add('editable-order-number');
+                        td.textContent = details[key];
+                        td.style.cursor = 'pointer';
+
+                        td.addEventListener('click', function activateEditor() {
+                            // 이미 input 열려있으면 무시
+                            if (this.querySelector('input')) return;
+
+                            const current = this.textContent.trim();
+                            this.innerHTML = `<input type="text" class="form-control form-control-sm" value="${current}">`;
+                            const input = this.querySelector('input');
+                            input.focus();
+
+                            const save = () => {
+                            const newVal = input.value.trim();
+                            if (!newVal || newVal === current) {
+                                this.textContent = current;
+                                return;
+                            }
+                            // 서버에 변경 요청
+                            fetch("{% url 'scan_submit' %}", {
+                                method: 'POST',
+                                headers: {
+                                'X-CSRFToken': '{{ csrf_token }}',
+                                'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                action: 'update_order_number',
+                                id: itemId,
+                                order_number: newVal
+                                })
+                            })
+                            .then(res => res.json())
+                            .then(resp => {
+                                if (resp.success) {
+                                this.textContent = newVal;
+                                // 목록 테이블(페이지 왼쪽)에도 반영하려면:
+                                const row = document.querySelector(`tr[data-item-id="${itemId}"]`);
+                                if (row) {
+                                    row.setAttribute('data-order-number', newVal);
+                                    row.querySelector('.order-number a').textContent = newVal;
+                                }
+                                } else {
+                                alert('수정 실패: ' + (resp.message||''));
+                                this.textContent = current;
+                                }
+                            })
+                            .catch(() => {
+                                alert('서버 오류');
+                                this.textContent = current;
+                            });
+                            };
+
+                            // Enter 또는 포커스 아웃 시 저장
+                            input.addEventListener('keydown', e => {
+                            if (e.key === 'Enter') save();
+                            });
+                            input.addEventListener('blur', save);
+                            // 더 이상 중복 클릭 안 하도록 이벤트 제거
+                            td.removeEventListener('click', activateEditor);
+                        });
+                        } else {
+                        td.textContent = details[key];
                         }
-                        const modal = new bootstrap.Modal(document.getElementById('itemModal'));
-                        modal.show();
-                    } else {
-                        showTemporaryMessage('데이터를 가져오는데 실패했습니다.');
+
+                        tr.appendChild(th);
+                        tr.appendChild(td);
+                        tbody.appendChild(tr);
                     }
-                });
+
+                    new bootstrap.Modal(document.getElementById('itemModal')).show();
+                    });
             });
         });
     
