@@ -34,6 +34,7 @@ urlpatterns = [
     path('api/sellertool-options/<int:shipment_id>/', views.get_seller_tool_options_api, name='get_seller_tool_options_api'),
     path('api/save-sellertool-options/<int:shipment_id>/', views.save_seller_tool_options_api, name='save_seller_tool_options_api'),
     path('out-of-stock-management/', views.out_of_stock_management_view, name='out_of_stock_management'),
+    path('out-of-stock-check/', views.out_of_stock_check_view, name='out_of_stock_check'),
     # path('option-mapping/', views.option_mapping, name='option_mapping'),
     
     # path('option-mapping/add-or-update/', views.add_or_update_option_mapping, name='add_or_update_option_mapping'),
@@ -57,7 +58,12 @@ urlpatterns = [
     # path('update-coupang-product-list/', views.update_coupang_product_list, name='update_coupang_product_list'),
     path('update-naver-option-list/', views.update_naver_option_list, name='update_naver_option_list'),
     path('update-coupang-option-list/', views.update_coupang_option_list, name='update_coupang_option_list'),
-        path('coupang-product-check/', views.coupang_product_check_view, name='coupang_product_check_view'),
+    path('coupang-product-check/', views.coupang_product_check_view, name='coupang_product_check_view'),
+    path('update-naver-out-of-stock-list/', views.update_naver_out_of_stock_list, name='update_naver_out_of_stock_list'),
+    path('update-coupang-out-of-stock-list/', views.update_coupang_out_of_stock_list, name='update_coupang_out_of_stock_list'),
+    path("out-of-stock-check/update-seller-tool-stock/", views.update_seller_tool_stock_check, name="update_seller_tool_stock_check"),
+    path('match-option-ids-check/', views.match_option_ids_check_view, name='match_option_ids_check'),
+
 
 ]
 

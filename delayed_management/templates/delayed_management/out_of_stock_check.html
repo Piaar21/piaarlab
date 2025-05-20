@@ -1,16 +1,14 @@
-<!-- out_of_stock_management.html -->
-
 {% extends 'delayed_management_base.html' %}
 {% block content %}
 <div class="container-fluid mt-4">
-  <h2 class="mb-4 text-primary">품절관리</h2>
+  <h2 class="mb-4 text-primary">품절확인</h2>
   <!-- (A) [API_list 이동 링크 버튼] -->
 <div class="mb-3">
-  <a href="{% url 'api_option_list' %}" class="btn btn-secondary btn-sm">
+  <!-- <a href="{% url 'api_option_list' %}" class="btn btn-secondary btn-sm">
     API List
-  </a>
+  </a> -->
   <!-- 전체 재매칭 버튼 -->
-  <a href="{% url 'match_option_ids' %}" class="btn btn-danger btn-sm">
+  <a href="{% url 'match_option_ids_check' %}" class="btn btn-danger btn-sm">
     옵션ID 매칭
   </a>
   <a href="#"
@@ -47,7 +45,7 @@
   <a href="#"
    class="btn btn-success btn-sm"
    onclick="return showAccountModal();">
-  상품 업데이트
+  품절 업데이트
 </a>
 <a href="#"
    class="btn btn-warning btn-sm"
@@ -105,7 +103,7 @@
                   data-account-name="아르빙">
             아르빙
           </button>
-          <button type="button"
+          <!-- <button type="button"
                   class="btn btn-outline-primary btn-sm me-2 account-update-btn"
                   data-account-name="쿠팡01">
             쿠팡01
@@ -114,7 +112,7 @@
                   class="btn btn-outline-primary btn-sm me-2 account-update-btn"
                   data-account-name="쿠팡02">
             쿠팡02
-          </button>
+          </button> -->
         </div>
       </div>
 
@@ -624,9 +622,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // (2) URL 생성
         let targetUrl;
         if (accountName === "쿠팡01" || accountName === "쿠팡02") {
-          targetUrl = "{% url 'update_coupang_option_list' %}?account_name=" + encodeURIComponent(accountName);
+          targetUrl = "{% url 'update_coupang_out_of_stock_list' %}?account_name=" + encodeURIComponent(accountName);
         } else {
-          targetUrl = "{% url 'update_naver_option_list' %}?account_name=" + encodeURIComponent(accountName);
+          targetUrl = "{% url 'update_naver_out_of_stock_list' %}?account_name=" + encodeURIComponent(accountName);
         }
   
         // (3) API 호출 (GET)
@@ -675,7 +673,7 @@ function doSellerToolStockUpdate() {
 
 
   // 1) 서버에 POST 요청: 전체(혹은 현재 페이지)의 detail 레코드 갱신
-  fetch("{% url 'update_seller_tool_stock' %}", {
+  fetch("{% url 'update_seller_tool_stock_check' %}", {
     method: "POST",
     headers: {
       "X-CSRFToken": "{{ csrf_token }}",

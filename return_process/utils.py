@@ -475,8 +475,8 @@ def convert_return_item_to_formdata(return_item) -> dict:
         "inspectionPassedQuantity": 0,
         "salesChannelMatchingStoreId": store_id,
         "salesChannelMatchingStoreMemo": store_name,
-        "claimSystem": return_item.claim_reason or return_item.note or "",
-        "claimCustomer": return_item.customer_reason or "",
+        "claimSystem": return_item.claim_reason or "",
+        "claimCustomer": return_item.customer_reason or return_item.note or "",
         "returnExchangeMemo1": return_item.note or "",
         "returnExchangeMemo2": (
             f"검수완료시간 : {timezone.localtime(return_item.inspected_at).strftime('%Y-%m-%d %H:%M:%S')}"
