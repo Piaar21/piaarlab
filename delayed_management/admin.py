@@ -163,6 +163,7 @@ class DelayedShipmentAdmin(admin.ModelAdmin):
 class OutOfStockAdmin(admin.ModelAdmin):
     list_display = (
         'id',
+        'status',
         'platform_name',
         # 'representative_image',
         'product_id',
