@@ -2431,20 +2431,23 @@ def out_of_stock_management_view(request):
 
 def out_of_stock_delete_all_view(request):
     """
-    '전체 삭제' 버튼 클릭 시 동작:
-    - 실제로 삭제하지 않고, OutOfStock의 status를 0으로 변경
-      (즉, status=1 => status=0 으로 하여 품절관리에서 제외)
+    '선택 삭제' 버튼 클릭 시 동작:
+    - POST로 전달된 체크박스(selected_ids)에 해당하는 OutOfStock 레코드만
+      status=1 → status=0 으로 변경
+    - 없으면 에러 메시지
     - 완료 후 품절관리 페이지로 리다이렉트
     """
-    from django.shortcuts import redirect
-    from django.contrib import messages
-    from .models import OutOfStock
+    # 1) 체크된 ID 목록 가져오기
+    selected_ids = request.POST.getlist('selected_ids')  # template에서 name="selected_ids" 사용
+    if not selected_ids:
+        messages.error(request, "삭제할 항목을 하나 이상 선택해주세요.")
+        return redirect('out_of_stock_management')
 
-    # (A) OutOfStock의 status=1 → status=0 으로 업데이트
-    OutOfStock.objects.filter(status=1).update(status=0)
+    # 2) 선택된 항목만 status → 0 업데이트
+    updated_count = OutOfStock.objects.filter(id__in=selected_ids, status=1).update(status=0)
 
-    # (B) 완료 후 메시지 표시
-    messages.success(request, "전체 품절 데이터의 상태값을 0으로 바꿨습니다. (실제 삭제는 아님)")
+    # 3) 완료 메시지 및 리다이렉트
+    messages.success(request, f"{updated_count}건의 품절 데이터를 삭제했습니다. (실제 삭제는 아님)")
     return redirect('out_of_stock_management')
 
 @require_POST
