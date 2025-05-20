@@ -35,11 +35,20 @@
     재고추가
   </a>
   <!-- 전체 삭제 -->
-  <a href="{% url 'out_of_stock_delete_all' %}"
-     class="btn btn-warning btn-sm"
-     onclick="return confirm('정말로 모두 삭제하시겠습니까?');">
-    전체 삭제
-  </a>
+  {# form 을 inline-block 으로 바꿔주기 #}
+  <form id="deleteForm"
+        method="post"
+        action="{% url 'out_of_stock_delete_all_check' %}"
+        class="d-inline"
+        onsubmit="return submitDeleteForm();">
+    {% csrf_token %}
+    <button
+      type="submit"
+      class="btn btn-warning btn-sm">
+      선택 삭제
+    </button>
+  </form>
+  </form>
   
   <!-- 목록 업데이트 (계정 선택) -->
   <a href="#"
@@ -47,11 +56,11 @@
    onclick="return showAccountModal();">
   품절 업데이트
 </a>
-<a href="#"
+<!-- <a href="#"
    class="btn btn-warning btn-sm"
    onclick="return downloadOutOfStockExcel();">
   품절엑셀다운
-</a>
+</a> -->
 
 
 <!-- (B) 모달 (Bootstrap 5) -->
@@ -475,7 +484,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return false;
     }
     // 3) Ajax POST
-    fetch("{% url 'option_id_stock_update' %}", {
+    fetch("{% url 'option_id_stock_update_check' %}", {
       method: "POST",
       headers: {
         "X-CSRFToken": "{{ csrf_token }}",
@@ -523,7 +532,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // 3) Ajax
-  fetch("{% url 'do_out_of_stock' %}", {
+  fetch("{% url 'do_out_of_stock_check' %}", {
     method: "POST",
     headers: {
       "X-CSRFToken": "{{ csrf_token }}",
@@ -567,7 +576,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return false;
     }
 
-    fetch("{% url 'add_stock_9999' %}", {
+    fetch("{% url 'add_stock_9999_check' %}", {
       method: "POST",
       headers: {
         "X-CSRFToken": "{{ csrf_token }}",
@@ -727,4 +736,34 @@ function downloadOutOfStockExcel() {
   return false; // a 태그 기본 이동 방지
 }
   </script>
+  <script>
+    function submitDeleteForm() {
+      if (!confirm('정말로 선택된 항목들을 삭제하시겠습니까?')) {
+        return false;  // 폼 제출 취소
+      }
+    
+      const form = document.getElementById('deleteForm');
+      // 기존 hidden inputs 지우기
+      form.querySelectorAll('input[name="selected_ids"]').forEach(i => i.remove());
+    
+      // 체크된 항목들 수집
+      const checked = document.querySelectorAll('.option-checkbox:checked');
+      if (checked.length === 0) {
+        alert('삭제할 항목을 하나 이상 선택해주세요.');
+        return false;
+      }
+    
+      // 각 체크박스 value를 hidden input 으로 추가
+      checked.forEach(cb => {
+        const inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'selected_ids';
+        inp.value = cb.value;
+        form.appendChild(inp);
+      });
+    
+      // 여기서 return true → 폼이 action URL로 POST됩니다
+      return true;
+    }
+    </script>
 {% endblock %}

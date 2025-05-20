@@ -63,6 +63,10 @@ urlpatterns = [
     path('update-coupang-out-of-stock-list/', views.update_coupang_out_of_stock_list, name='update_coupang_out_of_stock_list'),
     path("out-of-stock-check/update-seller-tool-stock/", views.update_seller_tool_stock_check, name="update_seller_tool_stock_check"),
     path('match-option-ids-check/', views.match_option_ids_check_view, name='match_option_ids_check'),
+    path('option-id-stock-update-check/', views.option_id_stock_update_check, name='option_id_stock_update_check'),
+    path('add-stock-for-selection-check/', views.add_stock_9999_check_view, name='add_stock_9999_check'),
+    path('do-out-of-stock-check/', views.do_out_of_stock_check_view, name='do_out_of_stock_check'),
+    path('out-of-stock-delete-all_check/', views.out_of_stock_delete_all_check_view, name='out_of_stock_delete_all_check'),
 
 
 ]
