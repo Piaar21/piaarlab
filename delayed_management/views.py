@@ -2388,7 +2388,7 @@ def out_of_stock_management_view(request):
     search_query = request.GET.get('search_query', '').strip()
 
     # 1) OutOfStock 중 status=1 (옵션매핑 전송된 것만 표시)
-    base_qs = OutOfStock.objects.all()
+    base_qs = OutOfStock.objects.filter(status=1).order_by('-updated_at')
 
     # 2) 필터 적용
     # outofstock → option_id_stock <= 0 or isnull
