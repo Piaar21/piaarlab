@@ -5,7 +5,7 @@ from django.contrib import messages
 from .forms import DelayedOrderUploadForm, OptionStoreMappingUploadForm  
 from .models import DelayedOrder, ProductOptionMapping ,OptionStoreMapping, DelayedShipment,DelayedShipmentGroup,ExternalPlatformMapping,ExternalProductItem,ExternalProductOption, OptionMapping,OptionPlatformDetail,OutOfStockMapping,OutOfStock,OutOfStockCheck
 from django.core.paginator import Paginator
-from .api_clients import get_exchangeable_options,get_option_info_by_code,get_all_options_by_product_name,get_options_detail_by_codes,get_inventory_by_option_codes,fetch_coupang_seller_product_with_options,NAVER_ACCOUNTS,COUPANG_ACCOUNTS,fetch_coupang_all_seller_products,fetch_naver_products_with_details,get_coupang_seller_product_info
+from .api_clients import get_exchangeable_options,get_option_info_by_code,get_all_options_by_product_name,get_options_detail_by_codes,get_inventory_by_option_codes,fetch_coupang_seller_product_with_options,NAVER_ACCOUNTS,COUPANG_ACCOUNTS,fetch_coupang_all_seller_products,fetch_naver_products_with_details,get_coupang_seller_product_info,fetch_naver_option_stock,get_coupang_item_inventories,coupang_update_item_stock,naver_update_option_stock
 from .spreadsheet_utils import read_spreadsheet_data
 from datetime import date, timedelta, datetime
 from django.conf import settings
@@ -24,7 +24,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.utils import timezone
 import json
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST,require_http_methods
 from openpyxl import Workbook
 
 
@@ -2544,12 +2544,6 @@ def option_id_stock_update_view(request):
 
     from django.http import JsonResponse
     from .models import OutOfStock
-    from .api_clients import (
-        NAVER_ACCOUNTS, COUPANG_ACCOUNTS,
-        fetch_naver_option_stock,  # 네이버 옵션 재고 조회 (originNo 기반)
-        get_coupang_item_inventories  # 쿠팡 옵션 재고 조회 (vendorItemId 기반)
-    )
-
     try:
         data = json.loads(request.body)
         pk_list = data.get("ids", [])
@@ -2646,10 +2640,7 @@ def do_out_of_stock_view(request):
     from django.views.decorators.http import require_POST
 
     from .models import OutOfStock
-    from .api_clients import (
-        naver_update_option_stock,    # (가정) → (origin_no, option_id, new_stock, keep_price, base_sale_price, ...)
-        coupang_update_item_stock     # (가정) → (vendor_item_id, new_stock, ...)
-    )
+
 
     logger = logging.getLogger(__name__)
 
@@ -3499,3 +3490,206 @@ def add_stock_9999_check_view(request):
         "updated_count": updated_count,
         "message": f"{updated_count}건 재고를 9999로 변경했습니다."
     })
+
+
+@require_POST
+def option_id_stock_update_check(request):
+    """
+    { "ids": [3,5,7, ...] } 형태로 넘어온 OutOfStockCheck pk 목록에 대해
+    네이버/쿠팡 API를 호출해 'option_id_stock' 재고 정보를 갱신한다.
+    """
+    logger = logging.getLogger(__name__)
+
+    # 1) 요청 바디 파싱
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+        pk_list = data.get("ids", [])
+        if not pk_list:
+            return JsonResponse({"success": False, "message": "선택된 항목이 없습니다."}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    # 2) OutOfStockCheck 쿼리
+    qs = OutOfStockCheck.objects.filter(pk__in=pk_list)
+    if not qs.exists():
+        return JsonResponse({"success": False, "message": "대상 OutOfStockCheck이 없습니다."}, status=400)
+
+    updated_count = 0
+
+    # 3) 각 레코드별 재고 조회 및 업데이트
+    for item in qs:
+        platform = (item.platform_name or "").strip()
+        origin_no = (item.product_id or "").strip()
+        vendor_id = (item.option_id or "").strip()
+
+        # [1] 네이버 계정 처리
+        account_info = next(
+            (acct for acct in NAVER_ACCOUNTS if platform in acct.get("names", [])),
+            None
+        )
+        if account_info:
+            is_ok, combos = fetch_naver_option_stock(account_info, origin_no)
+            logger.debug(f"[option_id_stock_update_check] product_id={origin_no!r}, option_id={vendor_id!r}")
+            if not is_ok:
+                logger.debug(f"[option_id_stock_update_check] 네이버 API 실패: {combos}")
+            else:
+                combo = next((c for c in combos if str(c.get("id")) == vendor_id), None)
+                if combo:
+                    new_stk = combo.get("stockQuantity", 0)
+                    if new_stk != (item.option_id_stock or 0):
+                        item.option_id_stock = new_stk
+                        item.save(update_fields=["option_id_stock"])
+                        updated_count += 1
+                else:
+                    logger.debug(f"[option_id_stock_update_check] 옵션을 찾을 수 없음: pk={item.pk}, vendor_id={vendor_id}")
+            continue
+        
+
+        # [2] 쿠팡 계정 처리
+        account_info = next(
+            (acct for acct in COUPANG_ACCOUNTS if platform in acct.get("names", [])),
+            None
+        )
+        if account_info:
+            is_ok, inv_data = get_coupang_item_inventories(account_info, vendor_id)
+            if not is_ok:
+                logger.debug(f"[option_id_stock_update_check] 쿠팡 API 실패: {inv_data}")
+            else:
+                new_stk = inv_data.get("amountInStock", 0)
+                if new_stk != (item.option_id_stock or 0):
+                    item.option_id_stock = new_stk
+                    item.save(update_fields=["option_id_stock"])
+                    updated_count += 1
+            continue
+
+        # [3] 알 수 없는 플랫폼
+        logger.debug(f"[option_id_stock_update_check] Unknown platform for pk={item.pk}: '{platform}'")
+
+    return JsonResponse({
+        "success": True,
+        "updated_count": updated_count,
+        "message": f"옵션ID재고 업데이트 완료: {updated_count}건 변경됨."
+    })
+
+@require_POST
+def do_out_of_stock_check_view(request):
+    """
+    1) JSON { "detail_ids": [1,2,3...] } 로 들어온 OutOfStockCheck PK들에 대해,
+       (네이버) base_sale_price=original_price, keep_price=add_option_price 와 함께
+         naver_update_option_stock(origin_no, option_id, new_stock=0, ...)
+       (쿠팡) coupang_update_item_stock(vendor_item_id, new_stock=0, ...)
+    2) 성공 시 item.option_id_stock=0, item.out_of_stock_at = now 설정
+    """
+    logger = logging.getLogger(__name__)
+    now_time = timezone.now()
+
+    # 1) JSON body 파싱
+    try:
+        body = json.loads(request.body.decode('utf-8'))
+        raw_ids = body.get("detail_ids", [])
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "Invalid JSON body"}, status=400)
+
+    # 2) PK 리스트 정수 변환
+    pk_list = []
+    for val in raw_ids:
+        try:
+            pk_list.append(int(val))
+        except (ValueError, TypeError):
+            logger.debug(f"[do_out_of_stock_check_view] invalid id '{val}', skip")
+
+    if not pk_list:
+        return JsonResponse({"success": False, "message": "선택된 옵션이 없습니다."}, status=400)
+
+    # 3) OutOfStockCheck 쿼리
+    qs = OutOfStockCheck.objects.filter(pk__in=pk_list)
+    if not qs.exists():
+        return JsonResponse({"success": False, "message": "대상 OutOfStockCheck이 없습니다."}, status=400)
+
+    updated_count = 0
+
+    # 4) 각 레코드별 처리
+    for item in qs:
+        platform = (item.platform_name or "").strip()
+        origin_no = (item.product_id or "").strip()
+        opt_id    = (item.option_id or "").strip()
+
+        if not origin_no or not opt_id:
+            logger.warning(f"[do_out_of_stock_check_view] pk={item.pk} missing origin_no/option_id, skip")
+            continue
+
+        # 네이버 처리
+        if platform in ["니뜰리히","수비다 SUBIDA","노는 개 최고양","아르빙"]:
+            try:
+                is_ok, msg = naver_update_option_stock(
+                    origin_no=origin_no,
+                    option_id=opt_id,
+                    new_stock=0,
+                    base_sale_price=item.original_price,
+                    keep_price=item.add_option_price,
+                    platform_name=platform
+                )
+                logger.debug(f"[NAVER API 응답] pk={item.pk}, is_ok={is_ok}, msg={msg}")
+                if is_ok:
+                    item.option_id_stock   = 0
+                    item.out_of_stock_at   = now_time
+                    item.save(update_fields=["option_id_stock","out_of_stock_at"])
+                    updated_count += 1
+                else:
+                    logger.warning(f"[NAVER 품절실패] pk={item.pk}, msg={msg}")
+            except Exception as e:
+                logger.error(f"[NAVER API 예외] pk={item.pk}, error={e}", exc_info=True)
+            continue
+
+        # 쿠팡 처리
+        # if platform in ["쿠팡01","쿠팡02"]:
+        #     try:
+        #         is_ok, msg = coupang_update_item_stock(
+        #             vendor_item_id=opt_id,
+        #             new_stock=0,
+        #             platform_name=platform
+        #         )
+        #         logger.debug(f"[쿠팡 API 응답] pk={item.pk}, is_ok={is_ok}, msg={msg}")
+        #         if is_ok:
+        #             item.option_id_stock   = 0
+        #             item.out_of_stock_at   = now_time
+        #             item.save(update_fields=["option_id_stock","out_of_stock_at"])
+        #             updated_count += 1
+        #         else:
+        #             logger.warning(f"[쿠팡 품절실패] pk={item.pk}, msg={msg}")
+        #     except Exception as e:
+        #         logger.error(f"[쿠팡 API 예외] pk={item.pk}, error={e}", exc_info=True)
+        #     continue
+
+        # 알 수 없는 플랫폼
+        logger.debug(f"[do_out_of_stock_check_view] Unknown platform='{platform}', pk={item.pk}, skip")
+
+    return JsonResponse({
+        "success": True,
+        "updated_count": updated_count,
+        "message": f"{updated_count}건 품절처리 완료."
+    })
+
+@require_http_methods(["GET", "POST"])
+def out_of_stock_delete_all_check_view(request):
+    """
+    '선택 삭제' 버튼 클릭 시 동작:
+    - POST: selected_ids로 전달된 OutOfStockCheck 레코드를 실제로 삭제
+    - GET: 바로 품절확인 페이지로 리다이렉트 (경고 메시지)
+    """
+    if request.method == "GET":
+        # GET으로 직접 URL 호출 시
+        messages.warning(request, "잘못된 요청입니다.")
+        return redirect('out_of_stock_check')
+
+    # POST인 경우 삭제 로직
+    selected_ids = request.POST.getlist('selected_ids')
+    if not selected_ids:
+        messages.error(request, "삭제할 항목을 하나 이상 선택해주세요.")
+        return redirect('out_of_stock_check')
+
+    qs = OutOfStockCheck.objects.filter(id__in=selected_ids)
+    deleted_count, _ = qs.delete()
+
+    messages.success(request, f"{deleted_count}건의 품절확인 데이터를 삭제했습니다.")
+    return redirect('out_of_stock_check')

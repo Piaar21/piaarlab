@@ -127,7 +127,7 @@ def get_inventory_by_option_codes(option_codes):
         return {}
 
     data = response.json()
-    logger.debug(f"=== DEBUG: [get_inventory] response data={data}")
+    # logger.debug(f"=== DEBUG: [get_inventory] response data={data}")
 
     stock_map = {}
     for item in data.get('content', []):
@@ -273,14 +273,14 @@ def fetch_naver_products(account_info):
             "orderType": "NO",
         }
 
-        logger.debug(f"[fetch_naver_products] Request(page={current_page}) => {url}, payload={payload}")
+        # logger.debug(f"[fetch_naver_products] Request(page={current_page}) => {url}, payload={payload}")
 
         retry_count = 0
         while retry_count < MAX_RETRIES:
             try:
                 resp = requests.post(url, headers=headers, json=payload, timeout=30,proxies=proxies)
-                logger.debug(f"[fetch_naver_products] status_code={resp.status_code}")
-                logger.debug(f"[fetch_naver_products] response snippet => {resp.text[:300]}")
+                # logger.debug(f"[fetch_naver_products] status_code={resp.status_code}")
+                # logger.debug(f"[fetch_naver_products] response snippet => {resp.text[:300]}")
 
                 # 1) 응답 헤더에서 남은 호출 횟수 확인 (없으면 -1)
                 remain_str = resp.headers.get("GNCP-GW-RateLimit-Remaining")
@@ -383,11 +383,11 @@ def get_naver_minimal_product_info(account_info, origin_product_no):
             elif resp.status_code == 200:
                 data = resp.json()
                 # ↓↓↓ JSON을 예쁘게 정렬하여 출력
-                logger.debug(
-                    "[DETAIL] originNo=%s response data:\n%s",
-                    origin_product_no,
-                    json.dumps(data, ensure_ascii=False, indent=2)  # 여기서 JSON 예쁘게 정렬
-                )
+                # logger.debug(
+                #     "[DETAIL] originNo=%s response data:\n%s",
+                #     origin_product_no,
+                #     json.dumps(data, ensure_ascii=False, indent=2)  # 여기서 JSON 예쁘게 정렬
+                # )
 
                 result = {}
                 origin_prod = data.get("originProduct", {})
@@ -894,9 +894,9 @@ def fetch_coupang_seller_product_with_options(account_info, seller_product_id):
             "originProductNo":     item.get("sellerProductItemId"),
         })
 
-    logger.debug(
-        f"[fetch_coupang_seller_product_with_options] Flattened count={len(flattened_list)}"
-    )
+    # logger.debug(
+    #     f"[fetch_coupang_seller_product_with_options] Flattened count={len(flattened_list)}"
+    # )
     return True, flattened_list
 
 
@@ -951,11 +951,11 @@ def fetch_naver_option_stock(account_info, origin_product_no):
                 option_info = detail_attr.get("optionInfo", {})
                 combos = option_info.get("optionCombinations", [])
 
-                logger.debug(f"[fetch_naver_option_stock] combos={combos}, remain={remain}")
+                # logger.debug(f"[fetch_naver_option_stock] combos={combos}, remain={remain}")
 
                 # ▼ 남은 호출 횟수가 0 이하라면 잠깐 대기
                 if remain >= 0 and remain < 1:
-                    logger.info(f"[fetch_naver_option_stock] 남은 호출 횟수={remain}, 0.5초 대기.")
+                    # logger.info(f"[fetch_naver_option_stock] 남은 호출 횟수={remain}, 0.5초 대기.")
                     time.sleep(0.5)
 
                 return True, combos
@@ -1099,7 +1099,7 @@ def naver_update_option_stock(
             ]
         }
     }
-    logger.debug(f"[naver_update_option_stock] request body={body}")
+    # logger.debug(f"[naver_update_option_stock] request body={body}")
 
     url = f"https://api.commerce.naver.com/external/v1/products/origin-products/{origin_no}/option-stock"
     headers = {
@@ -1110,11 +1110,11 @@ def naver_update_option_stock(
     try:
         resp = requests.put(url, headers=headers, json=body, timeout=30, proxies=proxies)
         # 네이버 서버 응답 로깅
-        logger.debug(f"[naver_update_option_stock] Naver response code={resp.status_code}, body={resp.text}")
+        # logger.debug(f"[naver_update_option_stock] Naver response code={resp.status_code}, body={resp.text}")
 
         if resp.status_code == 200:
             data = resp.json()
-            logger.debug(f"[naver_update_option_stock] success data={data}")
+            # logger.debug(f"[naver_update_option_stock] success data={data}")
             return True, "OK"
         else:
             logger.warning(
@@ -1181,10 +1181,10 @@ def coupang_update_item_stock(vendor_item_id, new_stock=0, platform_name=None):
         ),
     }
 
-    logger.debug(
-        f"[coupang_update_item_stock] vendor_item_id={vendor_item_id}, new_stock={new_stock}, "
-        f"platform={platform_name}, endpoint={endpoint}"
-    )
+    # logger.debug(
+    #     f"[coupang_update_item_stock] vendor_item_id={vendor_item_id}, new_stock={new_stock}, "
+    #     f"platform={platform_name}, endpoint={endpoint}"
+    # )
 
     try:
         resp = requests.put(endpoint, headers=headers, timeout=20)
@@ -1192,18 +1192,18 @@ def coupang_update_item_stock(vendor_item_id, new_stock=0, platform_name=None):
             data = resp.json()
             code = data.get("code")
             if code == "SUCCESS":
-                logger.debug(f"[coupang_update_item_stock] success data={data}")
+                # logger.debug(f"[coupang_update_item_stock] success data={data}")
                 return True, "OK"
             else:
-                logger.warning(f"[coupang_update_item_stock] code={code}, msg={data}")
+                # logger.warning(f"[coupang_update_item_stock] code={code}, msg={data}")
                 return False, data
         else:
-            logger.warning(
-                f"[coupang_update_item_stock] HTTP {resp.status_code}, text={resp.text}"
-            )
+            # logger.warning(
+            #     f"[coupang_update_item_stock] HTTP {resp.status_code}, text={resp.text}"
+            # )
             return False, f"HTTP {resp.status_code}, text={resp.text}"
     except requests.RequestException as e:
-        logger.error(f"[coupang_update_item_stock] 예외: {e}")
+        # logger.error(f"[coupang_update_item_stock] 예외: {e}")
         return False, str(e)
 
 
