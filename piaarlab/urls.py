@@ -29,7 +29,7 @@ urlpatterns = [
     path('webhook/', include('webhook.urls')),  # 새로 추가
     path('sales/', include('sales_management.urls')),  
     path('traffic/', include('traffic_management.urls')),  
-    
+    path('excel/', include('excel_conversion.urls', namespace='excel_conversion')),
 ]
 
 
