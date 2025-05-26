@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>PIAARLAB 반품 프로세스</title>
+
+  <!-- Bootstrap CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <!-- Font Awesome -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+  />
+
+  <style>
+    /****************************************************************
+     * (1) 하단 네비게이션 바 스타일
+     ****************************************************************/
+    .navbar-tabs {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background-color: #f8f9fa;
+      border-top: 1px solid #dee2e6;
+    }
+    .navbar-tabs .nav-item {
+      flex: 1;
+      text-align: center;
+    }
+    .navbar-tabs .nav-link {
+      padding: 10px;
+    }
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background-color: #f8f9fa;
+      /* 하단 네비게이션 높이만큼 여백을 둬서 컨텐츠가 가려지지 않도록 */
+      margin-bottom: 60px;
+    }
+
+    /****************************************************************
+     * (2) 좌측 접이식 사이드바 스타일
+     ****************************************************************/
+    .sidebar-container {
+      position: relative;
+    }
+
+    /* 사이드바 자체 */
+    .sidebar-custom {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 16rem; /* Tailwind의 w-64 정도 */
+      height: 100vh;
+      background-color: #2d3748; /* 어두운 그레이 (bg-gray-800 유사) */
+      color: #fff;
+      padding: 1rem;
+      z-index: 1040;
+      overflow-y: auto;
+      transition: transform 0.3s ease-in-out;
+      /* 펼쳐진 상태로 시작하려면 translateX(0) + closed 클래스 없음 */
+      transform: translateX(0);
+    }
+    /* 닫힌 상태일 때 사용하는 클래스 */
+    .sidebar-custom.closed {
+      transform: translateX(-100%);
+    }
+
+    .sidebar-content {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* 닫기 버튼 (X) */
+    .sidebar-close-btn {
+      align-self: flex-end;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: #a0aec0;
+      margin-bottom: 1rem;
+      font-size: 1.1rem;
+    }
+    .sidebar-close-btn:hover {
+      color: #fff;
+    }
+
+    /* 상위 메뉴 리스트 */
+    .sidebar-nav-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+    .sidebar-nav-list > li {
+      margin-bottom: 0.5rem;
+    }
+
+    /* 상위 메뉴 버튼 */
+    .sidebar-nav-item {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: transparent;
+      border: none;
+      padding: 0.5rem 0.75rem;
+      color: #fff;
+      cursor: pointer;
+      font-size: 1rem;
+      text-align: left;
+      border-radius: 0.375rem; /* 예: rounded-lg */
+    }
+    .sidebar-nav-item:hover {
+      background-color: #4a5568; /* hover:bg-gray-700 유사 */
+    }
+
+    /* 아이콘 + 라벨 묶음 */
+    .sidebar-nav-item-group {
+      display: flex;
+      align-items: center;
+    }
+    .sidebar-nav-item-group .icon {
+      margin-right: 0.75rem;
+      font-weight: bold;
+    }
+
+    /* 서브메뉴 UL */
+    .sidebar-sub-list {
+      list-style: none;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+      opacity: 0;
+      margin-left: 2.5rem;
+      padding-left: 0;
+    }
+    .sidebar-sub-list.open {
+      max-height: 20rem; /* 서브메뉴 항목 수에 맞춰 넉넉히 */
+      opacity: 1;
+    }
+    .sidebar-sub-list li a {
+      display: block;
+      padding: 0.5rem 0;
+      color: #a0aec0;
+      text-decoration: none;
+      font-size: 0.875rem;
+      border-radius: 0.375rem;
+    }
+    .sidebar-sub-list li a:hover {
+      background-color: #4a5568;
+      color: #fff;
+    }
+
+    /* 체브론(화살표) 회전 */
+    .chevron {
+      display: inline-block;
+      transition: transform 0.3s ease;
+    }
+    .chevron.rotated {
+      transform: rotate(180deg);
+    }
+
+    /* 사이드바 열기 버튼 (메뉴 버튼) */
+    .sidebar-open-btn {
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 1050;
+      background-color: #2d3748;
+      color: #fff;
+      border: none;
+      padding: 0.5rem;
+      cursor: pointer;
+      border-radius: 0.375rem;
+      transition: opacity 0.3s ease;
+    }
+    /* 숨김 상태 */
+    .sidebar-open-btn.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="sidebar-container">
+    <!-- (A) 좌측 사이드바 -->
+    <!-- .closed를 빼서 처음부터 펼쳐짐, 필요 시 class="sidebar-custom closed"로 변경 -->
+    <aside class="sidebar-custom closed" id="sidebar">
+      <div class="sidebar-content">
+        <!-- 닫기 버튼 -->
+        <button class="sidebar-close-btn" id="closeSidebarBtn">X</button>
+
+        <!-- 상위 메뉴 4개: 반품프로세스, 배송지연관리, 통합CS관리, 로그인/로그아웃 -->
+        <ul class="sidebar-nav-list">
+          <!-- (1) 반품프로세스 -->
+          <li>
+            <button class="sidebar-nav-item" data-index="0">
+              <div class="sidebar-nav-item-group">
+                <span class="icon">📦</span>
+                <span class="label">반품프로세스</span>
+              </div>
+              <span class="chevron">⬇</span>
+            </button>
+            <!-- 하위 메뉴: 대시보드~고객문의 -->
+            <ul class="sidebar-sub-list open" data-sub="0">
+              <li><a href="{% url 'return_dashboard' %}">대시보드</a></li>
+              <li><a href="{% url '반품목록' %}">반품목록</a></li>
+              <li><a href="{% url '스캔' %}">스캔</a></li>
+              <li><a href="{% url '수거완료' %}">수거완료</a></li>
+              <li><a href="{% url '검수완료' %}">검수완료</a></li>
+              <li><a href="{% url '반품완료' %}">반품완료</a></li>
+              <li><a href="{% url '재고반영완료' %}">재고반영</a></li>
+              <li><a href="{% url '처리완료' %}">처리완료</a></li>
+              <li><a href="{% url 'upload_delayed_orders' %}">배송지연</a></li>
+              <li><a href="{% url 'cs_management:inquiry_product_list' %}">고객문의</a></li>
+            </ul>
+          </li>
+
+          <!-- (2) 배송지연관리 -->
+          <li>
+            <button class="sidebar-nav-item" data-index="1">
+              <div class="sidebar-nav-item-group">
+                <span class="icon">⏰</span>
+                <span class="label">배송지연관리</span>
+              </div>
+              <span class="chevron">⬇</span>
+            </button>
+            <!-- 하위 메뉴: 업로드~고객문의 -->
+            <ul class="sidebar-sub-list open" data-sub="1">
+              <li><a href="{% url 'upload_delayed_orders' %}">업로드</a></li>
+              <li><a href="{% url 'delayed_shipment_list' %}">리스트</a></li>
+              <li><a href="{% url 'send_message_list' %}">발송완료</a></li>
+              <li><a href="{% url 'confirmed_list' %}">확인완료</a></li>
+              <li><a href="{% url 'shipped_list' %}">출고완료</a></li>
+              <li><a href="{% url 'upload_store_mapping' %}">스토어명</a></li>
+              <li><a href="{% url 'restock_management' %}">재입고일자</a></li>
+              <li><a href="{% url 'out_of_stock_management' %}">품절관리</a></li>
+              <li><a href="{% url '반품목록' %}">반품</a></li>
+              <li><a href="{% url 'cs_management:inquiry_product_list' %}">고객문의</a></li>
+            </ul>
+          </li>
+
+          <!-- (3) 통합CS관리 -->
+          <li>
+            <button class="sidebar-nav-item" data-index="2">
+              <div class="sidebar-nav-item-group">
+                <span class="icon">☎️</span>
+                <span class="label">통합CS관리</span>
+              </div>
+              <span class="chevron">⬇</span>
+            </button>
+            <!-- 하위 메뉴: 상품문의, 고객센터문의 -->
+            <ul class="sidebar-sub-list open" data-sub="2">
+              <li><a href="{% url 'cs_management:inquiry_product_list' %}">상품문의</a></li>
+              <li><a href="{% url 'cs_management:inquiry_center_list' %}">고객센터문의</a></li>
+            </ul>
+          </li>
+
+          <li>
+            <button class="sidebar-nav-item" data-index="2">
+              <div class="sidebar-nav-item-group">
+                <span class="icon">📈</span>
+                <span class="label">판매성과관리</span>
+              </div>
+              <span class="chevron">⬇</span>
+            </button>
+            <ul class="sidebar-sub-list open" data-sub="2">
+              <!-- 아래는 예시로 "고객문의"만 추가. 필요한 링크가 더 있다면 추가하세요. -->
+              <li><a href="{% url 'sales_report' %}">쿠팡</a></li>
+              <li><a href="{% url 'naver_sales_report' %}">네이버</a></li>
+            </ul>
+          </li>
+          <li>
+            <button class="sidebar-nav-item" data-index="2">
+              <div class="sidebar-nav-item-group">
+                <span class="icon">🚥</span>
+                <span class="label">순위관리</span>
+              </div>
+              <span class="chevron">⬇</span>
+            </button>
+            <ul class="sidebar-sub-list open" data-sub="2">
+              <!-- 아래는 예시로 "고객문의"만 추가. 필요한 링크가 더 있다면 추가하세요. -->
+
+              <li ><a href="{% url 'rankings:dashboard' %}">대시보드</a></li>
+                <li ><a href="{% url 'rankings:issues' %}">문제</a></li>
+                <li ><a href="{% url 'rankings:product_list' %}">상품리스트</a></li>
+                <li ><a href="{% url 'rankings:traffic_list' %}">트래픽리스트</a></li>
+                <li ><a href="{% url 'rankings:completed_tasks_list' %}">완료된작업</a></li>
+                <li ><a href="{% url 'rankings:traffic_cost_summary' %}">비용정리</a></li>
+                <li ><a href="{% url 'rankings:ad_single_summary' %}">단건정리</a></li>
+            </ul>
+          </li>
+          
+          <!-- (4) 로그인/로그아웃 -->
+          <li>
+            <button class="sidebar-nav-item" data-index="3">
+              <div class="sidebar-nav-item-group">
+                <span class="icon">🔑</span>
+                <span class="label">로그인/로그아웃</span>
+              </div>
+              <span class="chevron">⬇</span>
+            </button>
+            <ul class="sidebar-sub-list" data-sub="3">
+              {% if user.is_authenticated %}
+              <li>
+                <form action="{% url 'logout' %}" method="post" style="margin:0; padding:0;">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{% url 'login' %}">
+                  <button
+                    type="submit"
+                    style="border:none; background:none; color:#a0aec0; cursor:pointer; padding:0.5rem 0;"
+                  >
+                    로그아웃
+                  </button>
+                </form>
+              </li>
+              {% else %}
+              <li><a href="{% url 'login' %}">로그인</a></li>
+              <li><a href="{% url 'signup' %}">회원가입</a></li>
+              {% endif %}
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- (B) 사이드바 열기 버튼 (처음부터 펼쳐두려면 .hidden 추가) -->
+    <button class="sidebar-open-btn" id="openSidebarBtn">메뉴</button>
+  </div>
+
+  <!-- (C) Django 템플릿 block (페이지 내용) -->
+  {% block content %}{% endblock %}
+
+  <!-- (D) 하단 네비게이션 바 -->
+  <nav class="navbar-tabs">
+    <ul class="nav nav-tabs justify-content-center">
+      <li class="nav-item">
+        <a class="nav-link" href="{% url 'return_dashboard' %}">대시보드</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url '반품목록' %}">반품목록</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url '스캔' %}">스캔</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url '수거완료' %}">수거완료</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url '검수완료' %}">검수완료</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url '반품완료' %}">반품완료</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url '재고반영완료' %}">재고반영</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url '처리완료' %}">처리완료</a>
+        </li>
+    </ul>
+  </nav>
+
+  <!-- (E) Bootstrap JS -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.10.2/dist/umd/popper.min.js"
+    integrity="sha384-7/xqA5FEhpzZVnTPl70bgc44dmX4Wo0cDw9dJ2Sa4zPw6gZ/O/mOJb0DKaMr3Z5F"
+    crossorigin="anonymous"
+  ></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"
+    crossorigin="anonymous"
+  ></script>
+
+  <!-- (F) 사이드바 동작 스크립트 -->
+  <script>
+    const openSidebarBtn = document.getElementById("openSidebarBtn");
+    const closeSidebarBtn = document.getElementById("closeSidebarBtn");
+    const sidebar = document.getElementById("sidebar");
+    const navItems = document.querySelectorAll(".sidebar-nav-item");
+
+    // 현재 열려있는 서브메뉴 인덱스 저장용
+    let openItems = [];
+
+    // (1) 사이드바 열기
+    openSidebarBtn.addEventListener("click", () => {
+      sidebar.classList.remove("closed");
+      openSidebarBtn.classList.add("hidden");
+    });
+
+    // (2) 사이드바 닫기
+    closeSidebarBtn.addEventListener("click", () => {
+      sidebar.classList.add("closed");
+      openSidebarBtn.classList.remove("hidden");
+    });
+
+    // (3) 상위 메뉴를 클릭하면 하위 서브메뉴를 토글
+    navItems.forEach((item) => {
+      item.addEventListener("click", () => {
+        const index = item.dataset.index;
+        if (openItems.includes(index)) {
+          // 이미 열려있으면 닫는다
+          openItems = openItems.filter((i) => i !== index);
+        } else {
+          openItems.push(index);
+        }
+
+        // 해당 인덱스 서브메뉴(.sidebar-sub-list)
+        const subList = document.querySelector(`.sidebar-sub-list[data-sub="${index}"]`);
+        if (subList) {
+          subList.classList.toggle("open");
+        }
+
+        // 체브론 아이콘 회전
+        const chevron = item.querySelector(".chevron");
+        if (chevron) {
+          chevron.classList.toggle("rotated");
+        }
+      });
+    });
+  </script>
+</body>
+</html>
