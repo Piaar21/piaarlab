@@ -4964,12 +4964,17 @@ def naver_profit_report_view(request):
         day_p_o_map[key]["sales_amt"] += Decimal(final_rev)
         sku = (ds.option_id or "").strip()
         
-        try:
-            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
-            unit_price = cost_obj.purchasing_price
-        except NaverPurchaseCost.DoesNotExist:
+        # get() 대신 filter().order_by('-id').first() 사용
+        cost_obj = (
+            NaverPurchaseCost.objects
+            .filter(sku_id=sku)
+            .order_by('-id')   # id 기준으로 최신 레코드 한 건만 꺼내기
+            .first()
+        )
+        if cost_obj is None:
             unit_price = Decimal("0.00")
-        day_p_o_map[key]["purchase_cost"] += unit_price * final_qty
+        else:
+            unit_price = cost_obj.purchasing_price
         day_p_o_map[key]["etc_cost"] += Decimal("0.00")
 
     for ad in ad_report_qs:
