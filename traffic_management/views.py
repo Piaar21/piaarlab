@@ -767,14 +767,31 @@ def dashboard(request):
 
     logger = logging.getLogger(__name__)
     today = timezone.now().date()
-    tasks_list = Task.objects.filter(
-        available_end_date__gte=today
-    ).order_by('created_at').select_related('traffic', 'product')
 
+    # 1) 정렬 파라미터 읽기
+    current_sort = request.GET.get('sort', '')
+    current_order = request.GET.get('order', 'asc')
+
+    # 2) 기본 QuerySet: 이용가능 종료일이 오늘 이후인 Task만
+    qs = Task.objects.filter(
+        available_end_date__gte=today
+    ).select_related('traffic', 'product')
+
+    # 3) 정렬 적용
+    if current_sort == 'available_start':
+        # 사용자가 헤더를 클릭한 경우: asc/desc 토글
+        if current_order == 'desc':
+            qs = qs.order_by('-available_start_date')
+        else:
+            qs = qs.order_by('available_start_date')
+    else:
+        # 기본: 이용가능 시작일자 기준 오름차순 (오래된 날짜가 위로)
+        qs = qs.order_by('available_start_date')
+
+    # 4) 페이지 번호 및 페이지당 항목 수 처리
     page = request.GET.get('page', 1)
     per_page = request.GET.get('per_page', 50)
     per_page_options = [50, 100, 150, 300]
-
     try:
         per_page = int(per_page)
         if per_page not in per_page_options:
@@ -782,7 +799,7 @@ def dashboard(request):
     except ValueError:
         per_page = 50
 
-    paginator = Paginator(tasks_list, per_page)
+    paginator = Paginator(qs, per_page)
     try:
         tasks = paginator.page(page)
     except PageNotAnInteger:
@@ -790,12 +807,17 @@ def dashboard(request):
     except EmptyPage:
         tasks = paginator.page(paginator.num_pages)
 
+    # 5) 템플릿으로 넘겨줄 컨텍스트에 정렬 정보 추가
     context = {
         'tasks': tasks,
         'per_page_options': per_page_options,
         'selected_per_page': per_page,
+        'current_sort': current_sort,
+        'current_order': current_order,
     }
     return render(request, 'rankings/dashboard.html', context)
+
+
 
 def compute_month_volume_and_growth(est_data):
     """
