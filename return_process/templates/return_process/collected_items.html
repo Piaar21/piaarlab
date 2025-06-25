@@ -74,7 +74,9 @@
                             <th>상품명</th>
                             <th>옵션명</th>
                             <th>수량</th>
-                            <th>스토어명</th>
+                            <th class="sortable" style="cursor:pointer">
+                                스토어명 <span class="sort-indicator"></span>
+                              </th>
                             <th>수취인명</th>
                             <th>연락처</th>
                             <th>옵션코드</th>
@@ -702,6 +704,29 @@
                     showTemporaryMessage('수량 업데이트 실패');
                 }
             });
+        });
+        const storeHeader = document.querySelector('#items-table thead th.sortable');
+        let storeAsc = true;  // true: 다음 클릭 때 오름차순, false면 내림차순
+        storeHeader.addEventListener('click', () => {
+        const tbody = document.querySelector('#items-table tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        // 스토어명 컬럼이 몇 번째인지 구하기
+        const idx = Array.from(storeHeader.parentNode.children).indexOf(storeHeader);
+
+        rows.sort((a, b) => {
+            const ta = a.children[idx].textContent.trim();
+            const tb = b.children[idx].textContent.trim();
+            return storeAsc
+            ? ta.localeCompare(tb, 'ko')
+            : tb.localeCompare(ta, 'ko');
+        });
+
+        // 정렬된 순서로 다시 붙이기
+        rows.forEach(r => tbody.appendChild(r));
+
+        // 화살표 표시 업데이트
+        storeHeader.querySelector('.sort-indicator').textContent = storeAsc ? '▲' : '▼';
+        storeAsc = !storeAsc;
         });
     });
     </script>
