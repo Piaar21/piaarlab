@@ -909,15 +909,22 @@
                 return;
             }
             fetch("{% url 'send_return_items' %}", {
-                method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({ ids: selectedIds })
             })
             .then(res => res.json())
             .then(data => {
-                if (data.success) {
-                    showTemporaryMessage('셀러툴 전송 성공!');
+                const sc = data.success_count || 0;
+                const fc = data.failure_count || 0;
+                // 실패 메시지까지 보고 싶으면 error_message도 포함 가능
+                if (fc > 0) {
+                    showTemporaryMessage(`전송 완료: 성공 ${sc}건, 실패 ${fc}건\n오류: ${data.error_message || '없음'}`);
                 } else {
-                    showTemporaryMessage('전송 실패: ' + (data.error_message || '오류'));
+                    showTemporaryMessage(`전송 완료: 성공 ${sc}건, 실패 ${fc}건`);
                 }
             })
             .catch(err => {
