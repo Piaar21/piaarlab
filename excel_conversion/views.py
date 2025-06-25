@@ -241,6 +241,9 @@ def excel_settlement(request):
                     # 엑셀 파일에서 데이터 읽기
                     df = pd.read_excel(f, header=None)
 
+                    # 1) 상품코드 (엑셀의 C10 셀에서 추출)
+                    product_code = str(df.iat[9, 2])  # C10
+
                     # 2) '합계' 앞 데이터 구간 찾기
                     total_idx = None
                     for idx, row in df.iterrows():
@@ -257,7 +260,7 @@ def excel_settlement(request):
 
                             # 데이터 추출 (순서대로 기입)
                             values = [
-                                row[0],  # 상품코드
+                                product_code,  # 상품코드 (C10 셀에서 추출한 값)
                                 row[1],  # 상품명/옵션/BARCODE
                                 row[2],  # 매입유형/면세여부
                                 row[3],  # 발주유형
