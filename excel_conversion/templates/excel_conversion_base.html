@@ -340,29 +340,11 @@
   <nav class="navbar-tabs">
     <ul class="nav nav-tabs justify-content-center">
       <li class="nav-item">
-        <a class="nav-link" href="{% url 'return_dashboard' %}">대시보드</a>
+        <a class="nav-link" href="{% url 'excel_conversion:excel_upload' %}">발주서</a>
       </li>
       <li class="nav-item">
-        <a class="nav-link" href="{% url '반품목록' %}">반품목록</a>
+        <a class="nav-link" href="{% url 'excel_conversion:excel_settlement' %}">정산서</a>
       </li>
-      <li class="nav-item">
-        <a class="nav-link" href="{% url '스캔' %}">스캔</a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" href="{% url '수거완료' %}">수거완료</a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" href="{% url '검수완료' %}">검수완료</a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" href="{% url '반품완료' %}">반품완료</a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" href="{% url '재고반영완료' %}">재고반영</a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" href="{% url '처리완료' %}">처리완료</a>
-        </li>
     </ul>
   </nav>
 

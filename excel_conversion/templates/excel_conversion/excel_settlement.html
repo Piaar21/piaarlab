@@ -1,0 +1,277 @@
+{% extends "excel_conversion_base.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="text-center space-y-2">
+      <h1 class="text-3xl font-bold text-slate-900">정산 데이터 관리</h1>
+      <p class="text-slate-600">엑셀 파일을 업로드하여 정산 데이터를 관리하세요</p>
+    </div>
+
+    <!-- 업로드 영역(Card 대체) -->
+    <div class="card">
+      <div class="p-4 border-b">
+        <h2 class="text-xl font-semibold">파일 업로드</h2>
+        <p class="text-sm text-slate-500">
+          엑셀 파일을 드래그 앤 드롭하거나 클릭하여 업로드하세요. 데이터는 기존 데이터에 누적됩니다.
+        </p>
+      </div>
+      <div class="p-4">
+        <!-- 드래그 앤 드롭 영역 -->
+        <div id="drop-zone" class="border-2 border-dashed rounded-lg p-8 text-center transition-colors">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="mx-auto h-12 w-12 text-slate-400 mb-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="2"
+            stroke="currentColor"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+
+          <div class="space-y-2">
+            <p class="text-lg font-medium">엑셀 파일을 여기에 드롭하세요</p>
+            <p class="text-sm text-slate-500">또는</p>
+
+            <form
+              id="excel-upload-form"
+              method="POST"
+              action="{% url 'excel_conversion:excel_settlement' %}"
+              enctype="multipart/form-data"
+            >
+              {% csrf_token %}
+              <label
+                for="file-upload"
+                class="inline-flex items-center cursor-pointer px-3 py-2 border border-slate-300 rounded-md text-sm hover:bg-slate-100"
+              >
+                파일 선택
+              </label>
+              <input
+                id="file-upload"
+                name="excel_files"
+                type="file"
+                accept=".xlsx,.xls"
+                multiple
+                class="hidden"
+              />
+              <button
+                type="submit"
+                class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
+              >
+                엑셀 업로드
+              </button>
+            </form>
+          </div>
+
+          <p class="text-xs text-slate-500 mt-4">지원 형식: .xlsx, .xls</p>
+        </div>
+
+        {% if error_message %}
+          <div class="mt-4 border border-red-300 bg-red-50 text-red-600 p-2 rounded">
+            {{ error_message }}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if data_list %}
+    <div class="card">
+      <div class="p-4 border-b flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-semibold">주문 데이터</h2>
+          <p class="text-sm text-slate-500">
+            업로드된 주문 데이터 목록입니다. 총 {{ data_list|length }}건의 데이터가 있습니다.
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <form method="POST" action="{% url 'excel_conversion:excel_download' %}">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="inline-flex items-center px-2 py-1 border border-slate-300 rounded text-xs hover:bg-slate-100"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-3 w-3 mr-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+                stroke="currentColor"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              내보내기
+            </button>
+          </form>
+          <form method="POST" action="{% url 'excel_conversion:excel_clear_set' %}">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="inline-flex items-center px-3 py-2 border border-red-300 bg-red-50 text-red-700 rounded-md text-xs hover:bg-red-100"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4 mr-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+                stroke="currentColor"
+              >
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path
+                  d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 
+                     2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                ></path>
+              </svg>
+              전체 삭제
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="p-4 max-h-[600px] overflow-auto">
+        <table class="min-w-[2000px] w-full text-sm">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="py-2 px-3 border-b">번호</th>
+              <th class="py-2 px-3 border-b">상품코드</th>
+              <th class="py-2 px-3 border-b">상품명/옵션/BARCODE</th>
+              <th class="py-2 px-3 border-b">매입유형/면세여부</th>
+              <th class="py-2 px-3 border-b">발주유형</th>
+              <th class="py-2 px-3 border-b">물류센터</th>
+              <th class="py-2 px-3 border-b">발주수량</th>
+              <th class="py-2 px-3 border-b">업체납품가능수량</th>
+              <th class="py-2 px-3 border-b">입고수량</th>
+              <th class="py-2 px-3 border-b">매입가(공급가)</th>
+              <th class="py-2 px-3 border-b">공급가액(공급가)</th>
+              <th class="py-2 px-3 border-b">부가세(공급가)</th>
+              <th class="py-2 px-3 border-b">매입가(발주금액)</th>
+              <th class="py-2 px-3 border-b">공급가액(발주금액)</th>
+              <th class="py-2 px-3 border-b">부가세(발주금액)</th>
+              <th class="py-2 px-3 border-b">생산년도</th>
+              <th class="py-2 px-3 border-b">매입가(입고금액)</th>
+              <th class="py-2 px-3 border-b">공급가액(입고금액)</th>
+              <th class="py-2 px-3 border-b">부가세(입고금액)</th>
+              <th class="py-2 px-3 border-b">제조일자관리</th>
+              <th class="py-2 px-3 border-b">제조(수입)일자</th>
+              <th class="py-2 px-3 border-b">유통(소비)기한</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in data_list %}
+              <tr class="hover:bg-slate-50">
+                <td class="py-2 px-3 border-b font-medium">{{ forloop.counter }}</td>
+                <td class="py-2 px-3 border-b">{{ row.상품코드 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.상품명_옵션_BARCODE }}</td>
+                <td class="py-2 px-3 border-b">{{ row.매입유형_면세여부 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.발주유형 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.물류센터 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.발주수량 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.업체납품가능수량 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.입고수량 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.매입가_공급가 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.공급가액_공급가 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.부가세_공급가 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.매입가_발주금액 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.공급가액_발주금액 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.부가세_발주금액 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.생산년도 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.매입가_입고금액 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.공급가액_입고금액 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.부가세_입고금액 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.제조일자관리 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.제조_수입일자 }}</td>
+                <td class="py-2 px-3 border-b">{{ row.유통_소비기한 }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="20" class="text-center py-4">데이터가 없습니다</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+      <div class="card empty-state">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-16 w-16 text-slate-300 mb-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke-width="2"
+          stroke="currentColor"
+        >
+          <path d="M9 2v2H5a2 2 0 00-2 2v12a2 
+                   2 0 002 2h14a2 2 0 002-2V6a4 4 
+                   0 00-4-4H9z"></path>
+          <path d="M9 2v2H5a2 2 0 00-2 2v12a2 
+                   2 0 002 2h14a2 2 0 002-2V6a4 4 
+                   0 00-4-4H9z"></path>
+          <path d="M9 10h9M9 14h9M9 18h9"></path>
+          <path d="M9 6h9"></path>
+        </svg>
+        <h3 class="text-lg font-medium text-slate-900 mb-2">데이터가 없습니다</h3>
+        <p class="text-slate-500 text-center">엑셀 파일을 업로드하여 주문 데이터를 확인하세요</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+.card { background:#fff; border:1px solid #e2e8f0; border-radius:.5rem; box-shadow:0 1px 2px rgba(0,0,0,0.05); margin-bottom:1.5rem; }
+#drop-zone { border:2px dashed #cbd5e1; border-radius:.5rem; padding:2rem; text-align:center; transition:border-color .2s, background-color .2s; }
+#drop-zone.dragging { border-color:#3b82f6; background-color:#eff6ff; }
+.empty-state { background:#fff; border:1px solid #e2e8f0; border-radius:.5rem; box-shadow:0 1px 2px rgba(0,0,0,0.05); text-align:center; padding:3rem; }
+#drop-zone svg {
+  width: 2rem;   /* Tailwind의 h-8 */
+  height: 2rem;  /* Tailwind의 w-8 */
+}
+
+/* 빈 상태(empty-state) 아이콘 크기 축소 */
+.empty-state svg {
+  width: 2.5rem; /* Tailwind의 h-10 */
+  height: 2.5rem;/* Tailwind의 w-10 */
+}
+table th {
+    min-width: 150px;
+  }
+</style>
+
+<script>
+  const dropZone = document.getElementById("drop-zone");
+  const fileInput = document.getElementById("file-upload");
+
+  if (dropZone) {
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragging");
+    });
+
+    dropZone.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragging");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragging");
+
+      // 여러 파일 드롭 시 처리
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+      }
+    });
+  }
+</script>
+
+{% endblock %}
