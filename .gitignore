@@ -6,31 +6,35 @@
 
 # Django 데이터베이스 파일
 db.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 
 # 로그 파일
 *.log
 *.icloud
+piaarlab.log
 
-# Python 캐시 파일
+# Python 캐시 및 빌드 결과
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
 
-# 가상환경 폴더
+# 가상환경
 venv/
+myenv/
 
-# IDE 및 편집기 설정
+# Excel 덤프 및 임시 파일
+*.xlsx
+tmp/
+
+# IDE 및 에디터 설정
 .vscode/
 .idea/
 
-venv/
-__pycache__/
-*.log
-.env
-apireturnprocess/
-
-# gcloud json
-# trakingperformance-f9a2037d1b6b.jsoncredentials/
+# 자격 증명 및 백업
 credentials/
 backups/
+piaarlab-backup.git/
 
-piaarlab.log/
+# 프로젝트 특정 폴더
+apireturnprocess/
