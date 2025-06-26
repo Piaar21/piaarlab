@@ -91,7 +91,7 @@
           </p>
         </div>
         <div class="flex gap-2">
-          <form method="POST" action="{% url 'excel_conversion:excel_download' %}">
+          <form method="POST" action="{% url 'excel_conversion:excel_download_settlement' %}">
             {% csrf_token %}
             <button
               type="submit"
