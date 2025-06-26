@@ -106,7 +106,10 @@ def excel_upload(request):
                             return row.iat[idx] if idx is not None else ''
 
                         # 필드 추출
-                        raw = str(get_val('상품명/옵션/BARCODE') or '')
+                        raw = str(get_val('상품명/옵션/BARCODE') or '').strip()
+                        if not raw:
+                            # 상품명/옵션이 비어 있으면 이 행은 삭제(건너뛰기)
+                            continue
                         parts = [p.strip() for p in raw.split(',', 1)]
                         product_name = parts[0]
                         option_info  = parts[1] if len(parts) > 1 else ''
@@ -326,4 +329,84 @@ def excel_settlement(request):
         'success_message': success_message,
     })
 
+
+# 다운로드할 엑셀의 최종 헤더 (사용자에게 보여줄 컬럼명)
+SETTLEMENT_OUT_HEADERS = [
+    "상품코드",
+    "상품명/옵션/BARCODE",
+    "매입유형/면세여부",
+    "발주유형",
+    "물류센터",
+    "발주수량",
+    "업체납품가능수량",
+    "입고수량",
+    "매입가(공급가)",
+    "공급가액(공급가)",
+    "부가세(공급가)",
+    "매입가(발주금액)",
+    "공급가액(발주금액)",
+    "부가세(발주금액)",
+    "생산년도",
+    "매입가(입고금액)",
+    "공급가액(입고금액)",
+    "부가세(입고금액)",
+    "제조일자관리",
+    "제조(수입)일자",
+    "유통(소비)기한",
+]
+
+# 내부적으로 DataFrame에 쓰이는 키 (앞서 매핑한 mapped_row의 키)
+SETTLEMENT_KEYS = [
+    "상품코드",
+    "상품명_옵션_BARCODE",
+    "매입유형_면세여부",
+    "발주유형",
+    "물류센터",
+    "발주수량",
+    "업체납품가능수량",
+    "입고수량",
+    "매입가_공급가",
+    "공급가액_공급가",
+    "부가세_공급가",
+    "매입가_발주금액",
+    "공급가액_발주금액",
+    "부가세_발주금액",
+    "생산년도",
+    "매입가_입고금액",
+    "공급가액_입고금액",
+    "부가세_입고금액",
+    "제조일자관리",
+    "제조_수입일자",
+    "유통_소비기한",
+]
+
+
+def excel_download_settlement(request):
+    # 세션에서 정산 데이터 불러오기
+    data_list = request.session.get('excel_data', [])
+    if not data_list:
+        # 데이터가 없으면 업로드 페이지로
+        return redirect(reverse('excel_conversion:excel_settlement'))
+
+    # DataFrame 생성
+    df = pd.DataFrame(data_list)
+
+    # 내부 키 순서로 정렬 후, 사용자 헤더로 컬럼명 변경
+    df = df[SETTLEMENT_KEYS]
+    df.columns = SETTLEMENT_OUT_HEADERS
+
+    # in-memory 엑셀 생성
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='정산데이터')
+    output.seek(0)
+
+    # 응답 설정
+    filename = f'정산데이터_{datetime.now().date().isoformat()}.xlsx'
+    resp = HttpResponse(
+        output.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
