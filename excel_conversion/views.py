@@ -240,14 +240,12 @@ def excel_settlement(request):
                     error_message = '엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.'
                     logger.warning('Invalid file type: %s', f.name)
                     continue
-                try:
-                    # 엑셀 파일에서 데이터 읽기
-                    df = pd.read_excel(f, header=None)
 
-                    # 1) 상품코드 (엑셀의 C10 셀에서 추출)
+                try:
+                    df = pd.read_excel(f, header=None)
                     product_code = str(df.iat[9, 2])  # C10
 
-                    # 2) '합계' 앞 데이터 구간 찾기
+                    # '합계' 직전 행 찾기
                     total_idx = None
                     for idx, row in df.iterrows():
                         if row.astype(str).str.strip().eq('합계').any():
@@ -255,66 +253,40 @@ def excel_settlement(request):
                             break
                     last_idx = (total_idx - 1) if total_idx is not None else (df.shape[0] - 1)
 
-                    # 3) 22열부터 데이터를 순차적으로 매핑
-                    for row_idx in range(21, last_idx + 1):  # 22열부터 시작
-                        # 짝수 행을 건너뛰고 홀수 행만 처리
-                        if row_idx % 2 != 0:  # 홀수 행만 선택
-                            row = df.iloc[row_idx]
+                    # 키 순서
+                    keys = [
+                        "상품코드","상품명_옵션_BARCODE","매입유형_면세여부","발주유형","물류센터",
+                        "발주수량","업체납품가능수량","입고수량","매입가_공급가","공급가액_공급가",
+                        "부가세_공급가","매입가_발주금액","공급가액_발주금액","부가세_발주금액",
+                        "생산년도","매입가_입고금액","공급가액_입고금액","부가세_입고금액",
+                        "제조일자관리","제조_수입일자","유통_소비기한"
+                    ]
 
-                            # 데이터 추출 (순서대로 기입)
-                            values = [
-                                product_code,  # 상품코드 (C10 셀에서 추출한 값)
-                                row[1],  # 상품명/옵션/BARCODE
-                                row[2],  # 매입유형/면세여부
-                                row[3],  # 발주유형
-                                row[4],  # 물류센터
-                                row[5],  # 발주수량
-                                row[6],  # 업체납품가능수량
-                                row[7],  # 입고수량
-                                row[8],  # 매입가(공급가)
-                                row[9],  # 공급가액(공급가)
-                                row[10], # 부가세(공급가)
-                                row[11], # 매입가(발주금액)
-                                row[12], # 공급가액(발주금액)
-                                row[13], # 부가세(발주금액)
-                                row[14], # 생산년도
-                                row[15], # 매입가(입고금액)
-                                row[16], # 공급가액(입고금액)
-                                row[17], # 부가세(입고금액)
-                                row[18], # 제조일자관리
-                                row[19], # 제조(수입)일자
-                                row[20]  # 유통(소비)기한
-                            ]
+                    for row_idx in range(21, last_idx+1, 2):
+                        odd = df.iloc[row_idx]
+                        odd_values = [
+                            product_code,
+                            odd.iloc[1], odd.iloc[2], odd.iloc[3], odd.iloc[4],
+                            odd.iloc[5], odd.iloc[6], odd.iloc[7],
+                            odd.iloc[8], odd.iloc[9], odd.iloc[10],
+                            odd.iloc[11], odd.iloc[12], odd.iloc[13],
+                            odd.iloc[14], odd.iloc[15], odd.iloc[16],
+                            odd.iloc[17], odd.iloc[18], odd.iloc[19],
+                            odd.iloc[20]
+                        ]
+                        data_list.append(dict(zip(keys, odd_values)))
+                        total_new += 1
 
-                            # 각 행 데이터를 데이터 리스트에 추가
-                            mapped_row = {
-                                "상품코드": values[0],
-                                "상품명_옵션_BARCODE": values[1],
-                                "매입유형_면세여부": values[2],
-                                "발주유형": values[3],
-                                "물류센터": values[4],
-                                "발주수량": values[5],
-                                "업체납품가능수량": values[6],
-                                "입고수량": values[7],
-                                "매입가_공급가": values[8],
-                                "공급가액_공급가": values[9],
-                                "부가세_공급가": values[10],
-                                "매입가_발주금액": values[11],
-                                "공급가액_발주금액": values[12],
-                                "부가세_발주금액": values[13],
-                                "생산년도": values[14],
-                                "매입가_입고금액": values[15],
-                                "공급가액_입고금액": values[16],
-                                "부가세_입고금액": values[17],
-                                "제조일자관리": values[18],
-                                "제조_수입일자": values[19],
-                                "유통_소비기한": values[20]
-                            }
-                            data_list.append(mapped_row)
+                        # 짝수행: 상품명/옵션/BARCODE 컬럼에만 바코드를 채움
+                        if row_idx+1 <= last_idx:
+                            even = df.iloc[row_idx+1]
+                            even_values = [""] * len(keys)
+                            even_values[2] = even.iloc[2]  # 두 번째 칸에 바코드
+                            data_list.append(dict(zip(keys, even_values)))
                             total_new += 1
 
                     logger.info(f'Mapped {total_new} rows from file {f.name}')
-                    
+
                 except Exception as e:
                     error_message = f'파일 매핑 중 오류: {e}'
                     logger.error(f'Error mapping {f.name}: {e}')
@@ -328,6 +300,7 @@ def excel_settlement(request):
         'error_message': error_message,
         'success_message': success_message,
     })
+
 
 
 # 다운로드할 엑셀의 최종 헤더 (사용자에게 보여줄 컬럼명)
