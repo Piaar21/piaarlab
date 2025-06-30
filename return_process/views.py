@@ -1144,40 +1144,58 @@ def download_unmatched(request):
     wb.save(response)
     return response
 
-import json
-import requests
-from django.shortcuts import render
-from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
-from .models import ReturnItem
-
-@login_required
-def collected_items(request):
-    """'수거완료' 상태인 아이템 목록을 보여주는 뷰."""
-    # '수거완료' 상태인 아이템들 조회
-    items = ReturnItem.objects.filter(processing_status='수거완료')
-
-    # GET 요청: 템플릿 렌더링
-    return render(request, 'return_process/collected_items.html', {
-        'items': items,
-    })
 
 
 @login_required
 def collected_items(request):
-    items = ReturnItem.objects.filter(processing_status='수거완료')
-    # 지원되는 스토어 목록
+    print("collected_items view called")
     store_code_map = {
         "니뜰리히": "wcsrr1",
         "수비다": "wce1wv",
         "노는개최고양": "w4g8ot",
         "아르빙": "w48val",
     }
-    store_code_map_keys = list(store_code_map.keys())
+
+    if request.method == 'POST':
+        # 1) 들어온 원시 바디 찍어보기
+        print("🔥 POST body raw:", request.body)
+
+        try:
+            payload = json.loads(request.body)
+        except Exception as e:
+            print("❌ JSON 파싱 오류:", e)
+            return JsonResponse({'success': False, 'error': 'bad json'}, status=400)
+
+        rows = payload.get('rows', [])
+        print("🔥 Parsed rows:", rows)
+
+        for row in rows:
+            pk = row.get('id')
+            print(f"⏳ 처리중 item id={pk}, data={row}")
+            try:
+                item = ReturnItem.objects.get(pk=pk)
+            except ReturnItem.DoesNotExist:
+                print(f"❌ 해당 아이디 없음: {pk}")
+                continue
+
+            # 실제로 값을 바꿀 필드들
+            for field in ('processing_status', 'note', 'quantity', 'claim_type', 'claim_reason'):
+                if field in row:
+                    print(f"   • setting {field} = {row[field]}")
+                    setattr(item, field, row[field])
+
+            item.save()
+            print(f"✅ Saved item {pk}")
+
+        return JsonResponse({'success': True})
+
+    # GET 요청일 때만 이 부분이 실행됩니다
+    items = ReturnItem.objects.filter(processing_status='수거완료')
     return render(request, 'return_process/collected_items.html', {
         'items': items,
-        'store_code_map_keys': store_code_map_keys,
+        'store_code_map_keys': list(store_code_map.keys()),
     })
+
 
 
 @login_required

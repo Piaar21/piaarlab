@@ -125,7 +125,7 @@ def excel_upload(request):
                             if nk == normalize_key('상품명 (필수)'):      val = product_name
                             elif nk == normalize_key('옵션정보 (필수)'):    val = option_info
                             elif nk == normalize_key('수량 (필수)'):        val = qty
-                            elif nk == normalize_key('수취인명 (필수)'):    val = f"{get_val('물류센터')} (로켓배송)"
+                            elif nk == normalize_key('수취인명 (필수)'):    val = f"{get_val('물류센터')} (로켓배송) {order_no}"
                             elif nk == normalize_key('전화번호1 (필수)'):   val = phone1
                             elif nk == normalize_key('전화번호2'):          val = phone2
                             elif nk == normalize_key('주소 (필수)'):        val = address

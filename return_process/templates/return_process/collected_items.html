@@ -3,6 +3,8 @@
 {% block content %}
 
 <!-- 전역에 showTemporaryMessage 함수 선언 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
 <script>
     function getCheckedRows() {
       return Array.from(document.querySelectorAll('.row-checkbox:checked'))
@@ -48,6 +50,7 @@
             <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
             <span class="btn-text">셀러툴 전송</span>
         </button>
+        <button class="btn btn-outline-secondary ms-2" id="btn-excel">Excel</button>
 
         <button class="btn btn-danger ms-2" id="delete-items">데이터 삭제</button>
     </div>
@@ -226,6 +229,29 @@
     </div>
 </div>
 
+<!-- ====== Excel Import/Export 모달 ====== -->
+<div class="modal fade" id="excelModal" tabindex="-1" aria-labelledby="excelModalLabel" aria-hidden="true">
+    <div class="modal-dialog" style="max-width:500px;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="excelModalLabel">Excel 다운로드/업로드</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+        </div>
+        <div class="modal-body">
+          <button class="btn btn-primary w-100 mb-3" id="btn-download-excel">현재 테이블 다운로드</button>
+          <div class="mb-2">
+            <label for="excel-file-input" class="form-label">Excel 파일 선택</label>
+            <input class="form-control" type="file" id="excel-file-input" accept=".xlsx,.xls">
+          </div>
+          <button class="btn btn-success w-100" id="btn-upload-excel">엑셀 업로드</button>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <style>
     :root {
         --primary-color: #6c5ce7;
@@ -326,6 +352,10 @@
     }
     .table thead th:first-child {
         z-index: 3;
+    }
+    #control-panel .btn {
+        padding: .25rem .5rem;
+        font-size: .875rem;
     }
 </style>
 
@@ -732,212 +762,237 @@
     </script>
     
     <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        var memberIdModalElement = document.getElementById('memberIdModal');
-        if (!memberIdModalElement) {
-            console.error("memberIdModal 요소를 찾을 수 없습니다.");
-            return;
-        }
-        var memberIdModal = new bootstrap.Modal(memberIdModalElement);
-    
-        window.openTalkChat = function(orderNumber, storeName) {
-            console.log("openTalkChat 호출됨. orderNumber:", orderNumber, "storeName:", storeName);
-            var apiUrl = "https://sell.smartstore.naver.com/o/v3/oa/biztalk/" + orderNumber + "/";
-            console.log("스마트스토어 API 호출 URL:", apiUrl);
-            var apiWindow = window.open(apiUrl, "SmartStorePage", "width=1024,height=768");
-            memberIdModal.show();
-            document.getElementById("memberIdConfirm").onclick = function() {
+        document.addEventListener("DOMContentLoaded", function() {
+          // ====== 톡톡 채팅 오픈 & Modal ======
+          var memberIdModalEl = document.getElementById('memberIdModal');
+          if (memberIdModalEl) {
+            var memberIdModal = new bootstrap.Modal(memberIdModalEl);
+            window.openTalkChat = function(orderNumber, storeName) {
+              console.log("openTalkChat:", orderNumber, storeName);
+              var apiUrl = "https://sell.smartstore.naver.com/o/v3/oa/biztalk/" + orderNumber + "/";
+              window.open(apiUrl, "SmartStorePage", "width=1024,height=768");
+              memberIdModal.show();
+              document.getElementById("memberIdConfirm").onclick = function() {
                 var memberId = document.getElementById("memberIdInput").value.trim();
-                if (!memberId) {
-                    alert("Member ID를 입력해주세요.");
-                    return;
-                }
+                if (!memberId) return alert("Member ID를 입력해주세요.");
                 var code = storeCodeMap[storeName];
-                if (!code) {
-                    alert("지원되지 않는 스토어입니다.");
-                    return;
-                }
+                if (!code) return alert("지원되지 않는 스토어입니다.");
                 var finalLink = "https://partner.talk.naver.com/chat/ct/" + code + "/" + memberId + "?";
                 console.log("최종 톡톡 링크:", finalLink);
                 memberIdModal.hide();
                 window.open(finalLink, "_blank");
+              };
             };
-        };
-    
-        window.storeCodeMap = {
+          } else {
+            console.error("memberIdModal 요소를 찾을 수 없습니다.");
+          }
+        
+          // ====== 스토어 코드 맵 ======
+          var storeCodeMap = {
             "니뜰리히": "wcsrr1",
             "수비다": "wce1wv",
             "노는개최고양": "w4g8ot",
             "아르빙": "w48val"
-        };
-    
-        function getCheckedIdsNAOnly() {
-            const result = [];
-            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-            checkedBoxes.forEach(chk => {
-                const tr = chk.closest('tr');
-                if (!tr) return;
-                const claimType = tr.getAttribute('data-claim_type') || "";
-                if (claimType === 'N/A') {
-                    result.push(chk.value);
-                }
-            });
-            console.log("[DEBUG] getCheckedIdsNAOnly =>", result);
-            return result;
-        }
-    
-        const btnReturn = document.getElementById('btn-claim-type-return');
-        btnReturn.addEventListener('click', () => {
-            const selectedIds = getCheckedIdsNAOnly();
-            if (selectedIds.length === 0) {
-                showTemporaryMessage("체크된 항목 중 'N/A'가 없습니다.");
-                return;
-            }
-            fetch("{% url 'update_claim_type' %}", {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: 'update_claim_type',
-                    claim_type: 'RETURN',
-                    ids: selectedIds
-                })
-            })
-            .then(res => {
-                if (!res.ok) {
-                    throw new Error("서버 응답 오류(HTTP " + res.status + ")");
-                }
-                return res.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showTemporaryMessage(`RETURN으로 ${data.updated_count}건 업데이트 완료`);
-                    setTimeout(() => { location.reload(); }, 1200);
-                } else {
-                    showTemporaryMessage(`업데이트 실패: ${data.message || '알 수 없는 오류'}`);
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                showTemporaryMessage(`요청 오류: ${err.message}`);
-            });
-        });
-    
-        const btnExchange = document.getElementById('btn-claim-type-exchange');
-        btnExchange.addEventListener('click', () => {
-            const selectedIds = getCheckedIdsNAOnly();
-            if (selectedIds.length === 0) {
-                showTemporaryMessage("체크된 항목 중 'N/A'가 없습니다.");
-                return;
-            }
-            fetch("{% url 'update_claim_type' %}", {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': '{{ csrf_token }}',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: 'update_claim_type',
-                    claim_type: 'EXCHANGE',
-                    ids: selectedIds
-                })
-            })
-            .then(res => {
-                if (!res.ok) {
-                    throw new Error("서버 응답 오류(HTTP " + res.status + ")");
-                }
-                return res.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    showTemporaryMessage(`EXCHANGE로 ${data.updated_count}건 업데이트 완료`);
-                    setTimeout(() => { location.reload(); }, 1200);
-                } else {
-                    showTemporaryMessage(`업데이트 실패: ${data.message || '알 수 없는 오류'}`);
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                showTemporaryMessage(`요청 오류: ${err.message}`);
-            });
-        });
+          };
         
-        // 임시 메시지를 3초 동안 화면에 표시하는 함수
-        function showTemporaryMessage(message) {
-            // 이미 메시지 표시 요소가 있으면 재사용, 없으면 생성
-            let messageEl = document.getElementById('temporaryMessage');
-            if (!messageEl) {
-                messageEl = document.createElement('div');
-                messageEl.id = 'temporaryMessage';
-                // 메시지 스타일 - 필요에 따라 수정 가능
-                messageEl.style.position = 'fixed';
-                messageEl.style.top = '20px';
-                messageEl.style.right = '20px';
-                messageEl.style.background = 'rgba(0, 0, 0, 0.7)';
-                messageEl.style.color = '#fff';
-                messageEl.style.padding = '10px 20px';
-                messageEl.style.borderRadius = '4px';
-                messageEl.style.zIndex = 1000;
-                document.body.appendChild(messageEl);
-            }
-
-            messageEl.textContent = message;
-            messageEl.style.display = 'block';
-
-            // 3초 후 메시지 숨김
-            setTimeout(function() {
-                messageEl.style.display = 'none';
-            }, 3000);
-        }
-
-        // "셀러툴 전송" 버튼 기능
-        const sendBtn = document.getElementById('send-sellertool');
-        const sendSpinner = sendBtn.querySelector('.spinner-border');
-        const sendText = sendBtn.querySelector('.btn-text');
-        sendBtn.addEventListener('click', function() {
-            sendSpinner.classList.remove('d-none');
-            sendText.textContent = '전송 중...';
-            sendBtn.disabled = true;
-            const selectedIds = getCheckedIds();
-            if (!selectedIds.length) {
-                showTemporaryMessage('체크한 항목이 없습니다.');
-                sendSpinner.classList.add('d-none');
-                sendText.textContent = '셀러툴 전송';
-                sendBtn.disabled = false;
-                return;
-            }
-            fetch("{% url 'send_return_items' %}", {
+          // ====== 'N/A'인 체크된 ID만 추출 ======
+          function getCheckedIdsNAOnly() {
+            var result = [];
+            document.querySelectorAll('.row-checkbox:checked').forEach(function(chk) {
+              var tr = chk.closest('tr');
+              if (tr && tr.dataset.claim_type === 'N/A') {
+                result.push(chk.value);
+              }
+            });
+            console.log("getCheckedIdsNAOnly →", result);
+            return result;
+          }
+        
+          // ====== 클레임유형 변경 버튼 바인딩 ======
+          function bindClaimButton(btnId, newType) {
+            var btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.addEventListener('click', function() {
+              var ids = getCheckedIdsNAOnly();
+              if (!ids.length) return showTemporaryMessage("체크된 항목 중 'N/A'가 없습니다.");
+              fetch("{% url 'update_claim_type' %}", {
                 method: 'POST',
                 headers: {
-                    'X-CSRFToken': '{{ csrf_token }}',
-                    'Content-Type': 'application/json'
+                  'X-CSRFToken': '{{ csrf_token }}',
+                  'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ ids: selectedIds })
-            })
-            .then(res => res.json())
-            .then(data => {
-                const sc = data.success_count || 0;
-                const fc = data.failure_count || 0;
-                // 실패 메시지까지 보고 싶으면 error_message도 포함 가능
-                if (fc > 0) {
-                    showTemporaryMessage(`전송 완료: 성공 ${sc}건, 실패 ${fc}건\n오류: ${data.error_message || '없음'}`);
+                body: JSON.stringify({ action: 'update_claim_type', claim_type: newType, ids: ids })
+              })
+              .then(res => res.ok ? res.json() : Promise.reject("HTTP " + res.status))
+              .then(data => {
+                if (data.success) {
+                  showTemporaryMessage(newType + "로 " + data.updated_count + "건 업데이트 완료");
+                  setTimeout(() => location.reload(), 1200);
                 } else {
-                    showTemporaryMessage(`전송 완료: 성공 ${sc}건, 실패 ${fc}건`);
+                  showTemporaryMessage("업데이트 실패: " + (data.message||"알 수 없는 오류"));
                 }
-            })
-            .catch(err => {
+              })
+              .catch(err => {
                 console.error(err);
-                showTemporaryMessage('전송 오류 발생');
-            })
-            .finally(() => {
-                sendSpinner.classList.add('d-none');
-                sendText.textContent = '셀러툴 전송';
-                sendBtn.disabled = false;
+                showTemporaryMessage("요청 오류: " + err);
+              });
             });
+          }
+          bindClaimButton('btn-claim-type-return', 'RETURN');
+          bindClaimButton('btn-claim-type-exchange', 'EXCHANGE');
+        
+          // ====== 임시 메시지 표시 ======
+          function showTemporaryMessage(msg) {
+            var el = document.getElementById('temporaryMessage');
+            if (!el) {
+              el = document.createElement('div');
+              el.id = 'temporaryMessage';
+              el.style = 'position:fixed;top:20px;right:20px;background:rgba(0,0,0,0.7);color:#fff;padding:10px 20px;border-radius:4px;z-index:1000;';
+              document.body.appendChild(el);
+            }
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 3000);
+          }
+        
+          // ====== 읽기 전용 컬럼 더블클릭 방지 ======
+          var readonlyCols = [0,1,2,3,10,11,13,14,15,16,19,21,22,23];
+          document.querySelectorAll('#items-table tbody tr').forEach(function(tr) {
+            readonlyCols.forEach(function(idx) {
+              var td = tr.cells[idx];
+              if (!td) return;
+              td.style.cursor = 'not-allowed';
+              td.addEventListener('dblclick', function(e) {
+                e.stopPropagation();
+                showTemporaryMessage('해당 열은 수정할 수 없습니다.');
+              });
+            });
+          });
+        
+          // ====== Excel 모달 & 기능 ======
+          var excelModalEl = document.getElementById('excelModal'),
+              btnExcel      = document.getElementById('btn-excel'),
+              btnDownload   = document.getElementById('btn-download-excel'),
+              btnUpload     = document.getElementById('btn-upload-excel'),
+              inputFile     = document.getElementById('excel-file-input'),
+              table         = document.getElementById('items-table');
+        
+          if (!excelModalEl || !btnExcel || !btnDownload || !btnUpload || !inputFile || !table) {
+            console.error('🛑 엑셀 관련 필수 요소(id) 누락');
+          } else {
+            var excelModal = new bootstrap.Modal(excelModalEl);
+        
+            btnExcel.addEventListener('click', () => excelModal.show());
+        
+            btnDownload.addEventListener('click', () => {
+              var wb = XLSX.utils.book_new(),
+                  ws = XLSX.utils.table_to_sheet(table, { raw:true });
+              XLSX.utils.book_append_sheet(wb, ws, 'Data');
+              XLSX.writeFile(wb, 'items.xlsx');
+            });
+        
+            btnUpload.addEventListener('click', function() {
+              if (!inputFile.files.length) return showTemporaryMessage('파일을 선택해주세요.');
+              var fr = new FileReader();
+              fr.onload = async function(evt) {
+                var wb = XLSX.read(evt.target.result, { type:'binary' }),
+                    sheet = wb.Sheets[wb.SheetNames[0]],
+                    [hdrs, ...rows] = XLSX.utils.sheet_to_json(sheet, { header:1 }),
+                    trs = Array.from(table.querySelectorAll('tbody tr')),
+                    ths = Array.from(table.querySelectorAll('thead th')).map(th=>th.textContent.trim());
+        
+                if (rows.length !== trs.length) {
+                  return showTemporaryMessage('행 개수가 일치하지 않습니다.');
+                }
+        
+                // 화면 업데이트
+                var skip = ['체크박스','순번','톡톡','검수','상품명','옵션명','스토어명','수취인명','연락처','옵션코드','주문번호','배송완료일','클레임요청일','업데이트날짜'];
+                rows.forEach(function(r,i) {
+                  var tr = trs[i];
+                  hdrs.forEach(function(h,j){
+                    if (!h||skip.includes(h)) return;
+                    var col = ths.indexOf(h);
+                    if (col<0) return;
+                    tr.cells[col].textContent = r[j] ?? '';
+                  });
+                });
+        
+                // payload 생성
+                var idxStatus      = ths.indexOf('처리상태'),
+                    idxNote        = ths.indexOf('메모'),
+                    idxQuantity    = ths.indexOf('수량'),
+                    idxClaimType   = ths.indexOf('클레임유형'),
+                    idxClaimReason = ths.indexOf('클레임사유');
+                var payload = trs.map(function(tr){
+                  return {
+                    id:                tr.dataset.itemId,
+                    processing_status: idxStatus     >=0 ? tr.cells[idxStatus].textContent.trim()      : '',
+                    note:              idxNote      >=0 ? tr.cells[idxNote].textContent.trim()        : '',
+                    quantity:          idxQuantity  >=0 ? parseInt(tr.cells[idxQuantity].textContent,10)||0 : 0,
+                    claim_type:        idxClaimType >=0 ? tr.cells[idxClaimType].textContent.trim()   : '',
+                    claim_reason:      idxClaimReason>=0 ? tr.cells[idxClaimReason].textContent.trim(): ''
+                  };
+                });
+        
+                // CSRF & 전송
+                var csrftoken = document.cookie.match('(^|;)\\s*csrftoken=([^;]+)')?.pop() || '';
+                var res = await fetch('/collected/', {
+                  method: 'POST',
+                  headers: { 'Content-Type':'application/json', 'X-CSRFToken': csrftoken },
+                  body: JSON.stringify({ rows: payload })
+                });
+                var json = await res.json();
+                if (json.success) {
+                  showTemporaryMessage('저장 성공, 새로고침 됩니다.');
+                  setTimeout(() => location.reload(), 500);
+                } else {
+                  showTemporaryMessage('서버 오류: ' + (json.error || '알 수 없음'));
+                }
+                excelModal.hide();
+              };
+              fr.readAsBinaryString(inputFile.files[0]);
+            });
+          }
+        
+          // ====== 셀러툴 전송 버튼 ======
+          var sendBtn = document.getElementById('send-sellertool');
+          if (sendBtn) {
+            var spinner = sendBtn.querySelector('.spinner-border'),
+                txt     = sendBtn.querySelector('.btn-text');
+            sendBtn.addEventListener('click', function(){
+              spinner.classList.remove('d-none');
+              txt.textContent = '전송 중...';
+              sendBtn.disabled = true;
+              var ids = getCheckedIdsNAOnly();
+              if (!ids.length) {
+                showTemporaryMessage('체크한 항목이 없습니다.');
+                spinner.classList.add('d-none');
+                txt.textContent = '셀러툴 전송';
+                sendBtn.disabled = false;
+                return;
+              }
+              fetch("{% url 'send_return_items' %}", {
+                method:'POST',
+                headers:{ 'X-CSRFToken':'{{ csrf_token }}', 'Content-Type':'application/json' },
+                body: JSON.stringify({ ids: ids })
+              })
+              .then(r=>r.json())
+              .then(d=>{
+                showTemporaryMessage(`전송 완료: 성공 ${d.success_count}건, 실패 ${d.failure_count}건`);
+              })
+              .catch(e=>{
+                console.error(e);
+                showTemporaryMessage('전송 오류');
+              })
+              .finally(()=>{
+                spinner.classList.add('d-none');
+                txt.textContent = '셀러툴 전송';
+                sendBtn.disabled = false;
+              });
+            });
+          }
+        
         });
-    });
-    </script>
+        </script>
 
 {% endblock %}
