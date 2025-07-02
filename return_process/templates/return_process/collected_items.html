@@ -906,7 +906,7 @@
                 }
         
                 // 화면 업데이트
-                var skip = ['체크박스','순번','톡톡','검수','상품명','옵션명','스토어명','수취인명','연락처','옵션코드','주문번호','배송완료일','클레임요청일','업데이트날짜'];
+                var skip = ['체크박스','순번','톡톡','검수','처리상태','상품명','옵션명','스토어명','수취인명','연락처','옵션코드','주문번호','배송완료일','클레임요청일','업데이트날짜'];
                 rows.forEach(function(r,i) {
                   var tr = trs[i];
                   hdrs.forEach(function(h,j){
@@ -918,21 +918,54 @@
                 });
         
                 // payload 생성
-                var idxStatus      = ths.indexOf('처리상태'),
-                    idxNote        = ths.indexOf('메모'),
-                    idxQuantity    = ths.indexOf('수량'),
-                    idxClaimType   = ths.indexOf('클레임유형'),
-                    idxClaimReason = ths.indexOf('클레임사유');
-                var payload = trs.map(function(tr){
-                  return {
-                    id:                tr.dataset.itemId,
-                    processing_status: idxStatus     >=0 ? tr.cells[idxStatus].textContent.trim()      : '',
-                    note:              idxNote      >=0 ? tr.cells[idxNote].textContent.trim()        : '',
-                    quantity:          idxQuantity  >=0 ? parseInt(tr.cells[idxQuantity].textContent,10)||0 : 0,
-                    claim_type:        idxClaimType >=0 ? tr.cells[idxClaimType].textContent.trim()   : '',
-                    claim_reason:      idxClaimReason>=0 ? tr.cells[idxClaimReason].textContent.trim(): ''
-                  };
-                });
+               var idxStatus          = ths.indexOf('처리상태'),
+                   idxProdOrderStatus = ths.indexOf('현재클레임상태'),
+                   idxNote            = ths.indexOf('사유'),           // ← '사유' 로 수정
+                   idxClaimType       = ths.indexOf('클레임 종류'),  // ← '클레임 종류' 헤더
+                   idxClaimReason     = ths.indexOf('클레임사유'),
+                   idxCustomerReason  = ths.indexOf('고객사유'),
+                   idxQuantity        = ths.indexOf('수량'),
+                   idxReturnCharge    = ths.indexOf('수거배송비'),
+                   idxPayMethod       = ths.indexOf('배송비지급방식');
+                   var payload = trs.map(function(tr) {
+                        var obj = { id: tr.dataset.itemId };
+
+                        if (idxCustomerReason >= 0) {
+                            var cr = tr.cells[idxCustomerReason].textContent.trim();
+                            if (cr) obj.customer_reason = cr;
+                        }
+                        if (idxProdOrderStatus >= 0) {
+                            var ps = tr.cells[idxProdOrderStatus].textContent.trim();
+                            if (ps) obj.product_order_status = ps;
+                        }
+                        if (idxNote >= 0) {
+                            var v = tr.cells[idxNote].textContent.trim();
+                            if (v) obj.note = v;
+                        }
+                        if (idxQuantity >= 0) {
+                            var q = parseInt(tr.cells[idxQuantity].textContent.trim(), 10);
+                            if (!isNaN(q)) obj.quantity = q;
+                        }
+                        if (idxClaimType >= 0) {
+                            var ct = tr.cells[idxClaimType].textContent.trim();
+                            if (ct) obj.claim_type = ct;
+                        }
+                        if (idxClaimReason >= 0) {
+                            var cr = tr.cells[idxClaimReason].textContent.trim();
+                            if (cr) obj.claim_reason = cr;
+                        }
+                        if (idxReturnCharge >= 0) {
+                        var rc = parseFloat(tr.cells[idxReturnCharge].textContent.trim()) || 0;
+                        obj.return_shipping_charge = rc;
+                        }
+
+                        // 배송비지급방식
+                        if (idxPayMethod >= 0) {
+                        var pm = tr.cells[idxPayMethod].textContent.trim();
+                        if (pm) obj.shipping_charge_payment_method = pm;
+                        }                        
+                        return obj;
+                        });
         
                 // CSRF & 전송
                 var csrftoken = document.cookie.match('(^|;)\\s*csrftoken=([^;]+)')?.pop() || '';
@@ -955,44 +988,53 @@
           }
         
           // ====== 셀러툴 전송 버튼 ======
-          var sendBtn = document.getElementById('send-sellertool');
-          if (sendBtn) {
-            var spinner = sendBtn.querySelector('.spinner-border'),
-                txt     = sendBtn.querySelector('.btn-text');
-            sendBtn.addEventListener('click', function(){
-              spinner.classList.remove('d-none');
-              txt.textContent = '전송 중...';
-              sendBtn.disabled = true;
-              var ids = getCheckedIdsNAOnly();
-              if (!ids.length) {
+        // "셀러툴 전송" 버튼 기능
+        const sendBtn = document.getElementById('send-sellertool');
+        const sendSpinner = sendBtn.querySelector('.spinner-border');
+        const sendText = sendBtn.querySelector('.btn-text');
+        sendBtn.addEventListener('click', function() {
+            sendSpinner.classList.remove('d-none');
+            sendText.textContent = '전송 중...';
+            sendBtn.disabled = true;
+            const selectedIds = getCheckedIds();
+            if (!selectedIds.length) {
                 showTemporaryMessage('체크한 항목이 없습니다.');
-                spinner.classList.add('d-none');
-                txt.textContent = '셀러툴 전송';
+                sendSpinner.classList.add('d-none');
+                sendText.textContent = '셀러툴 전송';
                 sendBtn.disabled = false;
                 return;
-              }
-              fetch("{% url 'send_return_items' %}", {
-                method:'POST',
-                headers:{ 'X-CSRFToken':'{{ csrf_token }}', 'Content-Type':'application/json' },
-                body: JSON.stringify({ ids: ids })
-              })
-              .then(r=>r.json())
-              .then(d=>{
-                showTemporaryMessage(`전송 완료: 성공 ${d.success_count}건, 실패 ${d.failure_count}건`);
-              })
-              .catch(e=>{
-                console.error(e);
-                showTemporaryMessage('전송 오류');
-              })
-              .finally(()=>{
-                spinner.classList.add('d-none');
-                txt.textContent = '셀러툴 전송';
+            }
+            fetch("{% url 'send_return_items' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ids: selectedIds })
+            })
+            .then(res => res.json())
+            .then(data => {
+                const sc = data.success_count || 0;
+                const fc = data.failure_count || 0;
+                // 실패 메시지까지 보고 싶으면 error_message도 포함 가능
+                if (fc > 0) {
+                    showTemporaryMessage(`전송 완료: 성공 ${sc}건, 실패 ${fc}건\n오류: ${data.error_message || '없음'}`);
+                } else {
+                    showTemporaryMessage(`전송 완료: 성공 ${sc}건, 실패 ${fc}건`);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showTemporaryMessage('전송 오류 발생');
+            })
+            .finally(() => {
+                sendSpinner.classList.add('d-none');
+                sendText.textContent = '셀러툴 전송';
                 sendBtn.disabled = false;
-              });
             });
-          }
-        
         });
+    });
         </script>
+        
 
 {% endblock %}

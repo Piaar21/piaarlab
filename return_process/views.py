@@ -1178,11 +1178,11 @@ def collected_items(request):
                 print(f"❌ 해당 아이디 없음: {pk}")
                 continue
 
-            # 실제로 값을 바꿀 필드들
-            for field in ('processing_status', 'note', 'quantity', 'claim_type', 'claim_reason'):
-                if field in row:
-                    print(f"   • setting {field} = {row[field]}")
-                    setattr(item, field, row[field])
+            # 실제로 값을 바꿀 필드들 (빈 값은 건너뛰기)
+            for field in ('product_order_status','note','quantity','claim_type','claim_reason','customer_reason','return_shipping_charge','shipping_charge_payment_method'):
+                val = row.get(field, None)
+                if val not in (None, ''):
+                    setattr(item, field, val)
 
             item.save()
             print(f"✅ Saved item {pk}")
