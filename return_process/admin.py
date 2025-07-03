@@ -31,9 +31,10 @@ class ReturnItemAdmin(admin.ModelAdmin):
     list_display = (
         'order_number', 'platform', 'store_name', 'product_name', 'quantity',
         'processing_status', 'collected_at', 'inspected_at', 'returned_at',
-        'stock_updated_at', 'completed_at','claim_type',
+        'stock_updated_at', 'completed_at','claim_type','claim_request_date'
     )
-    list_filter = ('platform', 'store_name', 'processing_status', 'claim_type')
+    list_filter = ('platform', 'store_name', 'processing_status', 'claim_type','claim_request_date')
+    date_hierarchy = 'claim_request_date'
     search_fields = ('order_number', 'product_name', 'store_name', 'option_code','processing_status')
     ordering = ('-last_update_date',)
     
