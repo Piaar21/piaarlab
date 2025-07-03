@@ -1170,22 +1170,31 @@ def collected_items(request):
         print("🔥 Parsed rows:", rows)
 
         for row in rows:
-            pk = row.get('id')
-            print(f"⏳ 처리중 item id={pk}, data={row}")
+            # -- 여기서 id 대신 주문번호(order_number) 로 조회하도록 변경 --
+            order_no = row.get('order_number')
+            if not order_no:
+                print("❌ 주문번호 누락, 건너뜁니다:", row)
+                continue
+
+            print(f"⏳ 처리중 주문번호={order_no}, data={row}")
             try:
-                item = ReturnItem.objects.get(pk=pk)
+                item = ReturnItem.objects.get(order_number=order_no)
             except ReturnItem.DoesNotExist:
-                print(f"❌ 해당 아이디 없음: {pk}")
+                print(f"❌ 해당 주문번호 없음: {order_no}")
                 continue
 
             # 실제로 값을 바꿀 필드들 (빈 값은 건너뛰기)
-            for field in ('product_order_status','note','quantity','claim_type','claim_reason','customer_reason','return_shipping_charge','shipping_charge_payment_method'):
+            for field in (
+                'product_order_status','note','quantity',
+                'claim_type','claim_reason','customer_reason',
+                'return_shipping_charge','shipping_charge_payment_method'
+            ):
                 val = row.get(field, None)
                 if val not in (None, ''):
                     setattr(item, field, val)
 
             item.save()
-            print(f"✅ Saved item {pk}")
+            print(f"✅ Saved item 주문번호={order_no}")
 
         return JsonResponse({'success': True})
 
@@ -1195,6 +1204,7 @@ def collected_items(request):
         'items': items,
         'store_code_map_keys': list(store_code_map.keys()),
     })
+
 
 
 

@@ -927,8 +927,14 @@
                    idxQuantity        = ths.indexOf('수량'),
                    idxReturnCharge    = ths.indexOf('수거배송비'),
                    idxPayMethod       = ths.indexOf('배송비지급방식');
+                   idxOrderNumber = ths.indexOf('주문번호');
                    var payload = trs.map(function(tr) {
-                        var obj = { id: tr.dataset.itemId };
+                        var obj = {};
+                        // 엑셀-테이블 매칭 키로 order_number 사용
+                        if (idxOrderNumber >= 0) {
+                            var on = tr.cells[idxOrderNumber].textContent.trim();
+                            if (on) obj.order_number = on;
+                        }
 
                         if (idxCustomerReason >= 0) {
                             var cr = tr.cells[idxCustomerReason].textContent.trim();
