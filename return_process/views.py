@@ -2109,6 +2109,8 @@ from .utils import (
 )
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from django.db import transaction
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 class SendReturnItemsView(View):
     def post(self, request, *args, **kwargs):
@@ -2143,12 +2145,17 @@ class SendReturnItemsView(View):
         }
         url = "https://sellertool-api-server-function.azurewebsites.net/api/return-exchanges/from-system"
 
+        session = requests.Session()
+        retries = Retry(total=3, backoff_factor=0.3,
+                        status_forcelist=[500, 502, 503, 504])
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+
         # 3) 병렬 전송 작업 정의
         def send_one(item):
             form_data = convert_return_item_to_formdata(item)
             body = {"formDatas": [form_data]}
             try:
-                resp = requests.post(url, headers=headers, json=body, timeout=5)
+                resp = requests.post(url, headers=headers, json=body, timeout=(3.05,15))
                 resp.raise_for_status()
                 result = resp.json()
                 failure_contents = result.get("content", {}).get("failureContents", [])
