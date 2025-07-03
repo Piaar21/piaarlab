@@ -34,7 +34,7 @@ class ReturnItemAdmin(admin.ModelAdmin):
         'stock_updated_at', 'completed_at','claim_type',
     )
     list_filter = ('platform', 'store_name', 'processing_status', 'claim_type')
-    search_fields = ('order_number', 'product_name', 'store_name', 'option_code')
+    search_fields = ('order_number', 'product_name', 'store_name', 'option_code','processing_status')
     ordering = ('-last_update_date',)
     
     # readonly_fields: 관리자가 자동으로 기록되는 날짜필드를 수정하지 못하도록 설정
