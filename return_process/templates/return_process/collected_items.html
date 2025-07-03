@@ -892,105 +892,95 @@
             });
         
             btnUpload.addEventListener('click', function() {
-              if (!inputFile.files.length) return showTemporaryMessage('파일을 선택해주세요.');
-              var fr = new FileReader();
-              fr.onload = async function(evt) {
-                var wb = XLSX.read(evt.target.result, { type:'binary' }),
-                    sheet = wb.Sheets[wb.SheetNames[0]],
-                    [hdrs, ...rows] = XLSX.utils.sheet_to_json(sheet, { header:1 }),
-                    trs = Array.from(table.querySelectorAll('tbody tr')),
-                    ths = Array.from(table.querySelectorAll('thead th')).map(th=>th.textContent.trim());
-        
-                if (rows.length !== trs.length) {
-                  return showTemporaryMessage('행 개수가 일치하지 않습니다.');
-                }
-        
-                // 화면 업데이트
-                var skip = ['체크박스','순번','톡톡','검수','처리상태','상품명','옵션명','스토어명','수취인명','연락처','옵션코드','주문번호','배송완료일','클레임요청일','업데이트날짜'];
-                rows.forEach(function(r,i) {
-                  var tr = trs[i];
-                  hdrs.forEach(function(h,j){
-                    if (!h||skip.includes(h)) return;
-                    var col = ths.indexOf(h);
-                    if (col<0) return;
-                    tr.cells[col].textContent = r[j] ?? '';
-                  });
-                });
-        
-                // payload 생성
-               var idxStatus          = ths.indexOf('처리상태'),
-                   idxProdOrderStatus = ths.indexOf('현재클레임상태'),
-                   idxNote            = ths.indexOf('사유'),           // ← '사유' 로 수정
-                   idxClaimType       = ths.indexOf('클레임 종류'),  // ← '클레임 종류' 헤더
-                   idxClaimReason     = ths.indexOf('클레임사유'),
-                   idxCustomerReason  = ths.indexOf('고객사유'),
-                   idxQuantity        = ths.indexOf('수량'),
-                   idxReturnCharge    = ths.indexOf('수거배송비'),
-                   idxPayMethod       = ths.indexOf('배송비지급방식');
-                   idxOrderNumber = ths.indexOf('주문번호');
-                   var payload = trs.map(function(tr) {
-                        var obj = {};
-                        // 엑셀-테이블 매칭 키로 order_number 사용
-                        if (idxOrderNumber >= 0) {
-                            var on = tr.cells[idxOrderNumber].textContent.trim();
-                            if (on) obj.order_number = on;
-                        }
+                if (!inputFile.files.length) return showTemporaryMessage('파일을 선택해주세요.');
 
-                        if (idxCustomerReason >= 0) {
-                            var cr = tr.cells[idxCustomerReason].textContent.trim();
-                            if (cr) obj.customer_reason = cr;
-                        }
-                        if (idxProdOrderStatus >= 0) {
-                            var ps = tr.cells[idxProdOrderStatus].textContent.trim();
-                            if (ps) obj.product_order_status = ps;
-                        }
-                        if (idxNote >= 0) {
-                            var v = tr.cells[idxNote].textContent.trim();
-                            if (v) obj.note = v;
-                        }
-                        if (idxQuantity >= 0) {
-                            var q = parseInt(tr.cells[idxQuantity].textContent.trim(), 10);
-                            if (!isNaN(q)) obj.quantity = q;
-                        }
-                        if (idxClaimType >= 0) {
-                            var ct = tr.cells[idxClaimType].textContent.trim();
-                            if (ct) obj.claim_type = ct;
-                        }
-                        if (idxClaimReason >= 0) {
-                            var cr = tr.cells[idxClaimReason].textContent.trim();
-                            if (cr) obj.claim_reason = cr;
-                        }
-                        if (idxReturnCharge >= 0) {
-                        var rc = parseFloat(tr.cells[idxReturnCharge].textContent.trim()) || 0;
-                        obj.return_shipping_charge = rc;
-                        }
+                var fr = new FileReader();
+                fr.onload = async function(evt) {
+                    // 1) 엑셀 읽기
+                    var wb    = XLSX.read(evt.target.result, { type:'binary' }),
+                        sheet = wb.Sheets[wb.SheetNames[0]],
+                        [hdrs, ...rows] = XLSX.utils.sheet_to_json(sheet, { header:1 });
 
-                        // 배송비지급방식
-                        if (idxPayMethod >= 0) {
-                        var pm = tr.cells[idxPayMethod].textContent.trim();
+                    // 2) 헤더별 인덱스 맵핑
+                    var idx = {};
+                    hdrs.forEach(function(h,j){
+                    idx[h?.trim()] = j;
+                    });
+
+                    // 필수 헤더 체크
+                    if (idx['주문번호'] == null) {
+                    return showTemporaryMessage('헤더에 "주문번호"가 없습니다.');
+                    }
+
+                    // 3) Excel rows → payload (테이블이 아니라 rows[] 기준!)
+                    var payload = rows.map(function(r, i) {
+                    var orderNo = r[idx['주문번호']]?.toString().trim();
+                    if (!orderNo) return null;  // 주문번호 없으면 스킵
+
+                    var obj = { order_number: orderNo };
+
+                    // 사유
+                    if (idx['사유'] != null) {
+                        var note = r[idx['사유']]?.toString().trim();
+                        if (note) obj.note = note;
+                    }
+                    // 수량
+                    if (idx['수량'] != null) {
+                        var q = parseInt(r[idx['수량']], 10);
+                        if (!isNaN(q)) obj.quantity = q;
+                    }
+                    // 클레임 종류
+                    if (idx['클레임 종류'] != null) {
+                        var ct = r[idx['클레임 종류']]?.toString().trim();
+                        if (ct) obj.claim_type = ct;
+                    }
+                    // 고객사유
+                    if (idx['고객사유'] != null) {
+                        var cr = r[idx['고객사유']]?.toString().trim();
+                        if (cr) obj.customer_reason = cr;
+                    }
+                          // 클레임사유
+                    if (idx['클레임사유'] != null) {
+                        var reason = (r[idx['클레임사유']]||'').toString().trim();
+                        if (reason) obj.claim_reason = reason;
+                    }
+                    // 수거배송비
+                    if (idx['수거배송비'] != null) {
+                        var fee = parseFloat(r[idx['수거배송비']]);
+                        if (!isNaN(fee)) obj.return_shipping_charge = fee;
+                    }
+                    // 배송비지급방식
+                    if (idx['배송비지급방식'] != null) {
+                        var pm = (r[idx['배송비지급방식']]||'').toString().trim();
                         if (pm) obj.shipping_charge_payment_method = pm;
-                        }                        
-                        return obj;
-                        });
-        
-                // CSRF & 전송
-                var csrftoken = document.cookie.match('(^|;)\\s*csrftoken=([^;]+)')?.pop() || '';
-                var res = await fetch('/collected/', {
-                  method: 'POST',
-                  headers: { 'Content-Type':'application/json', 'X-CSRFToken': csrftoken },
-                  body: JSON.stringify({ rows: payload })
+                    }
+                    
+                    return obj;
+                    })
+                    .filter(x => x !== null);
+
+                    // 4) 서버 전송
+                    var csrftoken = document.cookie.match('(^|;)\\s*csrftoken=([^;]+)')?.pop() || '';
+                    var res = await fetch('/collected/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ rows: payload })
+                    });
+                    var json = await res.json();
+                    if (json.success) {
+                    showTemporaryMessage('저장 성공, 새로고침 됩니다.');
+                    setTimeout(() => location.reload(), 500);
+                    } else {
+                    showTemporaryMessage('서버 오류: ' + (json.error || '알 수 없음'));
+                    }
+                    excelModal.hide();
+                };
+                fr.readAsBinaryString(inputFile.files[0]);
                 });
-                var json = await res.json();
-                if (json.success) {
-                  showTemporaryMessage('저장 성공, 새로고침 됩니다.');
-                  setTimeout(() => location.reload(), 500);
-                } else {
-                  showTemporaryMessage('서버 오류: ' + (json.error || '알 수 없음'));
-                }
-                excelModal.hide();
-              };
-              fr.readAsBinaryString(inputFile.files[0]);
-            });
+
           }
         
           // ====== 셀러툴 전송 버튼 ======

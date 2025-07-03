@@ -1157,9 +1157,7 @@ def collected_items(request):
     }
 
     if request.method == 'POST':
-        # 1) 들어온 원시 바디 찍어보기
         print("🔥 POST body raw:", request.body)
-
         try:
             payload = json.loads(request.body)
         except Exception as e:
@@ -1167,38 +1165,48 @@ def collected_items(request):
             return JsonResponse({'success': False, 'error': 'bad json'}, status=400)
 
         rows = payload.get('rows', [])
-        print("🔥 Parsed rows:", rows)
+        print("🔥 Parsed rows count:", len(rows))
 
-        for row in rows:
-            # -- 여기서 id 대신 주문번호(order_number) 로 조회하도록 변경 --
+        for i, row in enumerate(rows, start=1):
+            print(f"\n--- row #{i} 전체 데이터 → {row}")
             order_no = row.get('order_number')
+            print(f"→ row #{i} order_number 값 → {order_no!r}")
+
             if not order_no:
-                print("❌ 주문번호 누락, 건너뜁니다:", row)
+                print(f"❌ row #{i} 주문번호 누락, 건너뜁니다.")
                 continue
 
-            print(f"⏳ 처리중 주문번호={order_no}, data={row}")
             try:
+                # 실제 매칭 시도
                 item = ReturnItem.objects.get(order_number=order_no)
+                print(f"✅ row #{i} 매칭된 아이템 → id={item.id}, order_number={item.order_number!r}")
             except ReturnItem.DoesNotExist:
-                print(f"❌ 해당 주문번호 없음: {order_no}")
+                print(f"❌ row #{i} 해당 주문번호({order_no})의 레코드가 없습니다.")
                 continue
+            except ReturnItem.MultipleObjectsReturned:
+                qs = ReturnItem.objects.filter(order_number=order_no)
+                ids = [o.id for o in qs]
+                print(f"⚠️ row #{i} 주문번호({order_no}) 중복: 매칭된 id들={ids}. 첫 번째(id={ids[0]})로 처리합니다.")
+                item = qs.first()
 
-            # 실제로 값을 바꿀 필드들 (빈 값은 건너뛰기)
+            # 실제로 업데이트할 필드들
             for field in (
                 'product_order_status','note','quantity',
                 'claim_type','claim_reason','customer_reason',
                 'return_shipping_charge','shipping_charge_payment_method'
             ):
-                val = row.get(field, None)
-                if val not in (None, ''):
-                    setattr(item, field, val)
+                if field in row and row[field] not in (None, ''):
+                    old = getattr(item, field)
+                    new = row[field]
+                    setattr(item, field, new)
+                    print(f"   • {field}: {old!r} → {new!r}")
 
             item.save()
-            print(f"✅ Saved item 주문번호={order_no}")
+            print(f"✅ row #{i} 저장 완료 (id={item.id})")
 
         return JsonResponse({'success': True})
 
-    # GET 요청일 때만 이 부분이 실행됩니다
+    # GET 요청 시
     items = ReturnItem.objects.filter(processing_status='수거완료')
     return render(request, 'return_process/collected_items.html', {
         'items': items,
