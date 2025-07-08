@@ -3,7 +3,7 @@
 from django.contrib.auth.views import LoginView
 from django.urls import reverse_lazy
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import ListView
+from django.views.generic import ListView, View
 import requests
 from django.shortcuts import render, redirect
 from .models import ReturnItem, ScanLog
@@ -16,6 +16,12 @@ from .api_clients import (
     get_hourly_sales_for_period,
     
 )
+from django.db import transaction
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+from decouple import config
+from .utils import generate_sellertool_signature, convert_return_item_to_formdata
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from .forms import CustomUserCreationForm  # 커스텀 유저 생성 폼
@@ -2134,11 +2140,10 @@ class SendReturnItemsView(View):
     def post(self, request, *args, **kwargs):
         logger.info("POST /send-return-items/ 요청 시작.")
 
-        # 1) 요청 바디 파싱
         try:
             data = json.loads(request.body)
             ids = data.get('ids', [])
-        except Exception as e:
+        except json.JSONDecodeError as e:
             logger.exception("JSON 파싱 실패: %s", e)
             return JsonResponse({'success': False, 'message': 'Invalid JSON.'}, status=400)
 
@@ -2151,9 +2156,8 @@ class SendReturnItemsView(View):
             logger.warning("해당 ID의 ReturnItem 없음: %s", ids)
             return JsonResponse({'success': False, 'message': 'No matching items.'}, status=404)
 
-        # 2) SellerTool 인증값 생성 (공통)
-        ST_API_KEY = config('ST_API_KEY', default=None)
-        ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
+        ST_API_KEY = config('ST_API_KEY')
+        ST_SECRET_KEY = config('ST_SECRET_KEY')
         timestamp, signature = generate_sellertool_signature(ST_API_KEY, ST_SECRET_KEY)
         headers = {
             "x-sellertool-apiKey": ST_API_KEY,
@@ -2164,35 +2168,36 @@ class SendReturnItemsView(View):
         url = "https://sellertool-api-server-function.azurewebsites.net/api/return-exchanges/from-system"
 
         session = requests.Session()
-        retries = Retry(total=3, backoff_factor=0.3,
-                        status_forcelist=[500, 502, 503, 504])
+        retries = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
         session.mount('https://', HTTPAdapter(max_retries=retries))
 
-        # 3) 병렬 전송 작업 정의
         def send_one(item):
             form_data = convert_return_item_to_formdata(item)
             body = {"formDatas": [form_data]}
             try:
-                resp = requests.post(url, headers=headers, json=body, timeout=(3.05,15))
+                resp = session.post(url, headers=headers, json=body, timeout=(3.05, 30))
                 resp.raise_for_status()
                 result = resp.json()
-                failure_contents = result.get("content", {}).get("failureContents", [])
+                
+                content = result.get("content")
+                failure_contents = content.get("failureContents", []) if isinstance(content, dict) else []
+
                 if not result.get("error") and not failure_contents:
                     return {'id': item.id, 'success': True}
-                reason = (failure_contents[0].get("reason")
-                          if failure_contents else result.get("error", "Unknown error"))
+                
+                reason = (failure_contents[0].get("reason") if failure_contents else result.get("error", "Unknown error"))
                 return {'id': item.id, 'success': False, 'reason': reason}
+
             except requests.exceptions.RequestException as e:
                 logger.error("Item %s 전송 중 HTTP 오류: %s", item.id, e)
                 return {'id': item.id, 'success': False, 'reason': f"HTTP error: {e}"}
-            except ValueError as e:
+            except json.JSONDecodeError as e:
                 logger.error("Item %s 응답 파싱 실패: %s", item.id, e)
                 return {'id': item.id, 'success': False, 'reason': f"Invalid JSON: {e}"}
             except Exception as e:
                 logger.exception("Item %s 전송 중 예외: %s", item.id, e)
                 return {'id': item.id, 'success': False, 'reason': str(e)}
 
-        # 4) ThreadPoolExecutor로 병렬 전송
         max_workers = min(10, len(return_items))
         results = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -2200,19 +2205,16 @@ class SendReturnItemsView(View):
             for fut in as_completed(futures):
                 results.append(fut.result())
 
-        # 5) 성공/실패 분리 & DB 대량 업데이트
         success_ids = [r['id'] for r in results if r['success']]
         failure_details = [r for r in results if not r['success']]
 
         if success_ids:
-            # bulk_update를 위한 객체 생성
-            success_items = [
-                ReturnItem(id=item.id, processing_status='검수완료', product_issue='보류')
-                for item in return_items if item.id in success_ids
-            ]
             with transaction.atomic():
-                ReturnItem.objects.bulk_update(success_items, ['processing_status', 'product_issue'])
-            logger.info("성공 처리된 아이템 %d개 bulk_update 완료.", len(success_items))
+                ReturnItem.objects.filter(id__in=success_ids).update(
+                    processing_status='검수완료', 
+                    product_issue='보류'
+                )
+            logger.info("성공 처리된 아이템 %d개 업데이트 완료.", len(success_ids))
 
         logger.info("최종 응답 반환: 성공 %d건, 실패 %d건", len(success_ids), len(failure_details))
         return JsonResponse({
