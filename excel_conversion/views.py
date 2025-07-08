@@ -160,23 +160,51 @@ def excel_upload(request):
         'success_message': success_message,
     })
 
+from openpyxl.styles import numbers
+from openpyxl.utils import get_column_letter
+
+
+from openpyxl.styles import numbers
+from openpyxl.utils import get_column_letter
 
 def excel_download(request):
     data_list = request.session.get('excel_data', [])
     if not data_list:
         return redirect(reverse('excel_conversion:excel_upload'))
-    # DataFrame 생성 및 컬럼 순서, 이름 지정
+
+    # 1) DataFrame 생성 & 컬럼 이름 셋팅
     df = pd.DataFrame(data_list)
     norm_keys = [normalize_key(h) for h in out_headers]
     df = df[norm_keys]
     df.columns = out_headers
 
+    # 2) 숫자형으로 보장 ('수량 (필수)'→K, '판매금액'→T)
+    for col in ['수량 (필수)', '판매금액']:
+        # 문자열 → 숫자: 콤마 제거 후 float
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(',', '', regex=True)
+            .pipe(pd.to_numeric, errors='coerce')
+        )
+
+    # 3) 엑셀 쓰기 + 숫자 포맷 지정
     output = io.BytesIO()
-    # engine을 openpyxl로 사용 (requirements.txt에 openpyxl 필요)
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='주문데이터')
-    output.seek(0)
+        ws = writer.sheets['주문데이터']
 
+        for col in ['수량 (필수)', '판매금액']:
+            idx = df.columns.get_loc(col) + 1               # 1-base
+            letter = get_column_letter(idx)
+            # 2행부터 마지막 행까지 순회
+            for row in ws.iter_rows(min_row=2, max_row=ws.max_row,
+                                     min_col=idx, max_col=idx):
+                for cell in row:
+                    # 천단위 콤마 포함 정수 포맷
+                    cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
+
+    output.seek(0)
     filename = f'주문데이터_{datetime.now().date().isoformat()}.xlsx'
     resp = HttpResponse(
         output.read(),
