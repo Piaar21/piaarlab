@@ -97,6 +97,23 @@
           </p>
         </div>
         <div class="flex gap-2">
+          <!-- 셀러툴 바로가기 -->
+          <a
+          href="https://v2.sellertool.io/erp/collection/order-upload/"
+          target="_blank"
+          class="inline-flex items-center px-2 py-1 border border-slate-300 rounded text-xs hover:bg-slate-100"
+        >
+          셀러툴
+        </a>
+
+        <!-- 로켓배송 바로가기 -->
+        <a
+          href="https://supplier.coupang.com/scm/purchase/order/list"
+          target="_blank"
+          class="inline-flex items-center px-2 py-1 border border-slate-300 rounded text-xs hover:bg-slate-100"
+        >
+          로켓배송
+        </a>
           <!-- 내보내기 버튼 -->
           <form method="POST" action="{% url 'excel_conversion:excel_download' %}">
             {% csrf_token %}

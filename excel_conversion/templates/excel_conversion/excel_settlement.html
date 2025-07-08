@@ -91,6 +91,23 @@
           </p>
         </div>
         <div class="flex gap-2">
+            <!-- 셀러툴 바로가기 -->
+              <a
+              href="https://docs.google.com/spreadsheets/d/1NjSW70VleoTfbeA-UcNaZS1e1aseS-Da0eCeqOZVLrY/edit?gid=0#gid=0"
+              target="_blank"
+              class="inline-flex items-center px-2 py-1 border border-slate-300 rounded text-xs hover:bg-slate-100"
+            >
+              로켓배송정산
+            </a>
+
+            <!-- 로켓배송 바로가기 -->
+            <a
+              href="https://supplier.coupang.com/scm/purchase/order/list"
+              target="_blank"
+              class="inline-flex items-center px-2 py-1 border border-slate-300 rounded text-xs hover:bg-slate-100"
+            >
+              로켓배송
+            </a>
           <form method="POST" action="{% url 'excel_conversion:excel_download_settlement' %}">
             {% csrf_token %}
             <button
