@@ -1045,7 +1045,8 @@ def send_message_process(request):
                 # (E) URL 치환변수
                 url_thx = f"piaarlab.store/delayed/customer-action?action=wait&token={s.token}"
                 url_change = f"piaarlab.store/delayed/option-change?action=change&token={s.token}"
-
+                store_id = get_storeId_by_channel(channel_name) 
+                url_talktalk=f"https://talk.naver.com/ct/{store_id}"
                 # (F) 알림톡/문자용 치환 변수
                 variables = {
                     '#{고객명}': s.customer_name or "",
@@ -1057,6 +1058,7 @@ def send_message_process(request):
                     '#{url}': "example.com",
                     '#{url_thx}': url_thx,
                     '#{url_change}': url_change,
+                    '#{url_talktalk}': url_talktalk,
                 }
 
                 # (G) Solapi 메시지 오브젝트
@@ -1433,6 +1435,20 @@ def get_templateId_by_channel(channel_name):
         "노는 개 최고양": "KA01TP241230063811612F7QtAXfIYxu",
         "노는개최고양": "KA01TP241230063811612F7QtAXfIYxu",
         "아르빙": "KA01TP241230063811612F7QtAXfIYxu",
+    }
+    return tmpl_map.get(channel_name, "")
+
+def get_storeId_by_channel(channel_name):
+    """
+    채널명 → templateId
+    """
+    tmpl_map = {
+        "니뜰리히" : "wcsrr1",
+        "수비다" :  "wce1wv",
+        "수비다 SUBIDA" : "wce1wv",
+        "노는 개 최고양" : "w4g8ot",
+        "노는개최고양" : "w4g8ot",
+        "아르빙" : "w48val"
     }
     return tmpl_map.get(channel_name, "")
 
