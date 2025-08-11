@@ -92,7 +92,7 @@ def excel_upload(request):
                     addr2         = str(df.iat[12, 4]) # E13
                     address       = addr1
                     detail_addr   = addr2
-                    phone1 = str(df.iat[12, 8]).split('/', 1)[0].strip()
+                    phone1 = re.split(r'[\/,]', str(df.iat[12, 8]))[0].strip()
                     phone2        = ''
                     sales_channel = '로켓배송'
 
