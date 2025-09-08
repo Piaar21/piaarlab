@@ -60,6 +60,27 @@ def normalize_key(key: str) -> str:
     key = key.replace("[M]", "M")
     return key.replace(" ", "").strip()
 
+def normalize_phone(raw: str) -> str:
+    if raw is None:
+        return ''
+    s = str(raw).strip()
+
+    # 흔한 케이스 방어: 숫자로 읽혀 '.0' 이 붙은 경우 제거
+    if re.fullmatch(r'\d+\.0', s):
+        s = s[:-2]
+
+    # 숫자/플러스만 남기기
+    s = re.sub(r'[^\d+]', '', s)
+
+    if s.startswith('+82'):
+        rest = s[3:]
+        return rest if rest.startswith('0') else ('0' + rest)
+
+    if s.startswith('82'):
+        rest = s[2:]
+        return rest if rest.startswith('0') else ('0' + rest)
+
+    return re.sub(r'\D', '', s)
 
 def excel_upload(request):
     """
@@ -83,7 +104,7 @@ def excel_upload(request):
                     continue
                 try:
                     # 전체 시트 raw 읽기
-                    df = pd.read_excel(f, header=None)
+                    df = pd.read_excel(f, header=None, dtype=str)
 
                     # 1) 상단 고정 필드 추출
                     order_no      = str(df.iat[9, 2])  # C10
@@ -92,8 +113,16 @@ def excel_upload(request):
                     addr2         = str(df.iat[12, 4]) # E13
                     address       = addr1
                     detail_addr   = addr2
-                    phone1 = re.split(r'[\/,]', str(df.iat[12, 8]))[0].strip()
-                    phone2        = ''
+                    raw_phones = [p.strip() for p in re.split(r'[\/,]', str(df.iat[12, 8] or '')) if p.strip()]
+
+                    norm_phones = []
+                    for p in raw_phones:
+                        np = normalize_phone(p)
+                        if np:
+                            norm_phones.append(np)
+
+                    phone1 = norm_phones[0] if norm_phones else ''
+                    phone2 = norm_phones[1] if len(norm_phones) > 1 else ''
                     sales_channel = '로켓배송'
 
                     # 2) '합계' 앞 데이터 구간 찾기
