@@ -1,0 +1,130 @@
+{% extends "excel_conversion_base.html" %}
+{% load static %}
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="text-center space-y-2">
+      <h1 class="text-3xl font-bold text-slate-900">운송장 분할 관리</h1>
+      <p class="text-slate-600">출고데이터(1.xlsx)와 상품목록(2.xlsx)을 업로드하여 운송장번호와 납품수량을 자동으로 매칭합니다</p>
+    </div>
+
+    <!-- 업로드 카드 -->
+    <div class="card">
+      <div class="p-4 border-b">
+        <h2 class="text-xl font-semibold">파일 업로드</h2>
+        <p class="text-sm text-slate-500">출고데이터와 상품목록 두 개의 엑셀 파일을 업로드하세요</p>
+      </div>
+      <div class="p-4">
+        <form method="POST" enctype="multipart/form-data" action="{% url 'excel_conversion:excel_shipcode' %}">
+          {% csrf_token %}
+          <div class="grid md:grid-cols-2 gap-6">
+            <!-- 출고데이터 -->
+            <div class="card border p-4 rounded-lg">
+              <h3 class="font-semibold mb-2">출고데이터 (1.xlsx)</h3>
+              <input type="file" name="excel_files" accept=".xlsx,.xls" class="block w-full text-sm text-slate-700 border rounded p-2 cursor-pointer"/>
+            </div>
+
+            <!-- 상품목록 -->
+            <div class="card border p-4 rounded-lg">
+              <h3 class="font-semibold mb-2">상품목록 (2.xlsx)</h3>
+              <input type="file" name="excel_files" accept=".xlsx,.xls" class="block w-full text-sm text-slate-700 border rounded p-2 cursor-pointer"/>
+            </div>
+          </div>
+
+          <div class="text-center mt-6">
+            <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">
+              파일 처리하기
+            </button>
+          </div>
+        </form>
+
+        {% if error_message %}
+          <div class="mt-4 border border-red-300 bg-red-50 text-red-600 p-2 rounded">{{ error_message }}</div>
+        {% endif %}
+        {% if success_message %}
+          <div class="mt-4 border border-green-300 bg-green-50 text-green-600 p-2 rounded">{{ success_message }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 결과 테이블 -->
+    {% if data_list %}
+    <div class="card">
+      <div class="p-4 border-b flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-semibold">처리 결과</h2>
+          <p class="text-sm text-slate-500">총 {{ data_list|length }}건의 데이터가 변환되었습니다.</p>
+        </div>
+        <div>
+          <form method="POST" action="{% url 'excel_conversion:excel_shipcode_clear_set' %}">
+            {% csrf_token %}
+            <button type="submit" class="inline-flex items-center px-3 py-2 border border-red-300 bg-red-50 text-red-700 rounded-md text-xs hover:bg-red-100">
+              전체 삭제
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="p-4 max-h-[600px] overflow-auto">
+        <table class="min-w-[1200px] w-full text-sm border-collapse">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="py-2 px-3 border">발주번호</th>
+              <th class="py-2 px-3 border">물류센터</th>
+              <th class="py-2 px-3 border">입고유형</th>
+              <th class="py-2 px-3 border">입고예정일</th>
+              <th class="py-2 px-3 border">상품번호</th>
+              <th class="py-2 px-3 border">상품바코드</th>
+              <th class="py-2 px-3 border">상품이름</th>
+              <th class="py-2 px-3 border">확정수량</th>
+              <th class="py-2 px-3 border">운송장번호</th>
+              <th class="py-2 px-3 border">납품수량</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in data_list %}
+            <tr class="hover:bg-slate-50">
+              <td class="py-2 px-3 border">{{ row.poId }}</td>
+              <td class="py-2 px-3 border">{{ row.fc }}</td>
+              <td class="py-2 px-3 border">{{ row.transportType }}</td>
+              <td class="py-2 px-3 border">{{ row.edd }}</td>
+              <td class="py-2 px-3 border">{{ row.skuId }}</td>
+              <td class="py-2 px-3 border">{{ row.skuBarcode }}</td>
+              <td class="py-2 px-3 border">{{ row.skuName }}</td>
+              <td class="py-2 px-3 border">{{ row.confirmedQty }}</td>
+              <td class="py-2 px-3 border">{{ row.invoiceNumber }}</td>
+              <td class="py-2 px-3 border">{{ row.shippedQty }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="10" class="text-center py-4">데이터가 없습니다</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="card empty-state">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-slate-300 mb-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path d="M9 2v2H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a4 4 
+                 0 00-4-4H9z"></path>
+        <path d="M9 10h9M9 14h9M9 18h9"></path>
+        <path d="M9 6h9"></path>
+      </svg>
+      <h3 class="text-lg font-medium text-slate-900 mb-2">데이터가 없습니다</h3>
+      <p class="text-slate-500 text-center">엑셀 파일을 업로드하여 운송장 데이터를 확인하세요</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+<style>
+.empty-state svg {
+  width: 40px;
+  height: 40px;
+}
+</style>
+
+{% endblock %}

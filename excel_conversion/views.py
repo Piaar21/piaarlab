@@ -268,6 +268,12 @@ def excel_clear_set(request):
         logger.info('Session data cleared.')
     return redirect(reverse('excel_conversion:excel_settlement'))
 
+def excel_shipcode_clear_set(request):
+    if request.method == 'POST':
+        request.session.pop('excel_data', None)
+        logger.info('Session data cleared.')
+    return redirect(reverse('excel_conversion:excel_shipcode_clear_set'))
+
 new_headers = [
     "상품코드", 
     "상품명/옵션/BARCODE", 
@@ -454,3 +460,212 @@ def excel_download_settlement(request):
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp
 
+import logging, re
+import pandas as pd
+from django.shortcuts import render
+from django.views.decorators.csrf import csrf_protect
+
+logger = logging.getLogger(__name__)
+
+# ---- 공통 유틸 ----
+def _find_col(df, candidates):
+    for cand in candidates:
+        for c in df.columns:
+            if cand in str(c):
+                return c
+    raise KeyError(f"컬럼을 찾을 수 없습니다: {candidates}")
+
+def _normalize_color(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or "").strip())
+
+def _extract_color_from_sku_name(sku_name: str) -> str:
+    parts = [p.strip() for p in str(sku_name or "").split(",") if p.strip()]
+    return _normalize_color(parts[-1]) if parts else ""
+
+def _collect_allowed_colors(df2, col_sku_nm) -> set:
+    """
+    2.xlsx '상품이름(SKU Name)'에서 색상 후보를 모두 추출해 색상 사전 구성.
+    """
+    colors = set()
+    for v in df2[col_sku_nm].dropna().astype(str):
+        c = _extract_color_from_sku_name(v)
+        if c:
+            colors.add(c)
+    return colors
+
+def _split_multi_items_by_delim(cell_text: str, allowed_colors: set):
+    """
+    '가죽 방석-크림 아이보리-16,,격자 가죽 방석-그린_40cm-1' 처럼
+    ' ,,' 구분자를 신뢰해서 토막을 나눔. 각 토막에서:
+      - is_grid: '격자' 포함 여부
+      - size   : 먼저 \d+cm, 없으면 2자리 숫자 추정 (35/40 등)
+      - color  : allowed_colors 중 '공백 제거 문자열'이 토막에 포함된 것
+      - qty    : 끝의 -숫자 우선, 없으면 토막 끝의 숫자
+    반환: [{"is_grid":bool, "color":str, "size":int|None, "qty":int}]
+    """
+    text = str(cell_text or "")
+    parts = re.split(r'\s*,\s*,\s*', text.strip())
+    items = []
+    for seg in parts:
+        s = seg.strip().strip(',')
+        if not s:
+            continue
+
+        is_grid = ("격자" in s)
+
+        # 수량: 우선 '-숫자' 패턴, 없으면 마지막 숫자
+        qty = 0
+        m = re.search(r'-(\d+)\s*$', s)
+        if m:
+            qty = int(m.group(1))
+        else:
+            m2 = re.search(r'(\d+)\s*$', s)
+            if m2:
+                qty = int(m2.group(1))
+
+        # 사이즈: \d+cm 우선, 없으면 2자리 숫자(35/40 등) 힌트
+        size = None
+        ms = re.search(r'(\d+)\s*cm', s, flags=re.I)
+        if ms:
+            size = int(ms.group(1))
+        else:
+            ms2 = re.search(r'\b([3-5]\d)\b', s)
+            if ms2:
+                size = int(ms2.group(1))
+
+        # 색상: 2.xlsx에서 추출한 allowed_colors 중 하나가 포함(공백무시 기준)
+        norm_seg = _normalize_color(s)
+        color = ""
+        for c in allowed_colors:
+            if c and c in norm_seg:
+                color = c
+                break
+
+        items.append({"is_grid": is_grid, "color": color, "size": size, "qty": qty})
+    return items
+
+
+def _pick_sheet(files):
+    ship_file = list_file = None
+    for f in files:
+        try:
+            xls = pd.ExcelFile(f)
+            names = set(xls.sheet_names)
+            if "Sheet1" in names and ship_file is None:
+                ship_file = f
+            if "상품목록" in names and list_file is None:
+                list_file = f
+        except Exception:
+            continue
+    return ship_file, list_file
+
+# ---- 메인 뷰 ----
+@csrf_protect
+def excel_shipcode(request):
+    if request.method == "GET":
+        return render(request, "excel_conversion/excel_shipcode.html", {
+            "data_list": [], "error_message": None, "success_message": None,
+        })
+
+    files = request.FILES.getlist("excel_files")
+    if not files or len(files) < 2:
+        return render(request, "excel_conversion/excel_shipcode.html", {
+            "data_list": [], "error_message": "출고데이터(1.xlsx)와 상품목록(2.xlsx) 두 개의 파일을 업로드해주세요.", "success_message": None,
+        })
+
+    try:
+        ship_file, list_file = _pick_sheet(files)
+        if ship_file is None or list_file is None:
+            return render(request, "excel_conversion/excel_shipcode.html", {
+                "data_list": [], "error_message": "시트 식별 실패: 1.xlsx는 'Sheet1', 2.xlsx는 '상품목록' 시트를 포함해야 합니다.", "success_message": None,
+            })
+
+        df1 = pd.read_excel(ship_file, sheet_name="Sheet1")   # 출고데이터
+        df2 = pd.read_excel(list_file, sheet_name="상품목록")  # 상품목록
+
+        col_recv    = _find_col(df1, ["받는분"])
+        col_invoice = _find_col(df1, ["운송장번호"]) if "운송장번호" in map(str, df1.columns) \
+            else _find_col(df1, ["송장번호", "운송장"])  # fallback
+        col_pname   = _find_col(df1, ["상품명"])   # 멀티 품목 가능
+
+        col_po      = _find_col(df2, ["발주번호(PO ID)"])
+        col_fc      = _find_col(df2, ["물류센터(FC)"])
+        col_ttype   = _find_col(df2, ["입고유형(Transport Type)"])
+        col_edd     = _find_col(df2, ["입고예정일(EDD)"])
+        col_sku_id  = _find_col(df2, ["상품번호(SKU ID)"])
+        col_sku_bar = _find_col(df2, ["상품바코드(SKU Barcode)"])
+        col_sku_nm  = _find_col(df2, ["상품이름(SKU Name)"])
+        col_cqty    = _find_col(df2, ["확정수량(Confirmed Qty)"])
+
+        allowed_colors = _collect_allowed_colors(df2, col_sku_nm)
+
+        rows = []
+        for _, r in df2.iterrows():
+            po_id          = str(r[col_po]).strip()
+            fc             = str(r[col_fc]).strip()
+            transport_type = str(r.get(col_ttype, "")).strip()
+            edd            = str(r.get(col_edd, "")).strip()
+            sku_id         = str(r.get(col_sku_id, "")).strip()
+            sku_barcode    = str(r.get(col_sku_bar, "")).strip()
+            sku_name       = str(r.get(col_sku_nm, "")).strip()
+            confirmed_raw  = str(r.get(col_cqty, "")).replace(",", "").strip()
+            total_qty      = int(float(confirmed_raw)) if confirmed_raw not in ("", "nan", "None") else 0
+
+            # 2.xlsx SKU 기준 속성
+            sku_attr = {
+                "is_grid": ("격자" in sku_name),
+                "size":    (lambda m: int(m.group(1)) if m else None)(re.search(r'(\d+)\s*cm', sku_name, flags=re.I)),
+                "color":   _extract_color_from_sku_name(sku_name),
+            }
+
+            recv_key = f"{fc} (로켓배송) {po_id}"
+            df1_scope = df1[df1[col_recv].astype(str).str.strip() == recv_key].copy()
+
+            candidate_boxes = []
+            unmatched_segments = []
+
+            for __, c in df1_scope.iterrows():
+                invoice = str(c[col_invoice]).strip()
+                subitems = _split_multi_items_by_delim(c[col_pname], allowed_colors)
+                hit = False
+                for it in subitems:
+                    cond_color_ok = (not it["color"] or not sku_attr["color"] or it["color"] == _normalize_color(sku_attr["color"]))
+                    cond_size_ok = (it["size"] is None or sku_attr["size"] is None or it["size"] == sku_attr["size"])
+                    if it["is_grid"] == sku_attr["is_grid"] and cond_color_ok and cond_size_ok and it["qty"] > 0:
+                        candidate_boxes.append((it["qty"], invoice))
+                        hit = True
+                if not hit:
+                    unmatched_segments.append(str(c[col_pname]))
+
+            if not candidate_boxes and total_qty > 0:
+                logger.warning("NO BOX MATCH: PO=%s FC=%s SKU=%s (color=%s size=%s grid=%s) segments=%s",
+                            po_id, fc, sku_name, sku_attr["color"], sku_attr["size"], sku_attr["is_grid"],
+                            unmatched_segments[:3])  # 과다 로그 방지
+
+            # 박스→수량 할당
+            remaining = total_qty
+            for box_qty, inv in candidate_boxes:
+                if remaining <= 0:
+                    break
+                use = min(box_qty, remaining)
+                rows.append({
+                    "poId": po_id, "fc": fc, "transportType": transport_type, "edd": edd,
+                    "skuId": sku_id, "skuBarcode": sku_barcode, "skuName": sku_name,
+                    "confirmedQty": str(total_qty), "invoiceNumber": inv, "shippedQty": str(use),
+                })
+                remaining -= use
+
+            if remaining > 0:
+                logger.warning("REMAINING QTY: PO=%s FC=%s SKU=%s remain=%s / total=%s",
+                            po_id, fc, sku_name, remaining, total_qty)
+
+        request.session["excel_shipcode_rows"] = rows
+        return render(request, "excel_conversion/excel_shipcode.html", {
+            "data_list": rows, "error_message": None, "success_message": f"{len(rows)}건 처리 완료",
+        })
+
+    except Exception as e:
+        logger.exception("excel_shipcode 처리 오류")
+        return render(request, "excel_conversion/excel_shipcode.html", {
+            "data_list": [], "error_message": f"처리 중 오류: {e}", "success_message": None,
+        })
