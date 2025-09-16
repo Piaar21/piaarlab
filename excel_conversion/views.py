@@ -270,9 +270,9 @@ def excel_clear_set(request):
 
 def excel_shipcode_clear_set(request):
     if request.method == 'POST':
-        request.session.pop('excel_data', None)
-        logger.info('Session data cleared.')
-    return redirect(reverse('excel_conversion:excel_shipcode_clear_set'))
+        request.session.pop('excel_shipcode_rows', None)  # ← 이 키로 저장했으니 이걸 지워야 함
+    return redirect(reverse('excel_conversion:excel_shipcode'))  # ← shipcode 화면으로
+
 
 new_headers = [
     "상품코드", 
@@ -476,11 +476,19 @@ def _find_col(df, candidates):
     raise KeyError(f"컬럼을 찾을 수 없습니다: {candidates}")
 
 def _normalize_color(text: str) -> str:
-    return re.sub(r"\s+", "", str(text or "").strip())
+    s = str(text or "").strip()
+    s = re.sub(r'^\d+\.\s*', '', s)   # ← "2.그레이" 같은 번호 접두 제거
+    s = re.sub(r'\s+', '', s)         # ← 공백 제거
+    return s
+
 
 def _extract_color_from_sku_name(sku_name: str) -> str:
     parts = [p.strip() for p in str(sku_name or "").split(",") if p.strip()]
-    return _normalize_color(parts[-1]) if parts else ""
+    for token in reversed(parts):
+        if not re.search(r'\d+\s*cm', token, flags=re.I):  # 사이즈는 건너뜀
+            return _normalize_color(token)
+    return ""
+
 
 def _collect_allowed_colors(df2, col_sku_nm) -> set:
     """
@@ -494,15 +502,6 @@ def _collect_allowed_colors(df2, col_sku_nm) -> set:
     return colors
 
 def _split_multi_items_by_delim(cell_text: str, allowed_colors: set):
-    """
-    '가죽 방석-크림 아이보리-16,,격자 가죽 방석-그린_40cm-1' 처럼
-    ' ,,' 구분자를 신뢰해서 토막을 나눔. 각 토막에서:
-      - is_grid: '격자' 포함 여부
-      - size   : 먼저 \d+cm, 없으면 2자리 숫자 추정 (35/40 등)
-      - color  : allowed_colors 중 '공백 제거 문자열'이 토막에 포함된 것
-      - qty    : 끝의 -숫자 우선, 없으면 토막 끝의 숫자
-    반환: [{"is_grid":bool, "color":str, "size":int|None, "qty":int}]
-    """
     text = str(cell_text or "")
     parts = re.split(r'\s*,\s*,\s*', text.strip())
     items = []
@@ -510,39 +509,33 @@ def _split_multi_items_by_delim(cell_text: str, allowed_colors: set):
         s = seg.strip().strip(',')
         if not s:
             continue
-
         is_grid = ("격자" in s)
 
-        # 수량: 우선 '-숫자' 패턴, 없으면 마지막 숫자
+        # qty
         qty = 0
-        m = re.search(r'-(\d+)\s*$', s)
-        if m:
-            qty = int(m.group(1))
-        else:
-            m2 = re.search(r'(\d+)\s*$', s)
-            if m2:
-                qty = int(m2.group(1))
+        m = re.search(r'-(\d+)\s*$', s) or re.search(r'(\d+)\s*$', s)
+        if m: qty = int(m.group(1))
 
-        # 사이즈: \d+cm 우선, 없으면 2자리 숫자(35/40 등) 힌트
+        # size
         size = None
         ms = re.search(r'(\d+)\s*cm', s, flags=re.I)
         if ms:
             size = int(ms.group(1))
         else:
-            ms2 = re.search(r'\b([3-5]\d)\b', s)
-            if ms2:
-                size = int(ms2.group(1))
+            ms2 = re.search(r'\b([3-5]\d)\b', s)  # 30~59 힌트(필요시 범위 조절)
+            if ms2: size = int(ms2.group(1))
 
-        # 색상: 2.xlsx에서 추출한 allowed_colors 중 하나가 포함(공백무시 기준)
+        # color: 가장 긴 후보부터 찾기(부분일치 충돌 방지)
         norm_seg = _normalize_color(s)
         color = ""
-        for c in allowed_colors:
+        for c in sorted(allowed_colors, key=len, reverse=True):
             if c and c in norm_seg:
                 color = c
                 break
 
         items.append({"is_grid": is_grid, "color": color, "size": size, "qty": qty})
     return items
+
 
 
 def _pick_sheet(files):
@@ -642,22 +635,37 @@ def excel_shipcode(request):
                             po_id, fc, sku_name, sku_attr["color"], sku_attr["size"], sku_attr["is_grid"],
                             unmatched_segments[:3])  # 과다 로그 방지
 
-            # 박스→수량 할당
+            # 박스→수량 할당 (송장별 합산)
             remaining = total_qty
+            alloc_by_invoice = {}
+
             for box_qty, inv in candidate_boxes:
                 if remaining <= 0:
                     break
                 use = min(box_qty, remaining)
+                alloc_by_invoice[inv] = alloc_by_invoice.get(inv, 0) + use
+                remaining -= use
+
+            # 송장별 합계로 한 줄씩 출력
+            for inv, qty in alloc_by_invoice.items():
                 rows.append({
                     "poId": po_id, "fc": fc, "transportType": transport_type, "edd": edd,
                     "skuId": sku_id, "skuBarcode": sku_barcode, "skuName": sku_name,
-                    "confirmedQty": str(total_qty), "invoiceNumber": inv, "shippedQty": str(use),
+                    "confirmedQty": str(qty),         # ← 납품수량과 동일하게
+                    "invoiceNumber": inv,
+                    "shippedQty": str(qty),
                 })
-                remaining -= use
 
+            # 남은 수량(미배정)이 있으면 송장 공란으로 한 줄 표시 (필요 시 유지/삭제)
             if remaining > 0:
-                logger.warning("REMAINING QTY: PO=%s FC=%s SKU=%s remain=%s / total=%s",
-                            po_id, fc, sku_name, remaining, total_qty)
+                rows.append({
+                    "poId": po_id, "fc": fc, "transportType": transport_type, "edd": edd,
+                    "skuId": sku_id, "skuBarcode": sku_barcode, "skuName": sku_name,
+                    "confirmedQty": str(remaining),   # ← 납품수량과 동일
+                    "invoiceNumber": "",
+                    "shippedQty": str(remaining),
+                })
+
 
         request.session["excel_shipcode_rows"] = rows
         return render(request, "excel_conversion/excel_shipcode.html", {
