@@ -240,9 +240,9 @@
               </td>
               <td class="left-col2 text-center">
                 소계
-              <span class="text-primary show-modal-icon ms-2" style="cursor:pointer;" data-date="period">
-                [상세]
-              </span>
+                <span class="text-primary show-modal-icon ms-2" style="cursor: pointer;" data-date="period">
+                  <i class="fas fa-info-circle"></i>
+                </span>
               </td>
               <td class="text-end">{{ period_summary.total_qty|intcomma }}</td>
               <td class="text-end">{{ period_summary.total_ad_qty|intcomma }}</td>
@@ -555,8 +555,8 @@
             <td class="text-end">${formatNumber(row.sales_amt)}</td>
             <td class="text-end">${formatNumber(row.commission)}</td>
             <td class="text-end">${formatNumber(row.ad_spend)}</td>
-            <td class="text-end">${formatNumber(row.purchase_cost).toFixed(0)}</td>
-            <td class="text-end">${formatNumber(row.etc_cost).toFixed(0)}</td>
+            <td class="text-end">${formatNumber(Number(row.purchase_cost).toFixed(0))} 원</td>
+            <td class="text-end">${formatNumber(Number(row.etc_cost).toFixed(0))} 원</td>
             <td class="text-end">${formatNumber(row.profit)}</td>
           <td class="text-end">${Number(row.margin_rate).toFixed(1)}%</td>
         </tr>
