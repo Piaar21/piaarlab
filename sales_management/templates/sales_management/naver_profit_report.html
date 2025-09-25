@@ -57,10 +57,10 @@
                     <td class="one-line">{{ item.store }}</td>
                     <td class="text-nowrap">{{ item.qty|intcomma }}</td>
                     <td class="text-nowrap">{{ item.ad_qty|intcomma }}</td>
-                    <td class="text-nowrap">{{ item.net_sales_amount|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.purchase_cost|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.net_sales_amount|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.purchase_cost|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }}</td>
                     <td class="text-nowrap">{{ item.margin_rate|floatformat:2 }}%</td>
                   </tr>
                 {% endfor %}
@@ -112,10 +112,10 @@
                     <td class="one-line">{{ item.store }}</td>
                     <td class="text-nowrap">{{ item.qty|intcomma }}</td>
                     <td class="text-nowrap">{{ item.ad_qty|intcomma }}</td>
-                    <td class="text-nowrap">{{ item.net_sales_amount|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.purchase_cost|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.net_sales_amount|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.purchase_cost|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }}</td>
                     <td class="text-nowrap">{{ item.margin_rate|floatformat:2 }}%</td>
                   </tr>
                 {% endfor %}
@@ -167,10 +167,10 @@
                     <td class="one-line">{{ item.store }}</td>
                     <td class="text-nowrap">{{ item.qty|intcomma }}</td>
                     <td class="text-nowrap">{{ item.ad_qty|intcomma }}</td>
-                    <td class="text-nowrap">{{ item.net_sales_amount|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.purchase_cost|floatformat:0|intcomma }} 원</td>
-                    <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }} 원</td>
+                    <td class="text-nowrap">{{ item.net_sales_amount|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.ad_spend|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.purchase_cost|floatformat:0|intcomma }}</td>
+                    <td class="text-nowrap">{{ item.profit|floatformat:0|intcomma }}</td>
                     <td class="text-nowrap">{{ item.margin_rate|floatformat:2 }}%</td>
                   </tr>
                 {% endfor %}
@@ -246,12 +246,12 @@
               </td>
               <td class="text-end">{{ period_summary.total_qty|intcomma }}</td>
               <td class="text-end">{{ period_summary.total_ad_qty|intcomma }}</td>
-              <td class="text-end">{{ period_summary.net_sales_amount|intcomma }} 원</td>
-              <td class="text-end">{{ period_summary.commission|floatformat:0|intcomma }} 원</td>
-              <td class="text-end">{{ period_summary.ad_spend|floatformat:0|intcomma }} 원</td>
-              <td class="text-end">{{ period_summary.purchase_cost|intcomma }} 원</td>
-              <td class="text-end">{{ period_summary.etc_cost|intcomma }} 원</td>
-              <td class="text-end">{{ period_summary.profit|floatformat:0|intcomma }} 원</td>
+              <td class="text-end">{{ period_summary.net_sales_amount|intcomma }}</td>
+              <td class="text-end">{{ period_summary.commission|floatformat:0|intcomma }}</td>
+              <td class="text-end">{{ period_summary.ad_spend|floatformat:0|intcomma }}</td>
+              <td class="text-end">{{ period_summary.purchase_cost|intcomma }}</td>
+              <td class="text-end">{{ period_summary.etc_cost|intcomma }}</td>
+              <td class="text-end">{{ period_summary.profit|floatformat:0|intcomma }}</td>
               <td class="text-end">
                 {% if period_summary.net_sales_amount > 0 %}
                   {{ period_summary.margin_rate|floatformat:2 }}%
@@ -267,12 +267,12 @@
                 <td colspan="2">└ {{ brand }}</td>
                 <td class="text-end">{{ detail.qty|intcomma }}</td>
                 <td class="text-end">{{ detail.ad_qty|intcomma }}</td>
-                <td class="text-end">{{ detail.net_sales_amount|floatformat:0|intcomma }} 원</td>
-                <td class="text-end">{{ detail.commission|floatformat:0|intcomma }} 원</td>
-                <td class="text-end">{{ detail.ad_spend|floatformat:0|intcomma }} 원</td>
-                <td class="text-end">{{ detail.purchase_cost|floatformat:0|intcomma }} 원</td>
-                <td class="text-end">{{ detail.etc_cost|floatformat:0|intcomma }} 원</td>
-                <td class="text-end">{{ detail.profit|floatformat:0|intcomma }} 원</td>
+                <td class="text-end">{{ detail.net_sales_amount|floatformat:0|intcomma }}</td>
+                <td class="text-end">{{ detail.commission|floatformat:0|intcomma }}</td>
+                <td class="text-end">{{ detail.ad_spend|floatformat:0|intcomma }}</td>
+                <td class="text-end">{{ detail.purchase_cost|floatformat:0|intcomma }}</td>
+                <td class="text-end">{{ detail.etc_cost|floatformat:0|intcomma }}</td>
+                <td class="text-end">{{ detail.profit|floatformat:0|intcomma }}</td>
                 <td class="text-end">
                   {% if detail.net_sales_amount > 0 %}
                     {{ detail.margin_rate|floatformat:2 }}%
@@ -303,12 +303,12 @@
                 </td>
                 <td class="text-end">{{ day.qty|intcomma }}</td>
                 <td class="text-end">{{ day.ad_qty|intcomma }}</td>
-                <td class="text-end">{{ day.net_sales_amount|intcomma }} 원</td>
-                <td class="text-end">{{ day.commission|floatformat:0|intcomma }} 원</td>
-                <td class="text-end">{{ day.ad_spend|floatformat:0|intcomma }} 원</td>
-                <td class="text-end">{{ day.purchase_cost|intcomma }} 원</td>
-                <td class="text-end">{{ day.etc_cost|intcomma }} 원</td>
-                <td class="text-end">{{ day.profit|floatformat:0|intcomma }} 원</td>
+                <td class="text-end">{{ day.net_sales_amount|intcomma }}</td>
+                <td class="text-end">{{ day.commission|floatformat:0|intcomma }}</td>
+                <td class="text-end">{{ day.ad_spend|floatformat:0|intcomma }}</td>
+                <td class="text-end">{{ day.purchase_cost|intcomma }}</td>
+                <td class="text-end">{{ day.etc_cost|intcomma }}</td>
+                <td class="text-end">{{ day.profit|floatformat:0|intcomma }}</td>
                 <td class="text-end">
                   {% if day.net_sales_amount > 0 %}
                     {{ day.margin_rate|floatformat:2 }}%
@@ -322,12 +322,12 @@
                   <td class="left-col1" colspan="2">└ {{ det.kind }}</td>
                   <td class="text-end">{{ det.qty|intcomma }}</td>
                   <td class="text-end">{{ det.ad_qty|intcomma }}</td>
-                  <td class="text-end">{{ det.net_sales_amount|intcomma }} 원</td>
-                  <td class="text-end">{{ det.commission|floatformat:0|intcomma }} 원</td>
-                  <td class="text-end">{{ det.ad_spend|intcomma }} 원</td>
-                  <td class="text-end">{{ det.purchase_cost|intcomma }} 원</td>
-                  <td class="text-end">{{ det.etc_cost|intcomma }} 원</td>
-                  <td class="text-end">{{ det.profit|floatformat:0|intcomma }} 원</td>
+                  <td class="text-end">{{ det.net_sales_amount|intcomma }}</td>
+                  <td class="text-end">{{ det.commission|floatformat:0|intcomma }}</td>
+                  <td class="text-end">{{ det.ad_spend|intcomma }}</td>
+                  <td class="text-end">{{ det.purchase_cost|intcomma }}</td>
+                  <td class="text-end">{{ det.etc_cost|intcomma }}</td>
+                  <td class="text-end">{{ det.profit|floatformat:0|intcomma }}</td>
                   <td class="text-end">
                     {% if det.net_sales_amount > 0 %}
                       {{ det.margin_rate|floatformat:2 }}%
@@ -410,7 +410,7 @@
                   <td class="one-line">{{ item.product_name }}</td>
                   <td class="one-line">{{ item.option_name }}</td>
                   <td class="one-line">{{ item.option_code }}</td>
-                  <td class="text-end">{{ item.purchasing_price|intcomma }} 원</td>
+                  <td class="text-end">{{ item.purchasing_price|intcomma }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -552,12 +552,12 @@
             <td>${row.product_name || '(이름없음)'}</td>
             <td class="text-end">${formatNumber(row.sold_qty)}</td>
             <td class="text-end">${formatNumber(row.ad_qty)}</td>
-            <td class="text-end">${formatNumber(row.sales_amt)} 원</td>
-            <td class="text-end">${formatNumber(row.commission)} 원</td>
-            <td class="text-end">${formatNumber(row.ad_spend)} 원</td>
-            <td class="text-end">${formatNumber(row.purchase_cost)} 원</td>
-            <td class="text-end">${formatNumber(row.etc_cost)} 원</td>
-            <td class="text-end">${formatNumber(row.profit)} 원</td>
+            <td class="text-end">${formatNumber(row.sales_amt)}</td>
+            <td class="text-end">${formatNumber(row.commission)}</td>
+            <td class="text-end">${formatNumber(row.ad_spend)}</td>
+            <td class="text-end">${formatNumber(row.purchase_cost).toFixed(0)}</td>
+            <td class="text-end">${formatNumber(row.etc_cost).toFixed(0)}</td>
+            <td class="text-end">${formatNumber(row.profit)}</td>
           <td class="text-end">${Number(row.margin_rate).toFixed(1)}%</td>
         </tr>
       `;
