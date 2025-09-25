@@ -4659,10 +4659,12 @@ def naver_profit_report_view(request):
     # ---------------------------------------------------------
     # (B) naverItem 맵 (상품명 매핑용) → channelProductID 기준
     naver_item_map = {}
+    naver_item_map_by_pid = {}
     for it in naverItem.objects.all():
         if it.channelProductID:
-            key = it.channelProductID.strip()
-            naver_item_map[key] = it.itemName
+            naver_item_map[it.channelProductID.strip()] = it.itemName
+        if it.productID:
+            naver_item_map_by_pid[it.productID.strip()] = it.itemName
 
     # ---------------------------------------------------------
     # (C) NaverAdShoppingProduct 조회 → sp_map 생성
@@ -5199,7 +5201,11 @@ def naver_profit_report_view(request):
         roas_val = (data["ad_revenue"] / data["ad_spend"] * 100) if data["ad_spend"] else 0
         ad_sales_rate_val = (data["ad_qty"] / data["sold_qty"] * 100) if data["sold_qty"] else 0
 
-        product_name = naver_item_map.get(pid, f"(상품:{pid})")
+        product_name = (
+            naver_item_map.get(pid) or
+            naver_item_map_by_pid.get(pid) or
+            f"(상품:{pid})"
+        )
         overall_details.append({
             "product_id": pid,
             "product_name": product_name,
