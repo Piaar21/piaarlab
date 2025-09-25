@@ -4708,39 +4708,39 @@ def naver_profit_report_view(request):
 
         sku = (ds.option_id or "").strip()
         brand_label = get_brand_from_sales(ds)
+
         if sku and brand_label == "광고비":
             channel = sku_to_channel.get(sku, "N/A")
             mapped_account = channel_brand_map.get(channel, "N/A")
             itemName = naver_item_map.get(channel, "N/A")
-                         
 
         try:
-            cost_obj  = NaverPurchaseCost.objects.get(sku_id=sku)
+            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
             unit_price = cost_obj.purchasing_price
         except MultipleObjectsReturned:
             # 동일한 sku_id로 2개 이상 레코드가 있을 때
+            duplicates = NaverPurchaseCost.objects.filter(sku_id=sku).order_by('-id')
             logger.error(
                 "MultipleObjectsReturned: ds.id=%s, date=%s, sku=%r → 레코드 %d개",
-                ds.id, d_str, sku,
-                NaverPurchaseCost.objects.filter(sku_id=sku).count()
+                ds.id, d_str, sku, duplicates.count()
             )
-            # fallback: 가장 최근 값 하나만 사용
-            first_obj  = NaverPurchaseCost.objects.filter(sku_id=sku).order_by('-id').first()
-            unit_price = first_obj.purchasing_price if first_obj else 0
+            # fallback: 가장 최근 id 하나만 사용
+            first_obj = duplicates.first()
+            unit_price = first_obj.purchasing_price if first_obj else Decimal("0.00")
         except NaverPurchaseCost.DoesNotExist:
             # 아예 레코드가 없을 때
             logger.warning(
                 "DoesNotExist: ds.id=%s, date=%s, sku=%r → 레코드 없음",
                 ds.id, d_str, sku
             )
-            unit_price = 0
+            unit_price = Decimal("0.00")
 
         partial_cost = unit_price * sold_qty
 
         daily_map[(d_str, brand_label)]["sold_items"] += sold_qty
         daily_map[(d_str, brand_label)]["net_sales"] += net_s
         daily_map[(d_str, brand_label)]["purchase_cost"] += partial_cost
-        daily_map[(d_str, brand_label)]["etc_cost"] += 0
+        daily_map[(d_str, brand_label)]["etc_cost"] += Decimal("0.00")
 
     # ---------------------------------------------------------
     # (E) 광고 데이터 조회
