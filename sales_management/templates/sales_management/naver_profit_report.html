@@ -249,8 +249,8 @@
               <td class="text-end">{{ period_summary.net_sales_amount|intcomma }}</td>
               <td class="text-end">{{ period_summary.commission|floatformat:0|intcomma }}</td>
               <td class="text-end">{{ period_summary.ad_spend|floatformat:0|intcomma }}</td>
-              <td class="text-end">{{ period_summary.purchase_cost|intcomma }}</td>
-              <td class="text-end">{{ period_summary.etc_cost|intcomma }}</td>
+              <td class="text-end">{{ period_summary.purchase_cost|floatformat:0|intcomma }}</td>
+              <td class="text-end">{{ period_summary.etc_cost|floatformat:0|intcomma }}</td>
               <td class="text-end">{{ period_summary.profit|floatformat:0|intcomma }}</td>
               <td class="text-end">
                 {% if period_summary.net_sales_amount > 0 %}
@@ -306,8 +306,8 @@
                 <td class="text-end">{{ day.net_sales_amount|intcomma }}</td>
                 <td class="text-end">{{ day.commission|floatformat:0|intcomma }}</td>
                 <td class="text-end">{{ day.ad_spend|floatformat:0|intcomma }}</td>
-                <td class="text-end">{{ day.purchase_cost|intcomma }}</td>
-                <td class="text-end">{{ day.etc_cost|intcomma }}</td>
+                <td class="text-end">{{ day.purchase_cost|floatformat:0|intcomma }}</td>
+                <td class="text-end">{{ day.etc_cost|floatformat:0|intcomma }}</td>
                 <td class="text-end">{{ day.profit|floatformat:0|intcomma }}</td>
                 <td class="text-end">
                   {% if day.net_sales_amount > 0 %}
@@ -325,8 +325,8 @@
                   <td class="text-end">{{ det.net_sales_amount|intcomma }}</td>
                   <td class="text-end">{{ det.commission|floatformat:0|intcomma }}</td>
                   <td class="text-end">{{ det.ad_spend|intcomma }}</td>
-                  <td class="text-end">{{ det.purchase_cost|intcomma }}</td>
-                  <td class="text-end">{{ det.etc_cost|intcomma }}</td>
+                  <td class="text-end">{{ det.purchase_cost|floatformat:0|intcomma }}</td>
+                  <td class="text-end">{{ det.etc_cost|floatformat:0|intcomma }}</td>
                   <td class="text-end">{{ det.profit|floatformat:0|intcomma }}</td>
                   <td class="text-end">
                     {% if det.net_sales_amount > 0 %}
