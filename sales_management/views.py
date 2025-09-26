@@ -1522,7 +1522,12 @@ def ad_report_view(request):
 
         # 매입가
         try:
-            cost_obj = PurchaseCost.objects.get(sku_id=sku)
+            cost_obj = (
+                PurchaseCost.objects
+                .filter(sku_id=sku)
+                .order_by('-id')
+                .first()
+            )
             purchase_c = cost_obj.purchasing_price * sold_qty
         except PurchaseCost.DoesNotExist:
             purchase_c = 0
@@ -1681,7 +1686,12 @@ def ad_report_view(request):
         period_product_name_mapping[disp_id] = p_name
 
         try:
-            cost_obj = PurchaseCost.objects.get(sku_id=sku)
+            cost_obj = (
+                PurchaseCost.objects
+                .filter(sku_id=sku)
+                .order_by('-id')
+                .first()
+            )
             purchase_c = cost_obj.purchasing_price * sold_qty
         except PurchaseCost.DoesNotExist:
             purchase_c = 0
@@ -2513,7 +2523,12 @@ def profit_report_view(request):
         net_sales = row["net_sales"] or 0
 
         try:
-            cost_obj = PurchaseCost.objects.get(sku_id=sku)
+            cost_obj = (
+                PurchaseCost.objects
+                .filter(sku_id=sku)
+                .order_by('-id')
+                .first()
+            )
             purchase_c = cost_obj.purchasing_price * sold_qty
         except PurchaseCost.DoesNotExist:
             purchase_c = 0
@@ -2595,7 +2610,12 @@ def profit_report_view(request):
         net_sales = row["net_sales"] or 0
 
         try:
-            cost_obj = PurchaseCost.objects.get(sku_id=sku)
+            cost_obj = (
+                PurchaseCost.objects
+                .filter(sku_id=sku)
+                .order_by('-id')
+                .first()
+            )
             purchase_c = cost_obj.purchasing_price * sold_qty
         except PurchaseCost.DoesNotExist:
             purchase_c = 0
@@ -4717,7 +4737,12 @@ def naver_profit_report_view(request):
             itemName = naver_item_map.get(channel, "N/A")
 
         try:
-            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
+            cost_obj = (
+                NaverPurchaseCost.objects
+                .filter(sku_id=sku)
+                .order_by('-id')
+                .first()
+            )
             unit_price = cost_obj.purchasing_price
         except MultipleObjectsReturned:
             # 동일한 sku_id로 2개 이상 레코드가 있을 때
@@ -5131,7 +5156,12 @@ def naver_profit_report_view(request):
         final_rev = ds.sales_revenue - ds.refunded_revenue
         sku = (ds.option_id or "").strip()
         try:
-            cost_obj = NaverPurchaseCost.objects.get(sku_id=sku)
+            cost_obj = (
+                NaverPurchaseCost.objects
+                .filter(sku_id=sku)
+                .order_by('-id')
+                .first()
+            )
             unit_price = cost_obj.purchasing_price
         except NaverPurchaseCost.DoesNotExist:
             unit_price = Decimal("0.00")
