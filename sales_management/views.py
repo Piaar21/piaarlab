@@ -1528,7 +1528,7 @@ def ad_report_view(request):
                 .order_by('-id')
                 .first()
             )
-            purchase_c = cost_obj.purchasing_price * sold_qty
+            purchase_c = cost_obj.purchasing_price * sold_qty if cost_obj else 0
         except PurchaseCost.DoesNotExist:
             purchase_c = 0
 
@@ -1692,7 +1692,7 @@ def ad_report_view(request):
                 .order_by('-id')
                 .first()
             )
-            purchase_c = cost_obj.purchasing_price * sold_qty
+            purchase_c = cost_obj.purchasing_price * sold_qty if cost_obj else 0
         except PurchaseCost.DoesNotExist:
             purchase_c = 0
 
@@ -2529,7 +2529,7 @@ def profit_report_view(request):
                 .order_by('-id')
                 .first()
             )
-            purchase_c = cost_obj.purchasing_price * sold_qty
+            purchase_c = cost_obj.purchasing_price * sold_qty if cost_obj else 0
         except PurchaseCost.DoesNotExist:
             purchase_c = 0
 
@@ -2616,7 +2616,7 @@ def profit_report_view(request):
                 .order_by('-id')
                 .first()
             )
-            purchase_c = cost_obj.purchasing_price * sold_qty
+            purchase_c = cost_obj.purchasing_price * sold_qty if cost_obj else 0
         except PurchaseCost.DoesNotExist:
             purchase_c = 0
 
@@ -4743,7 +4743,7 @@ def naver_profit_report_view(request):
                 .order_by('-id')
                 .first()
             )
-            unit_price = cost_obj.purchasing_price
+            unit_price = cost_obj.purchasing_price if cost_obj else Decimal("0.00")
         except MultipleObjectsReturned:
             # 동일한 sku_id로 2개 이상 레코드가 있을 때
             duplicates = NaverPurchaseCost.objects.filter(sku_id=sku).order_by('-id')
@@ -5162,7 +5162,7 @@ def naver_profit_report_view(request):
                 .order_by('-id')
                 .first()
             )
-            unit_price = cost_obj.purchasing_price
+            unit_price = cost_obj.purchasing_price if cost_obj else Decimal("0.00")
         except NaverPurchaseCost.DoesNotExist:
             unit_price = Decimal("0.00")
         purchase_val = unit_price * final_qty
