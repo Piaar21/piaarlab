@@ -436,7 +436,7 @@ def get_headers():
         'Content-Type': 'application/json'
     }    
 
-REQUEST_URL = "https://sellertool-api-server-function.azurewebsites.net/api/product-options/search/by-optionCodes"
+REQUEST_URL = "https://shared-api.sellertool.io/api/product-options/search/by-optionCodes"
 
 
 def fetch_seller_tool_option_info(option_codes):

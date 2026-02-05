@@ -29,7 +29,7 @@ def get_product_options(product_name):
     셀러툴 'product-options' API를 호출하여, 특정 product_name에 대한 옵션 정보를 받아옵니다.
     :return: 옵션 정보(딕셔너리 리스트) 또는 None
     """
-    REQUEST_URL_OPTIONS = 'https://sellertool-api-server-function.azurewebsites.net/api/product-options'
+    REQUEST_URL_OPTIONS = 'https://shared-api.sellertool.io/api/product-options'
 
     # 현재 시각(밀리초) 기준으로 timestamp 생성
     timestamp = str(int(time.time() * 1000))
@@ -79,7 +79,7 @@ def get_stock_by_option_codes(option_codes):
     여러 option_codes에 대한 재고 정보를 받아옵니다.
     :return: 재고 정보(딕셔너리 리스트) 또는 None
     """
-    REQUEST_URL_STOCKS = 'https://sellertool-api-server-function.azurewebsites.net/api/inventories/search/stocks-by-optionCodes'
+    REQUEST_URL_STOCKS = 'https://shared-api.sellertool.io/api/inventories/search/stocks-by-optionCodes'
 
     timestamp = str(int(time.time() * 1000))
     signature = generate_signature(SELLERTOOL_API_KEY, SELLERTOOL_SECRET_KEY, timestamp)

@@ -2165,7 +2165,7 @@ class SendReturnItemsView(View):
             "x-sellertool-signiture": signature,
             "Content-Type": "application/json",
         }
-        url = "https://sellertool-api-server-function.azurewebsites.net/api/return-exchanges/from-system"
+        url = "https://shared-api.sellertool.io/api/return-exchanges/from-system"
 
         session = requests.Session()
         retries = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])

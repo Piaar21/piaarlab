@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 ST_API_KEY = config('ST_API_KEY', default=None)
 ST_SECRET_KEY = config('ST_SECRET_KEY', default=None)
 
-REQUEST_URL_INVENTORY = 'https://sellertool-api-server-function.azurewebsites.net/api/inventories/search/stocks-by-optionCodes'
-REQUEST_URL_OPTION_BY_CODE = 'https://sellertool-api-server-function.azurewebsites.net/api/product-options/search/by-optionCodes'
-REQUEST_URL_OPTIONS = 'https://sellertool-api-server-function.azurewebsites.net/api/product-options'
+REQUEST_URL_INVENTORY = 'https://shared-api.sellertool.io/api/inventories/search/stocks-by-optionCodes'
+REQUEST_URL_OPTION_BY_CODE = 'https://shared-api.sellertool.io/api/product-options/search/by-optionCodes'
+REQUEST_URL_OPTIONS = 'https://shared-api.sellertool.io/api/product-options'
 
 
 # 네이버 계정 정보 불러오기
