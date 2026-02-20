@@ -765,11 +765,11 @@ def delayed_exchange_options_view(request):
 
 # 상태별 ETA 범위 (예시)
 ETA_RANGES = {
-    'purchase':  (14, 21),   # 구매된상품들: 14~21일
-    'shipping':  (10, 14),   # 배송중
-    'arrived':   (7, 10),    # 도착완료
-    'document':  (5, 7),     # 서류작성
-    'loading':   (1, 4),     # 선적중
+    'purchase':  (10, 14),   # 구매된상품들: 10~14일
+    'shipping':  (7, 10),   # 배송중
+    'arrived':   (5, 7),    # 도착완료
+    'document':  (3, 5),     # 서류작성
+    'loading':   (1, 2),     # 선적중
 }
 
 def restock_list(request):
@@ -2402,9 +2402,12 @@ def out_of_stock_management_view(request):
 
     filter_val = request.GET.get('filter', 'all').strip()  # 'outofstock' / 'instock' / 'all'
     search_query = request.GET.get('search_query', '').strip()
+    seller_stock_order = request.GET.get('seller_stock_order', '').strip().lower()
+    if seller_stock_order not in ('asc', 'desc'):
+        seller_stock_order = ''
 
     # 1) OutOfStock 중 status=1 (옵션매핑 전송된 것만 표시)
-    base_qs = OutOfStock.objects.filter(status=1).order_by('-updated_at')
+    base_qs = OutOfStock.objects.filter(status=1)
 
     # 2) 필터 적용
     # outofstock → option_id_stock <= 0 or isnull
@@ -2426,7 +2429,15 @@ def out_of_stock_management_view(request):
             Q(option_id__icontains=lower_query)
         )
 
-    # 4) 페이지네이션
+    # 4) 정렬 (셀러툴재고 오름차순/내림차순, 미지정 시 최신 업데이트순)
+    if seller_stock_order == 'asc':
+        base_qs = base_qs.order_by('seller_tool_stock', '-updated_at')
+    elif seller_stock_order == 'desc':
+        base_qs = base_qs.order_by('-seller_tool_stock', '-updated_at')
+    else:
+        base_qs = base_qs.order_by('-updated_at')
+
+    # 5) 페이지네이션
     paginator = Paginator(base_qs, 100)  # 페이지당 100개
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
@@ -2440,6 +2451,7 @@ def out_of_stock_management_view(request):
         "page_range_custom": page_range_custom,
         "filter_val": filter_val,
         "search_query": search_query,
+        "seller_stock_order": seller_stock_order,
     }
     return render(request, "delayed_management/out_of_stock_management.html", context)
 

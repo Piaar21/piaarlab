@@ -136,7 +136,7 @@
 
   <!-- 필터 버튼 -->
   <div class="mb-2 btn-group" role="group" aria-label="Filter Buttons">
-    <a href="?filter=all"
+    <a href="?filter=all{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}{% if seller_stock_order %}&seller_stock_order={{ seller_stock_order }}{% endif %}"
        class="btn btn-sm
          {% if filter_val == 'all' %}
            btn-primary text-white
@@ -147,7 +147,7 @@
       전체
     </a>
   
-    <a href="?filter=outofstock"
+    <a href="?filter=outofstock{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}{% if seller_stock_order %}&seller_stock_order={{ seller_stock_order }}{% endif %}"
        class="btn btn-sm
          {% if filter_val == 'outofstock' %}
            btn-primary text-white
@@ -158,7 +158,7 @@
       품절
     </a>
   
-    <a href="?filter=instock"
+    <a href="?filter=instock{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}{% if seller_stock_order %}&seller_stock_order={{ seller_stock_order }}{% endif %}"
        class="btn btn-sm
          {% if filter_val == 'instock' %}
            btn-primary text-white
@@ -170,6 +170,8 @@
     </a>
   </div>
   <form method="get" class="mb-3" id="searchForm">
+    <input type="hidden" name="filter" value="{{ filter_val }}">
+    <input type="hidden" name="seller_stock_order" value="{{ seller_stock_order }}">
     <div class="row g-2 align-items-center">
       <div class="col-auto">
         <input type="text"
@@ -197,7 +199,24 @@
               <th>대표이미지</th>
               <th>옵션ID</th>
               <th>옵션ID재고</th>
-              <th>셀러툴재고</th>
+              <th>
+                {% if seller_stock_order == 'asc' %}
+                  <a href="?filter={{ filter_val }}{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}&seller_stock_order=desc"
+                     class="text-white text-decoration-none">
+                    셀러툴재고 ▲
+                  </a>
+                {% elif seller_stock_order == 'desc' %}
+                  <a href="?filter={{ filter_val }}{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}&seller_stock_order=asc"
+                     class="text-white text-decoration-none">
+                    셀러툴재고 ▼
+                  </a>
+                {% else %}
+                  <a href="?filter={{ filter_val }}{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}&seller_stock_order=asc"
+                     class="text-white text-decoration-none">
+                    셀러툴재고
+                  </a>
+                {% endif %}
+              </th>
               <th>예상날짜</th>
               <th>주문상품명</th>
               <th>주문옵션명</th>
@@ -307,7 +326,7 @@
           {% if page_obj.has_previous %}
             <li class="page-item">
               <a class="page-link"
-                 href="?page={{ page_obj.previous_page_number }}&filter={{ filter_val }}">
+                 href="?page={{ page_obj.previous_page_number }}&filter={{ filter_val }}{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}{% if seller_stock_order %}&seller_stock_order={{ seller_stock_order }}{% endif %}">
                 «
               </a>
             </li>
@@ -323,7 +342,7 @@
             {% else %}
               <li class="page-item">
                 <a class="page-link"
-                   href="?page={{ num }}&filter={{ filter_val }}">
+                   href="?page={{ num }}&filter={{ filter_val }}{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}{% if seller_stock_order %}&seller_stock_order={{ seller_stock_order }}{% endif %}">
                   {{ num }}
                 </a>
               </li>
@@ -333,7 +352,7 @@
           {% if page_obj.has_next %}
             <li class="page-item">
               <a class="page-link"
-                 href="?page={{ page_obj.next_page_number }}&filter={{ filter_val }}">
+                 href="?page={{ page_obj.next_page_number }}&filter={{ filter_val }}{% if search_query %}&search_query={{ search_query|urlencode }}{% endif %}{% if seller_stock_order %}&seller_stock_order={{ seller_stock_order }}{% endif %}">
                 »
               </a>
             </li>
