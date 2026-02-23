@@ -1429,12 +1429,12 @@ def get_templateId_by_channel(channel_name):
     채널명 → templateId
     """
     tmpl_map = {
-        "니뜰리히": "KA01TP241230063811612F7QtAXfIYxu",
-        "수비다": "KA01TP241230063811612F7QtAXfIYxu",
-        "수비다 SUBIDA": "KA01TP241230063811612F7QtAXfIYxu",
-        "노는 개 최고양": "KA01TP241230063811612F7QtAXfIYxu",
-        "노는개최고양": "KA01TP241230063811612F7QtAXfIYxu",
-        "아르빙": "KA01TP241230063811612F7QtAXfIYxu",
+        "니뜰리히": "KA01TP260220091708513yVHgKCBuGi5",
+        "수비다": "KA01TP260220091708513yVHgKCBuGi5",
+        "수비다 SUBIDA": "KA01TP260220091708513yVHgKCBuGi5",
+        "노는 개 최고양": "KA01TP260220091708513yVHgKCBuGi5",
+        "노는개최고양": "KA01TP260220091708513yVHgKCBuGi5",
+        "아르빙": "KA01TP260220091708513yVHgKCBuGi5",
     }
     return tmpl_map.get(channel_name, "")
 
