@@ -2,6 +2,7 @@
 
 import json
 import logging
+import uuid
 from django.db.models import Avg, Subquery, OuterRef,Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -36,6 +37,48 @@ from django.contrib import messages
 
 
 logger = logging.getLogger(__name__)
+
+
+def _campaign_uuid_for_task(task_id):
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"traffic-task-campaign:{task_id}")
+
+
+def ensure_task_campaign_fields(task, parent_task=None):
+    """
+    Populate campaign_id/cycle_no when missing.
+    - Root task: deterministic campaign from its own id, cycle=1
+    - Extended task: inherit parent's campaign, cycle=parent+1
+    """
+    update_fields = []
+
+    if parent_task is not None:
+        if not parent_task.campaign_id or not parent_task.cycle_no:
+            ensure_task_campaign_fields(parent_task)
+            parent_task.refresh_from_db(fields=["campaign_id", "cycle_no"])
+        campaign_id = parent_task.campaign_id
+        cycle_no = (parent_task.cycle_no or 1) + 1
+    else:
+        campaign_id = task.campaign_id or _campaign_uuid_for_task(task.id)
+        cycle_no = task.cycle_no or 1
+
+    if task.campaign_id != campaign_id:
+        task.campaign_id = campaign_id
+        update_fields.append("campaign_id")
+    if task.cycle_no != cycle_no:
+        task.cycle_no = cycle_no
+        update_fields.append("cycle_no")
+
+    if update_fields:
+        task.save(update_fields=update_fields)
+
+    return task
+
+
+def get_campaign_scope_tasks(task):
+    qs = Task.objects.filter(campaign_id=task.campaign_id)
+    first_task = qs.order_by("available_start_date", "id").first()
+    latest_task = qs.order_by("-available_end_date", "-id").first()
+    return qs, first_task, latest_task
 
 
 @login_required
@@ -217,6 +260,10 @@ from collections import defaultdict
 @login_required
 def dashborad_get_sales_data(request):
     task_id = request.GET.get('task_id')
+    scope = (request.GET.get('scope', 'task') or 'task').lower()
+    if scope not in {"task", "campaign"}:
+        scope = "task"
+
     if not task_id:
         logger.error("task_id is missing in request")
         return JsonResponse({'error': 'task_id is required'}, status=400)
@@ -226,28 +273,54 @@ def dashborad_get_sales_data(request):
     except Task.DoesNotExist:
         logger.error("Task with id %s not found", task_id)
         return JsonResponse({'error': 'Task not found'}, status=404)
-    
-    if not task.single_product_mid:
+
+    scope_tasks = Task.objects.filter(id=task.id)
+    reference_task = task
+    start_anchor = task.available_start_date
+    if scope == "campaign" and task.campaign_id:
+        campaign_qs, first_task, latest_task = get_campaign_scope_tasks(task)
+        if first_task and latest_task:
+            scope_tasks = campaign_qs
+            reference_task = latest_task
+            start_anchor = first_task.available_start_date
+
+    product_mid = reference_task.single_product_mid
+    if not product_mid and scope == "campaign":
+        fallback_task = (
+            scope_tasks.exclude(single_product_mid__isnull=True)
+            .exclude(single_product_mid="")
+            .order_by("-available_end_date", "-id")
+            .first()
+        )
+        if fallback_task:
+            product_mid = fallback_task.single_product_mid
+
+    if not product_mid:
         logger.error("Task id %s does not have single_product_mid", task_id)
-    logger.debug("single_product_mid repr: %r (type=%s)",
-             task.single_product_mid, type(task.single_product_mid))
-    
-    # 시작 날짜: task.available_start_date가 있다면 해당 날짜의 10일 전, 없으면 오늘 기준 10일 전
-    if task.available_start_date:
-        start_date = task.available_start_date - timedelta(days=10)
+
+    logger.debug(
+        "sales scope=%s, product_mid repr=%r (type=%s)",
+        scope,
+        product_mid,
+        type(product_mid),
+    )
+
+    # 시작 날짜: 시작 기준일 10일 전부터 (없으면 오늘 기준 10일 전)
+    if start_anchor:
+        start_date = start_anchor - timedelta(days=10)
     else:
         start_date = timezone.now().date() - timedelta(days=10)
     # 종료 날짜: 어제
     end_date = timezone.now().date() - timedelta(days=0)
-    
-    logger.debug("Task id: %s, single_product_mid: %s", task_id, task.single_product_mid)
+
+    logger.debug("Task id: %s, single_product_mid: %s", task_id, product_mid)
     logger.debug("Fetching sales records where product_id=%s between %s and %s",
-                 task.single_product_mid, start_date, end_date)
+                 product_mid, start_date, end_date)
     
     try:
         # 날짜 필드는 문자열 형태('YYYY-MM-DD')로 저장되어 있다고 가정하고 비교
         sales_records = NaverDailySales.objects.filter(
-            product_id=task.single_product_mid,
+            product_id=product_mid,
             date__gte=start_date.strftime("%Y-%m-%d"),
             date__lte=end_date.strftime("%Y-%m-%d")
         ).order_by('date')
@@ -285,7 +358,7 @@ def dashborad_get_sales_data(request):
         })
         current_date += timedelta(days=1)
     
-    return JsonResponse({'sales': result})
+    return JsonResponse({'sales': result, 'scope': scope})
 
 @login_required
 def task_register(request):
@@ -417,6 +490,7 @@ def task_register(request):
                         single_product_mid=product.single_product_mid,    # 추가
                         store_name=product.store_name,  # 추가
                     )
+                    ensure_task_campaign_fields(task)
                     # Ranking 객체 생성
                     Ranking.objects.create(
                         task=task,
@@ -596,6 +670,7 @@ def task_upload_excel_data(request):
         # 7) 실제 DB 반영
         for data in tasks_to_create:
             task = Task.objects.create(**data)
+            ensure_task_campaign_fields(task)
             Ranking.objects.create(
                 task=task,
                 product=task.product,
@@ -1052,6 +1127,10 @@ def get_kpi_data(request):
     logger = logging.getLogger(__name__)
     
     task_id = request.GET.get('task_id')
+    scope = (request.GET.get('scope', 'task') or 'task').lower()
+    if scope not in {"task", "campaign"}:
+        scope = "task"
+
     if not task_id:
         return JsonResponse({'error': 'Task ID is required.'}, status=400)
     
@@ -1060,28 +1139,38 @@ def get_kpi_data(request):
     except Task.DoesNotExist:
         return JsonResponse({'error': 'Task not found.'}, status=404)
 
+    base_task = task
+    latest_task = task
+    campaign_task_count = 1
+    if scope == "campaign" and task.campaign_id:
+        campaign_qs, first_task, newest_task = get_campaign_scope_tasks(task)
+        if first_task and newest_task:
+            base_task = first_task
+            latest_task = newest_task
+            campaign_task_count = campaign_qs.count()
+
     kpi = {}
 
     # KPI 3) 현재 상태
-    kpi['status'] = task.status
+    kpi['status'] = latest_task.status
 
     # KPI 4) 현재 순위 및 시작 순위 차이
-    current_r = task.current_rank if task.current_rank else 1000
-    start_r = task.start_rank if task.start_rank else 1000
+    current_r = latest_task.current_rank if latest_task.current_rank else 1000
+    start_r = base_task.start_rank if base_task.start_rank else 1000
     diff = current_r - start_r
     sign = "+" if diff < 0 else ""
     kpi['currentRank'] = current_r
     kpi['rankDiff'] = f"{sign}{diff}"
 
     # KPI 1) 1달간 검색량 및 키워드 규모 분류
-    if task.keyword:
+    if latest_task.keyword:
         today_date = timezone.now().date()
         # 최근 30일 데이터: 오늘 기준 지난 29일부터 오늘까지
         start_date = (today_date - datetime.timedelta(days=29)).strftime("%Y-%m-%d")
         end_date = today_date.strftime("%Y-%m-%d")
-        daily_data_dict = get_daily_search_volume_from_rel_keywords([task.keyword.name], start_date, end_date)
-        if daily_data_dict and task.keyword.name in daily_data_dict:
-            daily_data = daily_data_dict[task.keyword.name]
+        daily_data_dict = get_daily_search_volume_from_rel_keywords([latest_task.keyword.name], start_date, end_date)
+        if daily_data_dict and latest_task.keyword.name in daily_data_dict:
+            daily_data = daily_data_dict[latest_task.keyword.name]
             total_volume = sum(item.get("searchVolume", 0) for item in daily_data)
         else:
             total_volume = 0
@@ -1097,14 +1186,23 @@ def get_kpi_data(request):
         kpi['monthVolume'] = 0
         kpi['monthVolumeGrowth'] = "0%"
 
-    # KPI 2) 최근 7일 매출액 및 성장률 (기존 함수 사용)
-    if task.single_product_mid and task.available_start_date:
-        recent_sales, sales_growth = compute_recent_7day_sales_and_growth(task.single_product_mid, task.available_start_date)
+    # KPI 2) 최근 7일 매출액 및 성장률
+    sales_baseline_date = base_task.available_start_date
+    if latest_task.single_product_mid and sales_baseline_date:
+        recent_sales, sales_growth = compute_recent_7day_sales_and_growth(
+            latest_task.single_product_mid,
+            sales_baseline_date
+        )
         kpi['recent7daySales'] = recent_sales
         kpi['recent7daySalesGrowth'] = sales_growth
     else:
         kpi['recent7daySales'] = 0
         kpi['recent7daySalesGrowth'] = "0%"
+
+    kpi['scope'] = scope
+    kpi['campaignTaskCount'] = campaign_task_count
+    kpi['baseTaskId'] = base_task.id
+    kpi['latestTaskId'] = latest_task.id
 
     return JsonResponse({'success': True, 'data': kpi})
 
@@ -1243,6 +1341,7 @@ def process_task_registration(request, product_ids, products, traffics, initial_
                 available_end_date=available_end_date,
                 traffic=traffic,
             )
+            ensure_task_campaign_fields(task)
         except Exception as e:
             error_message = f"작업 생성 중 오류 발생: {str(e)}"
             return render(request, 'rankings/task_register.html', {'error': error_message, 'products': products, 'traffics': traffics, 'initial_data': initial_data})
@@ -1521,6 +1620,7 @@ def task_update(request):
                         available_end_date=new_available_end_date or task.available_end_date,
                         traffic=task.traffic,
                     )
+                    ensure_task_campaign_fields(new_task)
                     # 순위 조회 및 저장 (필요 시)
                 else:
                     # 기존 작업 수정
@@ -1762,16 +1862,19 @@ def task_action(request):
                 messages.success(request, "선택한 작업을 완료했습니다.")
             elif action == 'extend':
                 for task in tasks:
+                    ensure_task_campaign_fields(task)
+                    base_rank = task.current_rank if task.current_rank is not None else task.start_rank
+
                     # 새로운 작업 생성
-                    new_task = Task.objects.create(
+                    Task.objects.create(
                         product=task.product,
                         category=task.category,
                         keyword=task.keyword,
                         url=task.url,
-                        start_rank=task.start_rank,
-                        yesterday_rank=task.yesterday_rank,
-                        current_rank=task.current_rank,
-                        difference_rank=task.difference_rank,
+                        start_rank=base_rank,
+                        yesterday_rank=base_rank,
+                        current_rank=base_rank,
+                        difference_rank=0,
                         status=task.status,
                         memo=task.memo,
                         ticket_count=task.ticket_count,
@@ -1779,12 +1882,17 @@ def task_action(request):
                         original_link=task.original_link,
                         original_mid=task.original_mid,
                         traffic=task.traffic,
-                        is_completed=task.is_completed,
-                        ending_rank=task.ending_rank,
+                        is_completed=False,
+                        ending_rank=None,
                         available_start_date=task.available_end_date + timedelta(days=1),
                         available_end_date=task.available_end_date + timedelta(days=10),
                         is_extended=True,
                         original_task=task,
+                        single_product_link=task.single_product_link,
+                        single_product_mid=task.single_product_mid,
+                        store_name=task.store_name,
+                        campaign_id=task.campaign_id,
+                        cycle_no=(task.cycle_no or 1) + 1,
                     )
                 messages.success(request, "선택한 작업을 10일 연장했습니다.")
             elif action == 'undo_extend':
@@ -2691,6 +2799,10 @@ from django.utils.timezone import localtime
 
 def get_ranking_data(request):
     task_id = request.GET.get('task_id')
+    scope = (request.GET.get('scope', 'task') or 'task').lower()
+    if scope not in {"task", "campaign"}:
+        scope = "task"
+
     if not task_id:
         return JsonResponse({'error': 'Task ID is required.'}, status=400)
 
@@ -2699,10 +2811,17 @@ def get_ranking_data(request):
     except Task.DoesNotExist:
         return JsonResponse({'error': 'Task not found.'}, status=404)
 
-    rankings = Ranking.objects.filter(task=task).order_by('-date_time')
+    rankings_qs = Ranking.objects.filter(task=task)
+    start_task = task
+    if scope == "campaign" and task.campaign_id:
+        campaign_qs, first_task, latest_task = get_campaign_scope_tasks(task)
+        if first_task and latest_task:
+            rankings_qs = Ranking.objects.filter(task__in=campaign_qs)
+            start_task = first_task
 
     # 시작 순위 가져오기
-    start_rank = task.start_rank if task.start_rank else 1000
+    start_rank = start_task.start_rank if start_task.start_rank else 1000
+    rankings = rankings_qs.order_by('-date_time')
 
     rankings_list = []
     previous_rank = None
@@ -2737,7 +2856,7 @@ def get_ranking_data(request):
 
         previous_rank = rank
 
-    return JsonResponse({'rankings': rankings_list})
+    return JsonResponse({'rankings': rankings_list, 'scope': scope})
 
 from .api_clients import get_rel_keywords,get_data_lab_trend
 

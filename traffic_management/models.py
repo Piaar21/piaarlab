@@ -97,6 +97,8 @@ class Task(models.Model):
     single_product_link = models.URLField(blank=True, null=True,verbose_name='단일상품링크')  # 단일상품링크
     single_product_mid = models.CharField(max_length=100, blank=True, null=True,verbose_name='단일상품 MID값')  # 단일상품 MID값
     store_name = models.CharField(max_length=255,default='',verbose_name='스토어명')  # 스토어명 (필수)
+    campaign_id = models.UUIDField(null=True, blank=True, db_index=True, editable=False)
+    cycle_no = models.PositiveIntegerField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         # difference_rank 계산
@@ -301,6 +303,5 @@ class NaverMarketingCost(models.Model):
 
     def __str__(self):
         return f"{self.task.product_name} - {self.date}: {self.cost}"
-
 
 
