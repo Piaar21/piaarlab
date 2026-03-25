@@ -3,6 +3,18 @@
 
 {% block content %}
 <div class="py-10 px-4">
+    {% if messages %}
+    <div class="mb-4 space-y-2">
+        {% for message in messages %}
+        <div
+            class="alert {% if 'error' in message.tags %}alert-danger{% elif 'success' in message.tags %}alert-success{% else %}alert-info{% endif %}"
+            role="alert"
+        >
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
     <h1 class="text-3xl font-bold mb-6">상품 리스트</h1>
     <form method="get" action="{% url 'rankings:task_register' %}" id="productForm">
         {% csrf_token %}

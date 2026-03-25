@@ -15,6 +15,13 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="space-y-2">
                 <label for="product" class="block font-medium text-gray-700">상품 선택:</label>
+                <input
+                    type="text"
+                    id="product_search"
+                    class="w-full px-2 py-1 border border-gray-300 rounded bg-white"
+                    placeholder="상품 검색"
+                    aria-label="상품 검색"
+                >
                 <select name="product" id="product" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
                     <option value="">전체</option>
                     {% for product in products %}
@@ -24,6 +31,13 @@
             </div>
             <div class="space-y-2">
                 <label for="traffic" class="block font-medium text-gray-700">트래픽 선택:</label>
+                <input
+                    type="text"
+                    id="traffic_search"
+                    class="w-full px-2 py-1 border border-gray-300 rounded bg-white"
+                    placeholder="트래픽 검색"
+                    aria-label="트래픽 검색"
+                >
                 <select name="traffic" id="traffic" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
                     <option value="">전체</option>
                     {% for traffic in traffics %}
@@ -68,6 +82,39 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
 
 <script>
+    function setupSearchFilter(searchInputId, selectId) {
+        var searchInput = document.getElementById(searchInputId);
+        var select = document.getElementById(selectId);
+        if (!searchInput || !select) return;
+
+        var applyFilter = function() {
+            var query = searchInput.value.trim().toLowerCase();
+            var options = select.options;
+            for (var i = 0; i < options.length; i++) {
+                var option = options[i];
+                if (option.value === "") {
+                    option.hidden = false;
+                    continue;
+                }
+                var label = (option.text || "").toLowerCase();
+                if (option.selected) {
+                    option.hidden = false;
+                    continue;
+                }
+                option.hidden = query.length > 0 && label.indexOf(query) === -1;
+            }
+        };
+
+        searchInput.addEventListener('input', applyFilter);
+        select.addEventListener('change', applyFilter);
+        applyFilter();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        setupSearchFilter('product_search', 'product');
+        setupSearchFilter('traffic_search', 'traffic');
+    });
+
     // 날짜 범위 선택기 초기화
     $(function() {
         var start = moment("{{ start_date }}");

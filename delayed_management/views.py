@@ -32,6 +32,21 @@ from openpyxl import Workbook
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # 필요 시 레벨 지정
 
+def _spreadsheet_cell_to_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool):
+        return str(value).strip()
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return format(value, "f").rstrip("0").rstrip(".")
+    return str(value).strip()
+
 # ==========================
 # 1) "업로드" + "리스트 업로드" 함수
 # ==========================
@@ -55,17 +70,17 @@ def upload_delayed_orders(request):
                     # 컬럼 부족 등 스킵
                     continue
 
-                option_code         = (row[0] or "").strip()
-                customer_name       = (row[1] or "").strip()
-                customer_contact    = (row[2] or "").strip()
-                order_product_name  = (row[3] or "").strip()
-                order_option_name   = (row[4] or "").strip()
-                quantity            = (row[5] or "").strip()
-                seller_product_name = (row[6] or "").strip()
-                seller_option_name  = (row[7] or "").strip()
-                order_number_1      = (row[8] or "").strip()
-                order_number_2      = (row[9] or "").strip()  # 필요하다면 남김
-                store_name_raw      = (row[10] or "").strip()
+                option_code         = _spreadsheet_cell_to_text(row[0])
+                customer_name       = _spreadsheet_cell_to_text(row[1])
+                customer_contact    = _spreadsheet_cell_to_text(row[2])
+                order_product_name  = _spreadsheet_cell_to_text(row[3])
+                order_option_name   = _spreadsheet_cell_to_text(row[4])
+                quantity            = _spreadsheet_cell_to_text(row[5])
+                seller_product_name = _spreadsheet_cell_to_text(row[6])
+                seller_option_name  = _spreadsheet_cell_to_text(row[7])
+                order_number_1      = _spreadsheet_cell_to_text(row[8])
+                order_number_2      = _spreadsheet_cell_to_text(row[9])  # 필요하다면 남김
+                store_name_raw      = _spreadsheet_cell_to_text(row[10])
 
                 # 옵션코드 / 주문번호1이 반드시 있어야 한다고 가정
                 if not option_code:
@@ -123,41 +138,54 @@ def upload_delayed_orders(request):
 
         # 2) temp_orders 순회, 중복 검사
         for od in temp_orders:
-            order_num_1 = od.get('order_number_1', '')
+            normalized_order = {
+                'option_code': _spreadsheet_cell_to_text(od.get('option_code')),
+                'customer_name': _spreadsheet_cell_to_text(od.get('customer_name')),
+                'customer_contact': _spreadsheet_cell_to_text(od.get('customer_contact')),
+                'order_product_name': _spreadsheet_cell_to_text(od.get('order_product_name')),
+                'order_option_name': _spreadsheet_cell_to_text(od.get('order_option_name')),
+                'quantity': _spreadsheet_cell_to_text(od.get('quantity')),
+                'seller_product_name': _spreadsheet_cell_to_text(od.get('seller_product_name')),
+                'seller_option_name': _spreadsheet_cell_to_text(od.get('seller_option_name')),
+                'order_number_1': _spreadsheet_cell_to_text(od.get('order_number_1')),
+                'order_number_2': _spreadsheet_cell_to_text(od.get('order_number_2')),
+                'store_name': _spreadsheet_cell_to_text(od.get('store_name')),
+            }
+            order_num_1 = normalized_order['order_number_1']
 
             if not order_num_1:
                 # 주문번호1 없으면 실패 처리
                 fail_count += 1
-                remaining_temp_orders.append(od)
+                remaining_temp_orders.append(normalized_order)
                 continue
 
             if order_num_1 in existing_orders:
                 # 이미 DB에 존재하면 실패 처리
                 fail_count += 1
-                remaining_temp_orders.append(od)
+                remaining_temp_orders.append(normalized_order)
                 continue
 
             # 3) 중복 아니면 DB 저장
             #    그룹핑 기준: (주문번호1 + customer_name + customer_contact)
             group_key = (
-                od['order_number_2'].strip(),
-                od['customer_name'].strip(),
-                od['customer_contact'].strip()
+                normalized_order['order_number_2'],
+                normalized_order['customer_name'],
+                normalized_order['customer_contact']
             )
             group_token = group_token_map[group_key]
 
             shipment = DelayedShipment.objects.create(
-                option_code         = od['option_code'],
-                customer_name       = od['customer_name'],
-                customer_contact    = od['customer_contact'],
-                order_product_name  = od['order_product_name'],
-                order_option_name   = od['order_option_name'],
-                quantity            = od['quantity'],
-                seller_product_name = od['seller_product_name'],
-                seller_option_name  = od['seller_option_name'],
-                order_number_1      = od['order_number_1'],
-                order_number_2      = od['order_number_2'],  # 필요 시 저장
-                store_name          = od['store_name'],
+                option_code         = normalized_order['option_code'],
+                customer_name       = normalized_order['customer_name'],
+                customer_contact    = normalized_order['customer_contact'],
+                order_product_name  = normalized_order['order_product_name'],
+                order_option_name   = normalized_order['order_option_name'],
+                quantity            = normalized_order['quantity'],
+                seller_product_name = normalized_order['seller_product_name'],
+                seller_option_name  = normalized_order['seller_option_name'],
+                order_number_1      = normalized_order['order_number_1'],
+                order_number_2      = normalized_order['order_number_2'],  # 필요 시 저장
+                store_name          = normalized_order['store_name'],
                 token               = group_token,
             )
             newly_created_ids.append(shipment.id)
@@ -368,8 +396,8 @@ def upload_store_mapping(request):
                 if not row or len(row) < 2:
                     continue
 
-                option_code = (row[0] or "").strip()
-                store_name = (row[1] or "").strip()
+                option_code = _spreadsheet_cell_to_text(row[0])
+                store_name = _spreadsheet_cell_to_text(row[1])
 
                 if not option_code:
                     continue
