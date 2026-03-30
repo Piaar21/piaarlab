@@ -1,12 +1,16 @@
 # excel_conversion/views.py
 import logging
 import re
+import warnings
+from pathlib import Path
+from zoneinfo import ZoneInfo
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.http import HttpResponse
 import pandas as pd
 import io
 from datetime import datetime
+from openpyxl import load_workbook
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -272,6 +276,45 @@ def excel_shipcode_clear_set(request):
     if request.method == 'POST':
         request.session.pop('excel_shipcode_rows', None)  # ← 이 키로 저장했으니 이걸 지워야 함
     return redirect(reverse('excel_conversion:excel_shipcode'))  # ← shipcode 화면으로
+
+def excel_download_shipcode(request):
+    rows = request.session.get("excel_shipcode_rows", [])
+    if not rows:
+        return redirect(reverse("excel_conversion:excel_shipcode"))
+
+    template_path = Path(__file__).resolve().parent.parent / "ShipmentsUpload_PARCEL_20260330.xlsx"
+    if not template_path.exists():
+        return HttpResponse("다운로드 템플릿 파일을 찾을 수 없습니다.", status=500)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Data Validation extension is not supported and will be removed")
+        workbook = load_workbook(template_path)
+
+    worksheet = workbook["상품목록"]
+    for row_index, row in enumerate(rows, start=2):
+        worksheet.cell(row=row_index, column=1, value=row.get("poId", ""))
+        worksheet.cell(row=row_index, column=2, value=row.get("fc", ""))
+        worksheet.cell(row=row_index, column=3, value=row.get("transportType", ""))
+        worksheet.cell(row=row_index, column=4, value=row.get("edd", ""))
+        worksheet.cell(row=row_index, column=5, value=row.get("skuId", ""))
+        worksheet.cell(row=row_index, column=6, value=row.get("skuBarcode", ""))
+        worksheet.cell(row=row_index, column=7, value=row.get("skuName", ""))
+        worksheet.cell(row=row_index, column=8, value=row.get("confirmedQty", ""))
+        worksheet.cell(row=row_index, column=9, value=row.get("invoiceNumber", ""))
+        worksheet.cell(row=row_index, column=10, value=row.get("shippedQty", ""))
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+
+    current_date = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    filename = f"ShipmentsUpload_PARCEL_{current_date.strftime('%Y%m%d')}.xlsx"
+    response = HttpResponse(
+        output.read(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 new_headers = [
