@@ -25,6 +25,7 @@ myenv/
 
 # Excel 덤프 및 임시 파일
 *.xlsx
+!excel_conversion/ShipmentsUpload_PARCEL_20260330.xlsx
 tmp/
 
 # IDE 및 에디터 설정

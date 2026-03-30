@@ -276,18 +276,37 @@ def excel_shipcode_clear_set(request):
         request.session.pop('excel_shipcode_rows', None)  # ← 이 키로 저장했으니 이걸 지워야 함
     return redirect(reverse('excel_conversion:excel_shipcode'))  # ← shipcode 화면으로
 
+def _get_shipcode_template_path():
+    candidate_paths = [
+        Path(__file__).resolve().parent / "ShipmentsUpload_PARCEL_20260330.xlsx",
+        Path(__file__).resolve().parent.parent / "ShipmentsUpload_PARCEL_20260330.xlsx",
+        Path.cwd() / "ShipmentsUpload_PARCEL_20260330.xlsx",
+    ]
+
+    for template_path in candidate_paths:
+        if template_path.exists():
+            return template_path
+    return None
+
+def _load_shipcode_template_workbook():
+    template_path = _get_shipcode_template_path()
+    if template_path is None:
+        raise FileNotFoundError("ShipmentsUpload_PARCEL_20260330.xlsx")
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Data Validation extension is not supported and will be removed")
+        return load_workbook(template_path)
+
 def excel_download_shipcode(request):
     rows = request.session.get("excel_shipcode_rows", [])
     if not rows:
         return redirect(reverse("excel_conversion:excel_shipcode"))
 
-    template_path = Path(__file__).resolve().parent.parent / "ShipmentsUpload_PARCEL_20260330.xlsx"
-    if not template_path.exists():
-        return HttpResponse("다운로드 템플릿 파일을 찾을 수 없습니다.", status=500)
+    template_path = _get_shipcode_template_path()
+    if template_path is None:
+        return HttpResponse("정확한 다운로드 템플릿 파일을 찾을 수 없습니다.", status=500)
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Data Validation extension is not supported and will be removed")
-        workbook = load_workbook(template_path)
+    workbook = _load_shipcode_template_workbook()
 
     worksheet = workbook["상품목록"]
     for row_index, row in enumerate(rows, start=2):
