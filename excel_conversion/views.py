@@ -536,21 +536,75 @@ def _split_multi_items_by_delim(cell_text: str, allowed_colors: set):
         items.append({"is_grid": is_grid, "color": color, "size": size, "qty": qty})
     return items
 
+def _rewind_file(f):
+    if hasattr(f, "seek"):
+        f.seek(0)
+
+def _cell_text(df, row_idx, col_idx):
+    if df.shape[0] <= row_idx or df.shape[1] <= col_idx:
+        return ""
+    value = df.iat[row_idx, col_idx]
+    if pd.isna(value):
+        return ""
+    return str(value).strip()
+
+def _stringify_excel_value(value):
+    if pd.isna(value):
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+def _is_ship_sheet(xls, sheet_name):
+    preview = pd.read_excel(xls, sheet_name=sheet_name, header=None, nrows=4)
+    return (
+        "운송장번호" in {_cell_text(preview, 1, 3), _cell_text(preview, 2, 3)}
+        and _cell_text(preview, 2, 6) == "이름"
+        and "물품명" in {_cell_text(preview, 1, 14), _cell_text(preview, 2, 14)}
+    )
+
+def _read_ship_fixed_columns(ship_file, sheet_name):
+    _rewind_file(ship_file)
+    df = pd.read_excel(ship_file, sheet_name=sheet_name, header=None, dtype=object)
+    if df.shape[0] < 4:
+        raise ValueError("출고데이터 양식이 올바르지 않습니다.")
+
+    # 1행 제목, 2~3행 듀얼 헤더 이후 4행부터 실제 데이터를 사용한다.
+    df = df.iloc[3:, [6, 3, 14]].copy()
+    df.columns = ["받는분", "운송장번호", "상품명"]
+    df = df.dropna(how="all")
+
+    for col in df.columns:
+        df[col] = df[col].map(_stringify_excel_value)
+
+    return df[
+        (df["받는분"] != "")
+        | (df["운송장번호"] != "")
+        | (df["상품명"] != "")
+    ].reset_index(drop=True)
+
 
 
 def _pick_sheet(files):
-    ship_file = list_file = None
+    ship_file = ship_sheet = list_file = None
     for f in files:
         try:
+            _rewind_file(f)
             xls = pd.ExcelFile(f)
             names = set(xls.sheet_names)
-            if "Sheet1" in names and ship_file is None:
-                ship_file = f
+            if ship_file is None:
+                for name in xls.sheet_names:
+                    if _is_ship_sheet(xls, name):
+                        ship_file = f
+                        ship_sheet = name
+                        break
             if "상품목록" in names and list_file is None:
                 list_file = f
         except Exception:
             continue
-    return ship_file, list_file
+        finally:
+            _rewind_file(f)
+    return ship_file, ship_sheet, list_file
 
 # ---- 메인 뷰 ----
 @csrf_protect
@@ -567,19 +621,19 @@ def excel_shipcode(request):
         })
 
     try:
-        ship_file, list_file = _pick_sheet(files)
+        ship_file, ship_sheet, list_file = _pick_sheet(files)
         if ship_file is None or list_file is None:
             return render(request, "excel_conversion/excel_shipcode.html", {
-                "data_list": [], "error_message": "시트 식별 실패: 1.xlsx는 'Sheet1', 2.xlsx는 '상품목록' 시트를 포함해야 합니다.", "success_message": None,
+                "data_list": [], "error_message": "시트 식별 실패: 1.xlsx는 주문등록 출력 양식(1행 제목, 2~3행 헤더, D=운송장번호, G=받는분, O=물품명), 2.xlsx는 '상품목록' 시트를 포함해야 합니다.", "success_message": None,
             })
 
-        df1 = pd.read_excel(ship_file, sheet_name="Sheet1")   # 출고데이터
+        df1 = _read_ship_fixed_columns(ship_file, ship_sheet)  # 출고데이터
+        _rewind_file(list_file)
         df2 = pd.read_excel(list_file, sheet_name="상품목록")  # 상품목록
 
-        col_recv    = _find_col(df1, ["받는분"])
-        col_invoice = _find_col(df1, ["운송장번호"]) if "운송장번호" in map(str, df1.columns) \
-            else _find_col(df1, ["송장번호", "운송장"])  # fallback
-        col_pname   = _find_col(df1, ["상품명"])   # 멀티 품목 가능
+        col_recv = "받는분"
+        col_invoice = "운송장번호"
+        col_pname = "상품명"
 
         col_po      = _find_col(df2, ["발주번호(PO ID)"])
         col_fc      = _find_col(df2, ["물류센터(FC)"])
