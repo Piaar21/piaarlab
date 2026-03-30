@@ -3,13 +3,12 @@ import logging
 import re
 import warnings
 from pathlib import Path
-from zoneinfo import ZoneInfo
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.http import HttpResponse
 import pandas as pd
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from openpyxl import load_workbook
 
 # 로거 설정
@@ -307,7 +306,7 @@ def excel_download_shipcode(request):
     workbook.save(output)
     output.seek(0)
 
-    current_date = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    current_date = (datetime.utcnow() + timedelta(hours=9)).date()
     filename = f"ShipmentsUpload_PARCEL_{current_date.strftime('%Y%m%d')}.xlsx"
     response = HttpResponse(
         output.read(),
