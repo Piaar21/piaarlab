@@ -248,6 +248,195 @@ def get_coupang_seller_product(account_info, seller_product_id):
         msg = f"[get_coupang_seller_product] 요청 예외: {str(e)}"
         logger.error(msg)
         return False, msg
+
+
+def fetch_coupang_rg_inventory_summaries(
+    account_info,
+    vendor_id,
+    vendor_item_id=None,
+    next_token=None,
+):
+    """
+    쿠팡 로켓창고 재고 요약 조회.
+
+    - GET /v2/providers/rg_open_api/apis/api/v1/vendors/{vendorId}/rg/inventory/summaries
+    - vendor_item_id가 있으면 단건 조회
+    - vendor_item_id가 없고 next_token이 있으면 next_token 기준 페이지 조회
+    """
+    access_key = account_info.get("access_key")
+    secret_key = account_info.get("secret_key")
+    vendor_id = str(vendor_id or "").strip()
+    vendor_item_id = str(vendor_item_id or "").strip()
+    next_token = str(next_token or "").strip()
+
+    if not vendor_id:
+        return False, "vendorId가 필요합니다."
+
+    if not (access_key and secret_key):
+        msg = f"{account_info['names'][0]}: Coupang API 계정정보 누락!"
+        logger.error(msg)
+        return False, msg
+
+    method = "GET"
+    url_path = f"/v2/providers/rg_open_api/apis/api/v1/vendors/{vendor_id}/rg/inventory/summaries"
+    query_params = {}
+
+    if vendor_item_id:
+        query_params["vendorItemId"] = vendor_item_id
+    elif next_token:
+        query_params["nextToken"] = next_token
+
+    sorted_query_params = sorted(query_params.items())
+    canonical_query_string = "&".join(
+        f"{key}={urllib.parse.quote(str(value), safe='~')}"
+        for key, value in sorted_query_params
+    )
+
+    signature, datetime_now = generate_coupang_signature(
+        method,
+        url_path,
+        dict(sorted_query_params),
+        secret_key,
+    )
+
+    endpoint = f"https://api-gateway.coupang.com{url_path}"
+    if canonical_query_string:
+        endpoint += f"?{canonical_query_string}"
+
+    headers = {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Authorization": (
+            f"CEA algorithm=HmacSHA256, access-key={access_key}, "
+            f"signed-date={datetime_now}, signature={signature}"
+        ),
+    }
+
+    logger.debug(
+        "[fetch_coupang_rg_inventory_summaries] vendor_id=%s, vendor_item_id=%s, next_token=%s, endpoint=%s",
+        vendor_id,
+        vendor_item_id or None,
+        next_token or None,
+        endpoint,
+    )
+
+    max_retries = 3
+    retry_count = 0
+
+    while retry_count < max_retries:
+        try:
+            resp = requests.get(endpoint, headers=headers, timeout=30, proxies=proxies)
+        except requests.exceptions.RequestException as e:
+            msg = f"[fetch_coupang_rg_inventory_summaries] 요청 예외: {str(e)}"
+            logger.error(msg)
+            return False, msg
+
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+            except ValueError:
+                msg = "[fetch_coupang_rg_inventory_summaries] JSON 파싱 실패"
+                logger.error("%s: %s", msg, resp.text[:500])
+                return False, msg
+
+            code = data.get("code")
+            message = data.get("message")
+            is_success = code in ("SUCCESS", "200", 200) or message == "SUCCESS"
+
+            if not is_success:
+                msg = f"[fetch_coupang_rg_inventory_summaries] code != SUCCESS, raw={data}"
+                logger.error(msg)
+                return False, msg
+
+            result = {
+                "code": code,
+                "message": message,
+                "data": data.get("data", []) or [],
+                "nextToken": data.get("nextToken", ""),
+            }
+            logger.info(
+                "[fetch_coupang_rg_inventory_summaries] vendor_id=%s rows=%s nextToken=%s",
+                vendor_id,
+                len(result["data"]),
+                result["nextToken"] or None,
+            )
+            return True, result
+
+        if resp.status_code == 429:
+            retry_count += 1
+            logger.warning(
+                "[fetch_coupang_rg_inventory_summaries] RateLimit(429) -> 재시도 %s/%s",
+                retry_count,
+                max_retries,
+            )
+            time.sleep(2)
+            continue
+
+        msg = f"[fetch_coupang_rg_inventory_summaries] status={resp.status_code}, text={resp.text}"
+        logger.error(msg)
+        return False, msg
+
+    return False, "[fetch_coupang_rg_inventory_summaries] 429 재시도 초과"
+
+
+def get_coupang_item_inventories(account_info, vendor_item_id):
+    """
+    seller_api 기준 vendorItemId 재고/판매 상태 조회.
+
+    RG inventory summary가 비어 있을 때, item 자체가 존재하는지 진단하는 용도.
+    """
+    access_key = account_info.get("access_key")
+    secret_key = account_info.get("secret_key")
+    vendor_item_id = str(vendor_item_id or "").strip()
+
+    if not vendor_item_id:
+        return False, "vendorItemId가 필요합니다."
+
+    if not (access_key and secret_key):
+        msg = f"{account_info['names'][0]}: Coupang API 계정정보 누락!"
+        logger.error(msg)
+        return False, msg
+
+    method = "GET"
+    url_path = f"/v2/providers/seller_api/apis/api/v1/marketplace/vendor-items/{vendor_item_id}/inventories"
+    query_params = {}
+
+    signature, datetime_now = generate_coupang_signature(
+        method,
+        url_path,
+        query_params,
+        secret_key,
+    )
+
+    endpoint = f"https://api-gateway.coupang.com{url_path}"
+    headers = {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Authorization": (
+            f"CEA algorithm=HmacSHA256, access-key={access_key}, "
+            f"signed-date={datetime_now}, signature={signature}"
+        ),
+    }
+
+    try:
+        resp = requests.get(endpoint, headers=headers, timeout=30, proxies=proxies)
+    except requests.exceptions.RequestException as e:
+        msg = f"[get_coupang_item_inventories] 요청 예외: {str(e)}"
+        logger.error(msg)
+        return False, msg
+
+    if resp.status_code == 200:
+        data = resp.json()
+        if data.get("code") != "SUCCESS":
+            msg = f"[get_coupang_item_inventories] code != SUCCESS, raw={data}"
+            logger.error(msg)
+            return False, msg
+        return True, data.get("data", {}) or {}
+
+    if resp.status_code == 404:
+        return False, f"[get_coupang_item_inventories] 404 Not Found: vendor_item_id={vendor_item_id}"
+
+    msg = f"[get_coupang_item_inventories] status={resp.status_code}, text={resp.text}"
+    logger.error(msg)
+    return False, msg
     
 
     #매출리포트 시작

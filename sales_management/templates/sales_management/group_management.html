@@ -1,0 +1,164 @@
+{% extends 'sales_management_base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+    <div>
+      <h2 class="mb-1 text-primary">로켓창고 재고 조회</h2>
+      <p class="text-muted mb-0"><code>vendorId</code>는 필수, <code>vendorItemId</code>는 선택입니다.</p>
+    </div>
+  </div>
+
+  <div class="alert alert-warning py-2 mb-4" role="alert">
+    API 호출 빈도는 분당 50회 이하로 유지해야 합니다.
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-md-4">
+          <label for="vendorId" class="form-label">vendorId</label>
+          <input
+            type="text"
+            id="vendorId"
+            name="vendorId"
+            class="form-control"
+            placeholder="A00123456"
+            value="{{ vendor_id }}"
+            required
+          >
+        </div>
+
+        <div class="col-md-4">
+          <label for="vendorItemId" class="form-label">vendorItemId</label>
+          <input
+            type="text"
+            id="vendorItemId"
+            name="vendorItemId"
+            class="form-control"
+            placeholder="70000000000"
+            value="{{ vendor_item_id }}"
+          >
+          <div class="form-text">비워두면 전체 상품 요약을 조회합니다.</div>
+        </div>
+
+        <div class="col-md-4 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">조회</button>
+          <a href="{% url 'group_management' %}" class="btn btn-outline-secondary">초기화</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if error_message %}
+  <div class="alert alert-danger" role="alert">
+    {{ error_message }}
+  </div>
+  {% endif %}
+
+  {% if query_executed and not error_message %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <div class="text-muted small">vendorId</div>
+          <div class="fw-semibold">{{ vendor_id }}</div>
+        </div>
+        <div class="col-md-3">
+          <div class="text-muted small">vendorItemId</div>
+          <div class="fw-semibold">{{ vendor_item_id|default:"-" }}</div>
+        </div>
+        <div class="col-md-2">
+          <div class="text-muted small">응답 코드</div>
+          <div class="fw-semibold">{{ response_code|default:"-" }}</div>
+        </div>
+        <div class="col-md-2">
+          <div class="text-muted small">응답 메시지</div>
+          <div class="fw-semibold">{{ response_message|default:"-" }}</div>
+        </div>
+        <div class="col-md-2">
+          <div class="text-muted small">조회 건수</div>
+          <div class="fw-semibold">{{ result_count }}</div>
+        </div>
+      </div>
+      <div class="row g-3 mt-1">
+        <div class="col-md-3">
+          <div class="text-muted small">인증 계정</div>
+          <div class="fw-semibold">{{ used_account_name|default:"-" }}</div>
+        </div>
+        <div class="col-md-3">
+          <div class="text-muted small">실제 조회 vendorId</div>
+          <div class="fw-semibold">{{ signed_vendor_id|default:"-" }}</div>
+        </div>
+        <div class="col-md-3">
+          <div class="text-muted small">요청 nextToken</div>
+          <div class="fw-semibold">{{ request_next_token|default:"-" }}</div>
+        </div>
+        <div class="col-md-3">
+          <div class="text-muted small">응답 nextToken</div>
+          <div class="fw-semibold">{{ response_next_token|default:"-" }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      {% if diagnostic_message %}
+      <div class="alert alert-info" role="alert">
+        <div class="fw-semibold mb-1">진단</div>
+        <div>{{ diagnostic_message }}</div>
+        {% if diagnostic_inventory %}
+        <div class="mt-2 small">
+          일반 재고 API 기준:
+          재고 {{ diagnostic_inventory.amountInStock|default:"-" }},
+          판매가 {{ diagnostic_inventory.salePrice|default:"-" }},
+          판매상태 {{ diagnostic_inventory.onSale|default:"-" }}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if inventory_rows %}
+      <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>vendorId</th>
+              <th>vendorItemId</th>
+              <th>externalSkuId</th>
+              <th>주문 가능 수량</th>
+              <th>최근 30일 판매수량</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in inventory_rows %}
+            <tr>
+              <td>{{ row.vendor_id }}</td>
+              <td>{{ row.vendor_item_id }}</td>
+              <td>{{ row.external_sku_id }}</td>
+              <td>{{ row.total_orderable_quantity|default:"-" }}</td>
+              <td>{{ row.sales_count_last_thirty_days|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">조회된 재고 데이터가 없습니다.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if response_next_token and not vendor_item_id %}
+  <div class="d-flex justify-content-end mt-3">
+    <a
+      href="{% url 'group_management' %}?vendorId={{ vendor_id|urlencode }}&nextToken={{ response_next_token|urlencode }}"
+      class="btn btn-outline-primary"
+    >
+      다음 페이지 조회
+    </a>
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

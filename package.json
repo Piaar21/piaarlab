@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "start": "env -u DEBUG ./venv/bin/python manage.py runserver",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:tailwind": "npx tailwindcss -i ./static/src/tailwind.css -o ./static/css/style.css --watch",
     "build:prod": "npx tailwindcss -i ./static/src/tailwind.css -o ./static/css/style.css --minify"

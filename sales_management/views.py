@@ -26,12 +26,202 @@ from collections import defaultdict, OrderedDict  # 추가
 from django.core.exceptions import MultipleObjectsReturned
 
 
-from .api_clients import COUPANG_ACCOUNTS, fetch_coupang_all_seller_products, get_coupang_seller_product,fetch_seller_tool_option_info
+from .api_clients import (
+    COUPANG_ACCOUNTS,
+    fetch_coupang_all_seller_products,
+    fetch_coupang_rg_inventory_summaries,
+    fetch_seller_tool_option_info,
+    get_coupang_item_inventories,
+    get_coupang_seller_product,
+)
 
 logger = logging.getLogger("sales_management")  # 로거 이름 일치
 
+def _get_coupang_account_by_vendor_id(vendor_id):
+    normalized_vendor_id = str(vendor_id or "").strip()
+    if not normalized_vendor_id:
+        return None
+
+    return next(
+        (
+            account_info
+            for account_info in COUPANG_ACCOUNTS
+            if normalized_vendor_id == account_info.get("vendor_id")
+            or normalized_vendor_id in account_info.get("names", [])
+        ),
+        None,
+    )
+
+
+def _get_ordered_coupang_accounts(vendor_id):
+    requested_vendor_id = str(vendor_id or "").strip()
+    valid_accounts = [
+        account_info
+        for account_info in COUPANG_ACCOUNTS
+        if account_info.get("access_key") and account_info.get("secret_key")
+    ]
+
+    matched_accounts = [
+        account_info
+        for account_info in valid_accounts
+        if requested_vendor_id == str(account_info.get("vendor_id") or "").strip()
+        or requested_vendor_id in (account_info.get("names") or [])
+    ]
+    remaining_accounts = [
+        account_info
+        for account_info in valid_accounts
+        if account_info not in matched_accounts
+    ]
+    return matched_accounts + remaining_accounts
+
+
+def _normalize_rg_inventory_rows(rows):
+    normalized_rows = []
+
+    for row in rows or []:
+        inventory_details = row.get("inventoryDetails") or {}
+        sales_count_map = row.get("salesCountMap") or {}
+
+        normalized_rows.append(
+            {
+                "vendor_id": row.get("vendorId") or "-",
+                "vendor_item_id": row.get("vendorItemId") or "-",
+                "external_sku_id": row.get("externalSkuId") or "-",
+                "total_orderable_quantity": inventory_details.get("totalOrderableQuantity"),
+                "sales_count_last_thirty_days": sales_count_map.get("SALES_COUNT_LAST_THIRTY_DAYS"),
+            }
+        )
+
+    return normalized_rows
+
+
 def group_management_view(request):
-    return render(request, 'sales_management/group_management.html')
+    vendor_id = request.GET.get("vendorId", "").strip()
+    vendor_item_id = request.GET.get("vendorItemId", "").strip()
+    request_next_token = request.GET.get("nextToken", "").strip()
+
+    context = {
+        "vendor_id": vendor_id,
+        "vendor_item_id": vendor_item_id,
+        "request_next_token": request_next_token,
+        "query_executed": bool(vendor_id),
+        "inventory_rows": [],
+        "result_count": 0,
+        "response_code": "",
+        "response_message": "",
+        "response_next_token": "",
+        "used_account_name": "",
+        "signed_vendor_id": "",
+        "diagnostic_message": "",
+        "diagnostic_inventory": None,
+    }
+
+    if not vendor_id:
+        return render(request, "sales_management/group_management.html", context)
+
+    if not re.match(r"^A", vendor_id):
+        context["error_message"] = "vendorId는 A로 시작하는 값이어야 합니다."
+        return render(request, "sales_management/group_management.html", context)
+
+    used_account_info = None
+    success = False
+    result = None
+
+    if vendor_item_id:
+        ordered_accounts = _get_ordered_coupang_accounts(vendor_id)
+        empty_success_result = None
+        empty_success_account = None
+        errors = []
+
+        for account_info in ordered_accounts:
+            signed_vendor_id = str(account_info.get("vendor_id") or "").strip()
+            if not signed_vendor_id:
+                continue
+
+            current_success, current_result = fetch_coupang_rg_inventory_summaries(
+                account_info=account_info,
+                vendor_id=signed_vendor_id,
+                vendor_item_id=vendor_item_id,
+                next_token=None,
+            )
+
+            if current_success:
+                current_result["usedAccount"] = account_info.get("names", [signed_vendor_id])[0]
+                current_result["signedVendorId"] = signed_vendor_id
+                if current_result.get("data"):
+                    success = True
+                    result = current_result
+                    used_account_info = account_info
+                    break
+                if empty_success_result is None:
+                    empty_success_result = current_result
+                    empty_success_account = account_info
+                continue
+
+            errors.append(f"[{account_info.get('names', [signed_vendor_id])[0]}] {current_result}")
+
+        if not success and empty_success_result is not None:
+            success = True
+            result = empty_success_result
+            used_account_info = empty_success_account
+
+        if not success:
+            context["error_message"] = " | ".join(errors) if errors else "사용 가능한 쿠팡 API 계정이 없습니다."
+            return render(request, "sales_management/group_management.html", context)
+    else:
+        account_info = _get_coupang_account_by_vendor_id(vendor_id)
+        if not account_info:
+            context["error_message"] = "vendorItemId 없이 전체 조회할 때는 인증된 vendorId만 사용할 수 있습니다."
+            return render(request, "sales_management/group_management.html", context)
+
+        success, result = fetch_coupang_rg_inventory_summaries(
+            account_info=account_info,
+            vendor_id=vendor_id,
+            vendor_item_id=None,
+            next_token=request_next_token or None,
+        )
+        used_account_info = account_info
+
+    if not success:
+        context["error_message"] = result
+        return render(request, "sales_management/group_management.html", context)
+
+    inventory_rows = _normalize_rg_inventory_rows(result.get("data"))
+    context.update(
+        {
+            "inventory_rows": inventory_rows,
+            "result_count": len(inventory_rows),
+            "response_code": result.get("code", ""),
+            "response_message": result.get("message", ""),
+            "response_next_token": result.get("nextToken", ""),
+            "used_account_name": result.get(
+                "usedAccount",
+                (used_account_info.get("names", [used_account_info.get("vendor_id", "")])[0] if used_account_info else ""),
+            ),
+            "signed_vendor_id": result.get(
+                "signedVendorId",
+                (used_account_info.get("vendor_id", "") if used_account_info else vendor_id),
+            ),
+        }
+    )
+
+    if vendor_item_id and not inventory_rows:
+        inventory_ok, inventory_result = get_coupang_item_inventories(used_account_info, vendor_item_id)
+        if inventory_ok:
+            context["diagnostic_message"] = (
+                "이 vendorItemId는 일반 vendor-item 재고 API에서는 조회되지만, "
+                "로켓창고 재고 요약 API 대상은 아닙니다. "
+                "보통 로켓창고(Local Korean Rocket Warehouses) 재고가 없는 SKU이거나 "
+                "로켓그로스 요약 대상이 아닌 경우입니다."
+            )
+            context["diagnostic_inventory"] = inventory_result
+        else:
+            context["diagnostic_message"] = (
+                "로켓창고 재고 요약도 비어 있고, 일반 vendor-item 재고 API에서도 같은 vendorItemId를 찾지 못했습니다. "
+                "vendorId / vendorItemId 조합이 맞는지 다시 확인해 주세요."
+            )
+
+    return render(request, "sales_management/group_management.html", context)
 
 # 상품리스트 시작
 
@@ -5377,4 +5567,3 @@ def naver_update_costs_from_seller_tool_view(request):
         messages.error(request, f"에러 발생: {str(e)}")
     
     return redirect('naver_profit_report')
-
