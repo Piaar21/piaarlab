@@ -15,35 +15,47 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="space-y-2">
                 <label for="product" class="block font-medium text-gray-700">상품 선택:</label>
-                <input
-                    type="text"
-                    id="product_search"
-                    class="w-full px-2 py-1 border border-gray-300 rounded bg-white"
-                    placeholder="상품 검색"
-                    aria-label="상품 검색"
-                >
-                <select name="product" id="product" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
-                    <option value="">전체</option>
-                    {% for product in products %}
-                        <option value="{{ product.id }}" {% if selected_product_id == product.id %}selected{% endif %}>{{ product.name }}</option>
-                    {% endfor %}
-                </select>
+                <div class="relative">
+                    <input
+                        type="text"
+                        id="product_search"
+                        class="filter-search-input w-full px-2 py-1 border border-gray-300 rounded bg-white"
+                        placeholder="상품 검색"
+                        aria-label="상품 검색"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                        data-select-id="product"
+                    >
+                    <select name="product" id="product" class="filter-select hidden absolute left-0 z-50 w-full px-2 py-1 border border-gray-300 rounded bg-white shadow-lg" style="top: calc(100% + 0.25rem);">
+                        <option value="">전체</option>
+                        {% for product in products %}
+                            <option value="{{ product.id }}" {% if selected_product_id == product.id %}selected{% endif %}>{{ product.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <div class="space-y-2">
                 <label for="traffic" class="block font-medium text-gray-700">트래픽 선택:</label>
-                <input
-                    type="text"
-                    id="traffic_search"
-                    class="w-full px-2 py-1 border border-gray-300 rounded bg-white"
-                    placeholder="트래픽 검색"
-                    aria-label="트래픽 검색"
-                >
-                <select name="traffic" id="traffic" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
-                    <option value="">전체</option>
-                    {% for traffic in traffics %}
-                        <option value="{{ traffic.id }}" {% if selected_traffic_id == traffic.id %}selected{% endif %}>{{ traffic.name }}</option>
-                    {% endfor %}
-                </select>
+                <div class="relative">
+                    <input
+                        type="text"
+                        id="traffic_search"
+                        class="filter-search-input w-full px-2 py-1 border border-gray-300 rounded bg-white"
+                        placeholder="트래픽 검색"
+                        aria-label="트래픽 검색"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                        data-select-id="traffic"
+                    >
+                    <select name="traffic" id="traffic" class="filter-select hidden absolute left-0 z-50 w-full px-2 py-1 border border-gray-300 rounded bg-white shadow-lg" style="top: calc(100% + 0.25rem);">
+                        <option value="">전체</option>
+                        {% for traffic in traffics %}
+                            <option value="{{ traffic.id }}" {% if selected_traffic_id == traffic.id %}selected{% endif %}>{{ traffic.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <div class="space-y-2">
                 <label for="date_range" class="block font-medium text-gray-700">날짜 범위:</label>
@@ -82,37 +94,89 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
 
 <script>
-    function setupSearchFilter(searchInputId, selectId) {
-        var searchInput = document.getElementById(searchInputId);
-        var select = document.getElementById(selectId);
-        if (!searchInput || !select) return;
+    function updateFilterSearchLabel(input, select) {
+        if (!input || !select) return;
 
-        var applyFilter = function() {
-            var query = searchInput.value.trim().toLowerCase();
-            var options = select.options;
-            for (var i = 0; i < options.length; i++) {
-                var option = options[i];
-                if (option.value === "") {
-                    option.hidden = false;
-                    continue;
-                }
-                var label = (option.text || "").toLowerCase();
-                if (option.selected) {
-                    option.hidden = false;
-                    continue;
-                }
-                option.hidden = query.length > 0 && label.indexOf(query) === -1;
+        if (!select.value) {
+            input.value = '';
+            return;
+        }
+
+        var selectedOption = select.options[select.selectedIndex];
+        if (selectedOption && selectedOption.value) {
+            input.value = selectedOption.text;
+        }
+    }
+
+    function collapseFilterSelect(select) {
+        if (!select) return;
+
+        select.size = 1;
+        select.classList.add('hidden');
+    }
+
+    function filterSelectOptions(input, forceOpen) {
+        var select = document.getElementById(input.getAttribute('data-select-id'));
+        if (!select) return;
+
+        var query = input.value.trim().toLowerCase();
+        var visibleCount = 0;
+        for (var i = 0; i < select.options.length; i++) {
+            var option = select.options[i];
+            if (option.value === '') {
+                option.hidden = false;
+                continue;
             }
-        };
 
-        searchInput.addEventListener('input', applyFilter);
-        select.addEventListener('change', applyFilter);
-        applyFilter();
+            var label = (option.text || '').toLowerCase();
+            option.hidden = query.length > 0 && label.indexOf(query) === -1;
+            if (!option.hidden) {
+                visibleCount++;
+            }
+        }
+
+        if (query.length > 0 || forceOpen) {
+            select.classList.remove('hidden');
+            select.size = Math.min(Math.max(visibleCount + 1, 2), 8);
+        } else {
+            collapseFilterSelect(select);
+        }
+    }
+
+    function setupSearchFilter(input) {
+        var select = document.getElementById(input.getAttribute('data-select-id'));
+        if (!input || !select) return;
+
+        updateFilterSearchLabel(input, select);
+        collapseFilterSelect(select);
+
+        input.addEventListener('input', function() {
+            filterSelectOptions(input, false);
+        });
+
+        input.addEventListener('focus', function() {
+            filterSelectOptions(input, true);
+        });
+
+        input.addEventListener('click', function() {
+            filterSelectOptions(input, true);
+        });
+
+        input.addEventListener('blur', function() {
+            window.setTimeout(function() {
+                collapseFilterSelect(select);
+            }, 150);
+        });
+
+        select.addEventListener('change', function() {
+            updateFilterSearchLabel(input, select);
+            collapseFilterSelect(select);
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        setupSearchFilter('product_search', 'product');
-        setupSearchFilter('traffic_search', 'traffic');
+        var inputs = document.querySelectorAll('.filter-search-input');
+        inputs.forEach(setupSearchFilter);
     });
 
     // 날짜 범위 선택기 초기화

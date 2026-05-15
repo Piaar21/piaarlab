@@ -2110,7 +2110,8 @@ def traffic_cost_summary(request):
         if traffic and traffic.price and traffic.days:
             # 트래픽의 일일 비용 계산
             total_days = traffic.days
-            daily_cost = traffic.price / total_days
+            ticket_count = task.ticket_count or 1
+            daily_cost = (traffic.price / total_days) * ticket_count
             daily_cost = int(daily_cost)  # 소수점 이하 절삭
 
             # 작업 기간 내의 각 날짜에 비용 누적

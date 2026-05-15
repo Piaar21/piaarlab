@@ -96,12 +96,20 @@
                             <input type="text" name="memo_{{ product.id }}" value="{{ data.memo|default:'' }}" class="w-full px-2 py-1 border border-gray-300 rounded">
                         </td>
                         <td class="px-4 py-2 text-center">
-                            <select name="traffic_{{ product.id }}" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
-                                <option value="">선택</option>
-                                {% for traffic in traffics %}
-                                    <option value="{{ traffic.id }}" {% if data.traffic_id == traffic.id|stringformat:"s" %}selected{% endif %}>{{ traffic.name }}</option>
-                                {% endfor %}
-                            </select>
+                            <div class="relative min-w-48">
+                                <input
+                                    type="text"
+                                    class="traffic-search-input w-full px-2 py-1 border border-gray-300 rounded"
+                                    placeholder="트래픽 검색"
+                                    aria-label="트래픽 검색"
+                                >
+                                <select name="traffic_{{ product.id }}" class="traffic-select hidden fixed z-50 px-2 py-1 border border-gray-300 rounded bg-white shadow-lg">
+                                    <option value="">선택</option>
+                                    {% for traffic in traffics %}
+                                        <option value="{{ traffic.id }}" {% if data.traffic_id == traffic.id|stringformat:"s" %}selected{% endif %}>{{ traffic.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                         </td>
                         <td class="px-4 py-2 text-center">
                             <input type="number" name="ticket_count_{{ product.id }}" value="{{ data.ticket_count|default:'' }}" required class="w-full px-2 py-1 border border-gray-300 rounded">
@@ -130,8 +138,8 @@
 
     <!-- 모달 구조 (일반 입력용) -->
     <div id="bulkInputModal" class="fixed z-10 inset-0 overflow-y-auto hidden">
-        <div class="flex items-center justify-center min-h-screen">
-            <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all max-w-sm w-full">
+	        <div class="flex items-center justify-center min-h-screen">
+	            <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all max-w-sm w-full">
                 <div class="px-4 py-3 border-b">
                     <h3 id="modalTitle" class="text-lg font-medium leading-6 text-gray-900">일괄 입력</h3>
                     <span class="absolute top-2 right-2 text-gray-500 hover:text-gray-700 cursor-pointer" onclick="closeModal()">&times;</span>
@@ -149,16 +157,25 @@
 
     <!-- 모달 구조 (Select용) -->
     <div id="bulkSelectModal" class="fixed z-10 inset-0 overflow-y-auto hidden">
-        <div class="flex items-center justify-center min-h-screen">
-            <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all max-w-sm w-full">
+	        <div class="flex items-center justify-center min-h-screen">
+	            <div class="bg-white rounded-lg overflow-visible shadow-xl transform transition-all max-w-sm w-full">
                 <div class="px-4 py-3 border-b">
                     <h3 id="modalSelectTitle" class="text-lg font-medium leading-6 text-gray-900">일괄 선택</h3>
                     <span class="absolute top-2 right-2 text-gray-500 hover:text-gray-700 cursor-pointer" onclick="closeModal()">&times;</span>
                 </div>
                 <div class="px-4 py-3">
-                    <select id="bulkSelectValue" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
-                        <!-- 옵션은 스크립트에서 동적으로 추가 -->
-                    </select>
+                    <div class="relative">
+                        <input
+                            type="text"
+                            id="bulkSelectSearch"
+                            class="hidden w-full px-2 py-1 border border-gray-300 rounded"
+                            placeholder="트래픽 검색"
+                            aria-label="트래픽 검색"
+                        >
+                        <select id="bulkSelectValue" class="w-full px-2 py-1 border border-gray-300 rounded bg-white">
+                            <!-- 옵션은 스크립트에서 동적으로 추가 -->
+                        </select>
+                    </div>
                 </div>
                 <div class="px-4 py-3 border-t flex justify-end space-x-2">
                     <button onclick="closeModal()" class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">취소</button>
@@ -235,14 +252,157 @@
         });
     }
 
-    // 행 삭제 함수
-    function deleteRow(button) {
-        var row = button.closest('tr');
-        row.parentNode.removeChild(row);
-    }
+	    // 행 삭제 함수
+	    function deleteRow(button) {
+	        var row = button.closest('tr');
+	        row.parentNode.removeChild(row);
+	    }
 
-    // 모달 열기 함수 (Input용)
-    function openBulkInputModal(fieldName) {
+        function updateTrafficSearchLabel(input, select) {
+            if (!input || !select) return;
+
+            if (!select.value) {
+                input.value = '';
+                return;
+            }
+
+            var selectedOption = select.options[select.selectedIndex];
+            if (selectedOption && selectedOption.value) {
+                input.value = selectedOption.text;
+            }
+        }
+
+        function collapseTrafficSelect(select) {
+            if (!select) return;
+
+            select.size = 1;
+            select.classList.add('hidden');
+        }
+
+        function positionTrafficSelect(input, select) {
+            if (!input || !select) return;
+
+            var rect = input.getBoundingClientRect();
+            select.style.left = rect.left + 'px';
+            select.style.top = (rect.bottom + 4) + 'px';
+            select.style.width = rect.width + 'px';
+        }
+
+        function filterTrafficOptions(input, forceOpen) {
+            var cell = input.closest('td');
+            if (!cell) return;
+
+            var select = cell.querySelector('select[name^="traffic_"]');
+            if (!select) return;
+
+            var query = input.value.trim().toLowerCase();
+            var visibleCount = 0;
+            for (var i = 0; i < select.options.length; i++) {
+                var option = select.options[i];
+                if (option.value === '') {
+                    option.hidden = false;
+                    continue;
+                }
+
+                var label = (option.text || '').toLowerCase();
+                option.hidden = query.length > 0 && label.indexOf(query) === -1;
+                if (!option.hidden) {
+                    visibleCount++;
+                }
+            }
+
+            if (query.length > 0 || forceOpen) {
+                positionTrafficSelect(input, select);
+                select.classList.remove('hidden');
+                select.size = Math.min(Math.max(visibleCount + 1, 2), 8);
+            } else {
+                collapseTrafficSelect(select);
+            }
+        }
+
+        function setupTrafficSearchInputs() {
+            var inputs = document.querySelectorAll('.traffic-search-input');
+            inputs.forEach(function(input) {
+                var cell = input.closest('td');
+                var select = cell ? cell.querySelector('select[name^="traffic_"]') : null;
+
+                updateTrafficSearchLabel(input, select);
+                collapseTrafficSelect(select);
+
+                input.addEventListener('input', function() {
+                    filterTrafficOptions(input);
+                });
+
+                input.addEventListener('focus', function() {
+                    filterTrafficOptions(input, true);
+                });
+
+                input.addEventListener('click', function() {
+                    filterTrafficOptions(input, true);
+                });
+
+                input.addEventListener('blur', function() {
+                    window.setTimeout(function() {
+                        collapseTrafficSelect(select);
+                    }, 150);
+                });
+
+                if (select) {
+                    select.addEventListener('change', function() {
+                        updateTrafficSearchLabel(input, select);
+                        collapseTrafficSelect(select);
+                    });
+                }
+
+                window.addEventListener('scroll', function() {
+                    if (select && !select.classList.contains('hidden')) {
+                        positionTrafficSelect(input, select);
+                    }
+                }, true);
+
+                window.addEventListener('resize', function() {
+                    if (select && !select.classList.contains('hidden')) {
+                        positionTrafficSelect(input, select);
+                    }
+                });
+            });
+        }
+
+        function setupBulkSelectSearch() {
+            var bulkSelectSearch = document.getElementById('bulkSelectSearch');
+            var modalSelect = document.getElementById('bulkSelectValue');
+            if (!bulkSelectSearch || !modalSelect) return;
+
+            bulkSelectSearch.addEventListener('input', function() {
+                filterBulkSelectOptions(false);
+            });
+
+            bulkSelectSearch.addEventListener('focus', function() {
+                filterBulkSelectOptions(true);
+            });
+
+            bulkSelectSearch.addEventListener('click', function() {
+                filterBulkSelectOptions(true);
+            });
+
+            bulkSelectSearch.addEventListener('blur', function() {
+                window.setTimeout(collapseBulkSelect, 150);
+            });
+
+            modalSelect.addEventListener('change', function() {
+                if (currentFieldName === 'traffic') {
+                    updateBulkSelectSearchLabel();
+                    collapseBulkSelect();
+                }
+            });
+
+        }
+
+        document.addEventListener('DOMContentLoaded', setupTrafficSearchInputs);
+        document.addEventListener('DOMContentLoaded', setupBulkSelectSearch);
+		
+	    // 모달 열기 함수 (Input용)
+	    function openBulkInputModal(fieldName) {
         currentFieldName = fieldName;
         document.getElementById('bulkInputValue').value = '';
         document.getElementById('modalTitle').innerText = fieldName + ' 일괄 입력';
@@ -250,13 +410,26 @@
     }
 
     // 모달 열기 함수 (Select용)
-    function openBulkSelectModal(fieldName) {
-        currentFieldName = fieldName;
-        var modalSelect = document.getElementById('bulkSelectValue');
-        modalSelect.innerHTML = ''; // 기존 옵션 제거
+	    function openBulkSelectModal(fieldName) {
+	        currentFieldName = fieldName;
+	        var modalSelect = document.getElementById('bulkSelectValue');
+            var bulkSelectSearch = document.getElementById('bulkSelectSearch');
+	        modalSelect.innerHTML = ''; // 기존 옵션 제거
+            bulkSelectSearch.value = '';
+            var isTrafficSelect = fieldName === 'traffic';
+            bulkSelectSearch.classList.toggle('hidden', !isTrafficSelect);
 
-        // 첫 번째 행에서 옵션을 가져옴
-        var firstRow = document.querySelector('#task-table-body tr');
+            modalSelect.classList.toggle('hidden', isTrafficSelect);
+            modalSelect.classList.toggle('z-50', isTrafficSelect);
+            modalSelect.classList.toggle('shadow-lg', isTrafficSelect);
+            modalSelect.size = 1;
+            modalSelect.style.position = isTrafficSelect ? 'absolute' : '';
+            modalSelect.style.left = isTrafficSelect ? '0' : '';
+            modalSelect.style.top = isTrafficSelect ? 'calc(100% + 0.25rem)' : '';
+            modalSelect.style.width = isTrafficSelect ? '100%' : '';
+
+	        // 첫 번째 행에서 옵션을 가져옴
+	        var firstRow = document.querySelector('#task-table-body tr');
         if (firstRow) {
             var select = firstRow.querySelector('select[name^="' + fieldName + '_"]');
             if (select) {
@@ -266,13 +439,71 @@
                     option.value = select.options[i].value;
                     option.text = select.options[i].text;
                     modalSelect.add(option);
-                }
+	                }
+	            }
+	        }
+
+	        document.getElementById('modalSelectTitle').innerText = fieldName + ' 일괄 선택';
+	        document.getElementById('bulkSelectModal').classList.remove('hidden');
+            window.requestAnimationFrame(function() {
+                filterBulkSelectOptions(false);
+            });
+	    }
+
+        function collapseBulkSelect() {
+            var modalSelect = document.getElementById('bulkSelectValue');
+            if (!modalSelect || currentFieldName !== 'traffic') return;
+
+            modalSelect.size = 1;
+            modalSelect.classList.add('hidden');
+        }
+
+        function updateBulkSelectSearchLabel() {
+            var bulkSelectSearch = document.getElementById('bulkSelectSearch');
+            var modalSelect = document.getElementById('bulkSelectValue');
+            if (!bulkSelectSearch || !modalSelect) return;
+
+            if (!modalSelect.value) {
+                bulkSelectSearch.value = '';
+                return;
+            }
+
+            var selectedOption = modalSelect.options[modalSelect.selectedIndex];
+            if (selectedOption && selectedOption.value) {
+                bulkSelectSearch.value = selectedOption.text;
             }
         }
 
-        document.getElementById('modalSelectTitle').innerText = fieldName + ' 일괄 선택';
-        document.getElementById('bulkSelectModal').classList.remove('hidden');
-    }
+        function filterBulkSelectOptions(forceOpen) {
+            var bulkSelectSearch = document.getElementById('bulkSelectSearch');
+            var modalSelect = document.getElementById('bulkSelectValue');
+            if (!bulkSelectSearch || !modalSelect) return;
+
+            var query = bulkSelectSearch.value.trim().toLowerCase();
+            var visibleCount = 0;
+            for (var i = 0; i < modalSelect.options.length; i++) {
+                var option = modalSelect.options[i];
+                if (option.value === '') {
+                    option.hidden = false;
+                    continue;
+                }
+
+                var label = (option.text || '').toLowerCase();
+                option.hidden = query.length > 0 && label.indexOf(query) === -1;
+                if (!option.hidden) {
+                    visibleCount++;
+                }
+            }
+
+            if (currentFieldName !== 'traffic') return;
+
+            if (query.length > 0 || forceOpen) {
+                modalSelect.classList.remove('hidden');
+                modalSelect.size = Math.min(Math.max(visibleCount + 1, 2), 8);
+            } else {
+                collapseBulkSelect();
+            }
+        }
 
     // 모달 열기 함수 (Date용)
     function openBulkDateModal(fieldName) {
@@ -283,11 +514,12 @@
     }
 
     // 모달 닫기 함수
-    function closeModal() {
-        document.getElementById('bulkInputModal').classList.add('hidden');
-        document.getElementById('bulkSelectModal').classList.add('hidden');
-        document.getElementById('bulkDateModal').classList.add('hidden');
-    }
+	    function closeModal() {
+	        document.getElementById('bulkInputModal').classList.add('hidden');
+	        document.getElementById('bulkSelectModal').classList.add('hidden');
+	        document.getElementById('bulkDateModal').classList.add('hidden');
+            collapseBulkSelect();
+	    }
 
     // 모달 외부 클릭 시 닫힘
     window.onclick = function(event) {
@@ -297,9 +529,10 @@
         if (event.target == bulkInputModal) {
             bulkInputModal.classList.add('hidden');
         }
-        if (event.target == bulkSelectModal) {
-            bulkSelectModal.classList.add('hidden');
-        }
+	        if (event.target == bulkSelectModal) {
+	            bulkSelectModal.classList.add('hidden');
+                collapseBulkSelect();
+	        }
         if (event.target == bulkDateModal) {
             bulkDateModal.classList.add('hidden');
         }
@@ -323,16 +556,19 @@
     function applyBulkSelect() {
         var selectValue = document.getElementById('bulkSelectValue').value;
         var rows = document.querySelectorAll('#task-table-body tr');
-        rows.forEach(function(row) {
-            var select = row.querySelector('select[name^="' + currentFieldName + '_"]');
-            if (select) {
-                select.value = selectValue;
-                if (currentFieldName === 'url_type') {
-                    var productId = row.getAttribute('data-product-id');
-                    updateURL(select, productId);
-                }
-            }
-        });
+	        rows.forEach(function(row) {
+	            var select = row.querySelector('select[name^="' + currentFieldName + '_"]');
+	            if (select) {
+	                select.value = selectValue;
+	                if (currentFieldName === 'url_type') {
+	                    var productId = row.getAttribute('data-product-id');
+	                    updateURL(select, productId);
+	                } else if (currentFieldName === 'traffic') {
+	                    var trafficSearchInput = row.querySelector('.traffic-search-input');
+	                    updateTrafficSearchLabel(trafficSearchInput, select);
+	                }
+	            }
+	        });
         closeModal();
     }
 

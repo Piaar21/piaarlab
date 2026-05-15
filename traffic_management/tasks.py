@@ -131,7 +131,7 @@ def update_task_status(task):
         task.status = '효과없음'
 
     # 6일 전 대비
-    if days_since_start >= 6 and six_days_ago_rank is not None and current_rank >= six_days_ago_rank:
+    if days_since_start >= 6 and six_days_ago_rank is not None and current_rank > 10 and current_rank >= six_days_ago_rank:
         task.status = '환불권장'
 
     # 트래픽 권장 로직
